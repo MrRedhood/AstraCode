@@ -32,3 +32,7 @@ AstraCode is intended to help developers inspect, edit, verify and ship projects
 
 ## Reporting a bug
 Include AstraCode version, Android version, reproducible steps, expected and actual behavior, and sanitized logs. Remove API keys, tokens, private source code and personal data before submitting reports.
+
+## Interface icons and appearance
+
+The primary navigation uses AstraCode's custom-drawn Compose icons rather than generic text glyphs. The icon language combines cosmic cyan and blue with amber-gold and violet accents; icon colors adapt to the system dark/light theme. Icons are rendered locally and require no remote assets or additional icon dependency. The launcher/app icon is intentionally unchanged. These icons are visual identifiers for the current Chat, Code, Git, Build and More navigation scaffold; they do not imply that the corresponding planned product features are already implemented.
