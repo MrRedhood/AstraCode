@@ -61,3 +61,10 @@
 - Kept the prior `astracode_logo.xml` drawable in place as a fallback/source asset; the manifest now selects the PNG resource with the same resource name in the `drawable-nodpi` directory.
 - Updated Help & Guide to describe the exact PNG launcher asset and the unchanged in-app navigation icons.
 - Validation status: manifest and documentation committed to `main`; Android CI and UI workflows must complete before build success or on-device appearance can be confirmed.
+
+## 2026-10-09 — Android CI duplicate launcher resource fix
+
+- Diagnosed the failed Android CI run: Android resource merging reported a duplicate `astracode_logo` because the PNG and XML drawable shared the same resource name in `drawable-nodpi`.
+- Renamed the legacy vector artwork to `astracode_logo_vector.xml` so the user-provided `astracode_logo.png` remains the unambiguous launcher resource.
+- Kept both manifest icon attributes on `@drawable/astracode_logo` and retained the vector artwork under a distinct resource name.
+- Validation status: fix committed to `main`; rerun Android CI and UI smoke workflows and inspect their completed results before claiming success.
