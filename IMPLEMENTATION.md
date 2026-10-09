@@ -38,3 +38,9 @@
 - The reported UI workflow compiled both app and instrumentation APKs, but Android instrumentation exited before reporting any tests (0/0); the log did not include a fatal exception or a test assertion.
 - Added explicit AndroidX Test runner and rules dependencies to make the configured `AndroidJUnitRunner` runtime dependencies unambiguous.
 - Validation: a new emulator workflow run is triggered by this commit. This is a targeted dependency fix, not a claim that instrumentation now passes; inspect the next run and its reports/logcat if it still exits before tests start.
+
+## 2026-10-09 — UI emulator stability adjustment
+
+- Inspected the failed UI workflow's uploaded test report: both app and test APKs installed, but instrumentation terminated before executing any tests (0 tests reported); the report also recorded permission-denied attempts for the Android 15 emulator's additional-output directory, without a useful application exception.
+- Changed the UI smoke workflow to use the API 34 x86_64 Pixel 2 emulator and explicitly disable animations and emulator snapshots, using software rendering and no boot animation/audio to reduce emulator/instrumentation instability.
+- This is a diagnostic environment adjustment, not a claim that UI tests pass. The new `main` workflow run must complete before success is reported.
