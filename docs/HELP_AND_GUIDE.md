@@ -39,4 +39,4 @@ The primary navigation uses AstraCode's custom-drawn Compose icons rather than g
 
 ## App icon
 
-The Android launcher icon uses the exact user-provided PNG at `app/src/main/res/drawable-nodpi/astracode_logo.png`. Both `android:icon` and `android:roundIcon` reference `@drawable/astracode_logo`; Android's resource lookup omits the `-nodpi` directory qualifier. The previous XML drawable is retained but is not the manifest-selected launcher asset. The in-app navigation icons are unchanged. Verify launcher appearance after building and installing the updated APK.
+The Android launcher icon uses the exact user-provided PNG at `app/src/main/res/drawable-nodpi/astracode_logo.png`. Both `android:icon` and `android:roundIcon` reference `@drawable/astracode_logo`; Android's resource lookup omits the `-nodpi` directory qualifier. The previous vector artwork is retained as `app/src/main/res/drawable-nodpi/astracode_logo_vector.xml` under a distinct resource name, avoiding a collision with the PNG. The in-app navigation icons are unchanged. Verify launcher appearance after building and installing the updated APK.
