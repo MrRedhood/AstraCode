@@ -32,3 +32,9 @@
 
 - Fixed the compiler error reported by Android CI in `MainActivity.kt`: removed the invalid explicit import of `androidx.compose.foundation.layout.weight`. The `weight` modifier is available through the `ColumnScope` receiver at its call site.
 - Validation: the fix was committed directly to `main`; the CI workflow triggered by this commit must finish before build success can be claimed.
+
+## 2026-10-09 — Android UI instrumentation runner diagnostics
+
+- The reported UI workflow compiled both app and instrumentation APKs, but Android instrumentation exited before reporting any tests (0/0); the log did not include a fatal exception or a test assertion.
+- Added explicit AndroidX Test runner and rules dependencies to make the configured `AndroidJUnitRunner` runtime dependencies unambiguous.
+- Validation: a new emulator workflow run is triggered by this commit. This is a targeted dependency fix, not a claim that instrumentation now passes; inspect the next run and its reports/logcat if it still exits before tests start.
