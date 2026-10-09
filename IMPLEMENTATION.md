@@ -10,3 +10,11 @@
 - No `NOTICE` file was added because no project-specific third-party attribution requirements were verified during this change.
 - No source-code copyright headers were added because no source files or their authorship were verified as part of this change.
 - Validation performed: verified the existing `LICENSE` file and the new files through the GitHub repository file API. CI/build/UI workflows were not run as part of this documentation-only change.
+
+## 2026-10-09 — Android bootstrap foundation
+
+- Added a minimal Kotlin/Jetpack Compose app shell with the proposed Chat, Code, Git, Build and More destinations.
+- Added Android Gradle configuration, manifest and an initial unit smoke test.
+- Added Android CI, emulator UI smoke and manually triggered release-validation workflows. They are intended to keep signing secrets out of pull-request builds.
+- Validation limitation: the repository does not yet include a Gradle wrapper or wrapper JAR. CI must install a pinned Gradle distribution directly until a verified wrapper is added. No workflow has been run yet; green status is not claimed.
+- Scope note: the five destinations are scaffolding with descriptive placeholders, not completed feature implementations. The detailed feature roadmap remains staged in `docs/ROADMAP.md`.
