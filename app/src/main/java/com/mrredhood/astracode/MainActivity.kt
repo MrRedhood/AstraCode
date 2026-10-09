@@ -356,7 +356,11 @@ private fun HelpGuideScreen(onBack: () -> Unit) {
     )
     GuideSection(
         title = "Workspace and files",
-        body = "Workspace access and editing are being implemented. When available, select a project folder through Android's system picker and grant access only to the workspace you intend to use."
+        body = "Choose a project folder through Android's system picker. Browse, filter, refresh, create, rename, move or delete items within that selected tree. Small recognized text/code files can be previewed or edited; save explicitly and confirm before discarding unsaved changes. Files above 256 KiB and unsupported or binary formats stay read-only."
+    )
+    GuideSection(
+        title = "Editor find and replace",
+        body = "In a supported text/code file, open Find / replace. Search is case-insensitive. Find next selects each match and wraps to the start; Replace match replaces the selection or next match; Replace all applies to non-overlapping matches in the current draft. Find/replace changes are not written to storage until you select Save file."
     )
     GuideSection(
         title = "AI and security",

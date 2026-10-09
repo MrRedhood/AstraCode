@@ -31,3 +31,8 @@
 - Added isolated unit tests for wraparound, matching/counting, single replacement, replace-all and no-match behavior.
 - Updated the roadmap, architecture notes and Help & Guide. Autosave, tabs, draft recovery, folding and shared diff remain outstanding.
 - Validation: Android CI and UI Smoke are triggered by this commit; only their final results establish workflow status.
+
+
+## 2026-10-09 — Align in-app editor guide
+- Updated More → Help & Guide to describe the shipped SAF workspace operations and explicit-save editor limits.
+- Added practical find/replace instructions, including case-insensitive matching, wraparound, replace-all behavior and the manual-save boundary.
