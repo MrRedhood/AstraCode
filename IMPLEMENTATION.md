@@ -53,3 +53,9 @@
 - Kept the existing app launcher icon unchanged.
 - Updated `docs/HELP_AND_GUIDE.md` to document the visual icon system and clarify that the current destinations remain scaffolding.
 - Validation status: source and documentation changes committed directly to `main`. CI and UI workflows have not been checked after these commits; compilation and emulator rendering remain unverified.
+
+## 2026-10-09 — AstraCode launcher icon
+
+- Added a custom Android vector drawable at `app/src/main/res/drawable/astracode_logo.xml`, inspired by the supplied AstraCode mark: a cosmic star, angular cyan/violet A, code glyphs, and orbital accents on a deep navy background.
+- Set both `android:icon` and `android:roundIcon` in the application manifest to the new drawable.
+- Validation status: manifest/resource changes committed to `main`; Android CI and UI workflows need to complete before compilation or launcher rendering can be confirmed.
