@@ -49,13 +49,15 @@
 
 - Added `AstraIcon.kt`, a local Jetpack Compose Canvas icon family with distinct custom motifs and cyan, blue, amber-gold and violet accents.
 - Replaced the five primary navigation's placeholder text glyphs with bespoke Chat/orbit, Code/prism, Git/node, Build/cube and More/diamond icons; the selected destination card also uses the matching custom icon.
-- Icon colors adapt to system dark/light theme. No remote icon assets or additional dependency were introduced.
-- Kept the existing app launcher icon unchanged.
+- Icon colors adapt to system dark/light theme. No remote icon assets or additional dependency was introduced.
+- Kept the existing in-app navigation icon system unchanged while updating the launcher artwork separately.
 - Updated `docs/HELP_AND_GUIDE.md` to document the visual icon system and clarify that the current destinations remain scaffolding.
 - Validation status: source and documentation changes committed directly to `main`. CI and UI workflows have not been checked after these commits; compilation and emulator rendering remain unverified.
 
-## 2026-10-09 — AstraCode launcher icon
+## 2026-10-09 — Exact PNG launcher icon
 
-- Added a custom Android vector drawable at `app/src/main/res/drawable/astracode_logo.xml`, inspired by the supplied AstraCode mark: a cosmic star, angular cyan/violet A, code glyphs, and orbital accents on a deep navy background.
-- Set both `android:icon` and `android:roundIcon` in the application manifest to the new drawable.
-- Validation status: manifest/resource changes committed to `main`; Android CI and UI workflows need to complete before compilation or launcher rendering can be confirmed.
+- Added the user-provided launcher artwork as `app/src/main/res/drawable-nodpi/astracode_logo.png`; the PNG is the launcher asset, not a regenerated or vector-traced substitute.
+- Updated `AndroidManifest.xml` so both `android:icon` and `android:roundIcon` reference `@drawable/astracode_logo`. Android resource references use the resource name and omit the `-nodpi` qualifier.
+- Kept the prior `astracode_logo.xml` drawable in place as a fallback/source asset; the manifest now selects the PNG resource with the same resource name in the `drawable-nodpi` directory.
+- Updated Help & Guide to describe the exact PNG launcher asset and the unchanged in-app navigation icons.
+- Validation status: manifest and documentation committed to `main`; Android CI and UI workflows must complete before build success or on-device appearance can be confirmed.
