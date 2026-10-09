@@ -18,3 +18,5 @@
 - Added Android CI, emulator UI smoke and manually triggered release-validation workflows. They are intended to keep signing secrets out of pull-request builds.
 - Validation limitation: the repository does not yet include a Gradle wrapper or wrapper JAR. CI must install a pinned Gradle distribution directly until a verified wrapper is added. No workflow has been run yet; green status is not claimed.
 - Scope note: the five destinations are scaffolding with descriptive placeholders, not completed feature implementations. The detailed feature roadmap remains staged in `docs/ROADMAP.md`.
+
+- Added Compose instrumentation smoke tests for the five primary navigation labels and More destination content. CI workflow files were re-fetched and checked for pull-request triggers and pinned Gradle setup. The latest commit has no reported combined status checks yet; build/UI success remains unverified.
