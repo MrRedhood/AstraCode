@@ -35,8 +35,8 @@ Include AstraCode version, Android version, reproducible steps, expected and act
 
 ## Interface icons and appearance
 
-The primary navigation uses AstraCode's custom-drawn Compose icons rather than generic text glyphs. The icon language combines cosmic cyan and blue with amber-gold and violet accents; icon colors adapt to the system dark/light theme. Icons are rendered locally and require no remote assets or additional icon dependency. The launcher/app icon is intentionally unchanged. These icons are visual identifiers for the current Chat, Code, Git, Build and More navigation scaffold; they do not imply that the corresponding planned product features are already implemented.
+The primary navigation uses AstraCode's custom-drawn Compose icons rather than generic text glyphs. The icon language combines cosmic cyan and blue with amber-gold and violet accents; icon colors adapt to the system dark/light theme. Icons are rendered locally and require no remote assets or additional icon dependency. These icons are visual identifiers for the current Chat, Code, Git, Build and More navigation scaffold; they do not imply that the corresponding planned product features are already implemented.
 
 ## App icon
 
-The launcher icon uses AstraCode's custom vector artwork with a deep navy base, cyan-to-violet angular mark, gold star and orbital accents. The launcher and round launcher icon currently reference the same vector drawable. Icon appearance should be checked on device/emulator after the next successful build.
+The Android launcher icon uses the exact user-provided PNG at `app/src/main/res/drawable-nodpi/astracode_logo.png`. Both `android:icon` and `android:roundIcon` reference `@drawable/astracode_logo`; Android's resource lookup omits the `-nodpi` directory qualifier. The previous XML drawable is retained but is not the manifest-selected launcher asset. The in-app navigation icons are unchanged. Verify launcher appearance after building and installing the updated APK.
