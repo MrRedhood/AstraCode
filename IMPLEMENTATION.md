@@ -68,3 +68,15 @@
 - Renamed the legacy vector artwork to `astracode_logo_vector.xml` so the user-provided `astracode_logo.png` remains the unambiguous launcher resource.
 - Kept both manifest icon attributes on `@drawable/astracode_logo` and retained the vector artwork under a distinct resource name.
 - Validation status: fix committed to `main`; rerun Android CI and UI smoke workflows and inspect their completed results before claiming success.
+
+
+## 2026-10-09 — Navigation hub and responsive app shell
+
+- Advanced roadmap P2 by retaining the five primary destinations and adding an adaptive layout: bottom navigation on phone-sized screens and a navigation rail on wider screens.
+- Expanded More into a searchable categorized index for workspace/editor, AI/automation, Git/delivery, quality/security, settings and support. Search matches title, category and entry summary and includes a clear empty state.
+- Added functional Help & Guide content inside the app and a Back-to-More path. Hardware/system Back also returns from nested More screens to the index.
+- Saved the selected primary destination, nested More entry and search query through activity recreation with Compose saveable state.
+- Kept unfinished More entries explicitly labeled as placeholders; no planned feature is represented as completed.
+- Added UI instrumentation coverage for the five primary destinations, More search filtering and opening Help & Guide.
+- Updated `docs/HELP_AND_GUIDE.md` and `docs/ARCHITECTURE.md` to describe actual navigation behavior and distinguish shipped shell behavior from planned feature areas.
+- Validation status: committed directly to `main`; Android CI and the new emulator UI smoke workflow must complete on this exact commit before this milestone is considered verified.

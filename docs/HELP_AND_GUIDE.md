@@ -3,10 +3,10 @@
 This file is the source for the in-app **More → Help & Guide** experience as that screen is implemented. Keep each topic aligned with shipped behavior; label planned features as planned until available.
 
 ## Getting started
-AstraCode is intended to help developers inspect, edit, verify and ship projects from an Android device. The initial bootstrap does not yet provide a complete IDE. Setup instructions must be added after the Android shell and workspace flow are implemented and tested.
+AstraCode is designed for coding and project workflows from an Android device. The current build is a foundation shell; some areas in More are still planned.
 
 ## Workspace and files
-**Planned.** Project access will use Android's Storage Access Framework (SAF). Users should understand what folder they selected and what access was granted. If a grant expires or a file disappears, show a recoverable error and allow the user to select the workspace again.
+**Planned.** Workspace access and editing are being implemented. When available, select a project folder through Android's system picker and grant access only to the workspace you intend to use.
 
 ## Editor and recovery
 **Planned.** The editor will distinguish saved and unsaved changes, explain autosave behavior, and provide recovery/snapshot access. Large-file mode and preview must show clear limitations or error states rather than silently dropping content.
@@ -21,7 +21,7 @@ AstraCode is intended to help developers inspect, edit, verify and ship projects
 **Planned.** Show remote/local status, diffs, workflow logs, artifacts and build outcomes with timestamps and clear failure messages. Do not label a build or release ready until verification succeeds.
 
 ## Settings
-**Planned.** Settings will be searchable and grouped by appearance/accessibility, editor, AI, tool permissions, Git/GitHub, build/CI, terminal, automation, privacy/storage, security/notifications and about/help. Each setting will document scope, default, validation and security implications where relevant.
+**Planned.** Settings are being organized in the searchable More index: Appearance & Accessibility, Editor, AI & Models, Git & GitHub, Build & CI, Security & Notifications, Privacy & Storage, and About & Help. Most entries remain navigation placeholders until their features are implemented. Each shipped setting must document scope, default, validation and security implications where relevant.
 
 ## Troubleshooting
 - **Workspace unavailable:** reselect the folder and grant access again.
@@ -33,10 +33,14 @@ AstraCode is intended to help developers inspect, edit, verify and ship projects
 ## Reporting a bug
 Include AstraCode version, Android version, reproducible steps, expected and actual behavior, and sanitized logs. Remove API keys, tokens, private source code and personal data before submitting reports.
 
+## Navigation and responsive layout
+
+The main destinations are Chat, Code, Git, Build and More. Phones use bottom navigation; wider layouts use a navigation rail. Selection is saved across activity recreation, and Android Back returns from a More detail or Help & Guide page to the More index. The More index supports searching entries by title, category and summary, includes an empty result state, and labels unfinished entries as planned rather than presenting them as complete features.
+
 ## Interface icons and appearance
 
-The primary navigation uses AstraCode's custom-drawn Compose icons rather than generic text glyphs. The icon language combines cosmic cyan and blue with amber-gold and violet accents; icon colors adapt to the system dark/light theme. Icons are rendered locally and require no remote assets or additional icon dependency. These icons are visual identifiers for the current Chat, Code, Git, Build and More navigation scaffold; they do not imply that the corresponding planned product features are already implemented.
+The primary navigation uses AstraCode's custom-drawn Compose icons rather than generic text glyphs. The icon language combines cosmic cyan and blue with amber-gold and violet accents; icon colors adapt to the system dark/light theme. Icons are rendered locally and require no remote assets or additional icon dependency.
 
 ## App icon
 
-The Android launcher icon uses the exact user-provided PNG at `app/src/main/res/drawable-nodpi/astracode_logo.png`. Both `android:icon` and `android:roundIcon` reference `@drawable/astracode_logo`; Android's resource lookup omits the `-nodpi` directory qualifier. The previous vector artwork is retained as `app/src/main/res/drawable-nodpi/astracode_logo_vector.xml` under a distinct resource name, avoiding a collision with the PNG. The in-app navigation icons are unchanged. Verify launcher appearance after building and installing the updated APK.
+The Android launcher icon uses the exact user-provided PNG at `app/src/main/res/drawable-nodpi/astracode_logo.png`. Both `android:icon` and `android:roundIcon` reference `@drawable/astracode_logo`; Android's resource lookup omits the `-nodpi` directory qualifier. The previous vector artwork is retained as `app/src/main/res/drawable-nodpi/astracode_logo_vector.xml` under a distinct resource name, avoiding a collision with the PNG. Verify launcher appearance after building and installing the updated APK.

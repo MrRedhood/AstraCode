@@ -42,7 +42,9 @@ Use Room for structured local state and export schema JSON to version control. E
 
 ## UI and navigation
 
-Use one navigation owner (Navigation Compose or a tested typed equivalent), stable route identifiers, explicit Back behavior and state restoration. Phone layout prioritizes one task surface at a time with bottom navigation; larger widths may use a rail and split panes. Keyboard visibility, text scaling, accessibility labels, loading/empty/error states and touch targets are requirements, not polish-only work.
+The app currently has five top-level destinations: Chat, Code, Git, Build and More. Compact widths use bottom navigation; screens wider than 600 dp use a navigation rail. The More hub is searchable, grouped by category and has an empty-results message. Help & Guide is reachable in More; Back returns from nested More pages to the index, and primary destination/search state uses saveable Compose state. This is still a bootstrap shell: the listed tools/settings are explicit placeholders until the corresponding capabilities and tests are implemented.
+
+Keep one centralized navigation owner as routes become more complex. Keyboard visibility, text scaling, accessibility labels, loading/empty/error states and touch targets remain requirements, not polish-only work.
 
 ## Verification and failure model
 
@@ -50,4 +52,4 @@ Errors should be typed at service boundaries and mapped to actionable UI message
 
 ## Current implementation status
 
-The initial AstraCode repository is documentation-first. This document describes the intended architecture; it does not assert that these packages or features already exist. Update this section as concrete modules and tests are added.
+The repository contains a compiling Android bootstrap, the five primary navigation destinations, custom local navigation icons, a PNG launcher resource, responsive primary navigation, a searchable More index and a Help & Guide screen. Workspace/editor, cloud AI, Git operations, builds and most settings are not implemented yet; track them in `docs/ROADMAP.md` and avoid describing the placeholders as functional.
