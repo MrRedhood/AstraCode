@@ -1,46 +1,38 @@
 # AstraCode Help & Guide
 
-This file is the source for the in-app **More → Help & Guide** experience as that screen is implemented. Keep each topic aligned with shipped behavior; label planned features as planned until available.
+Keep this content aligned with actual behavior and mark unfinished areas as planned.
 
 ## Getting started
-AstraCode is designed for coding and project workflows from an Android device. The current build is a foundation shell; some areas in More are still planned.
+AstraCode is an early Android coding-workflow foundation. Some destinations are placeholders while their features are implemented.
 
 ## Workspace and files
-**Available foundation:** open Code and choose a folder through Android's system picker. AstraCode stores the granted tree URI and persists read permission when allowed by the provider. Browse subfolders, filter the current folder, refresh the listing and open known text/code files in a read-only preview capped at 256 KiB. If permission expires, choose the folder again. **Planned:** create, rename, move and delete; editable tabs; autosave; snapshots and recovery.
+Open **Code → Choose project folder** and select a folder in Android's system picker. AstraCode remembers the selected tree URI and persistent read permission where supported. Browse subfolders, filter and refresh the listing.
 
-## Editor and recovery
-**Planned.** The editor will distinguish saved and unsaved changes, explain autosave behavior, and provide recovery/snapshot access. Large-file mode and preview must show clear limitations or error states rather than silently dropping content.
+Use **New file** or **New folder** to create items. Each row's **Actions** menu offers Rename, Move and Delete. To move an item, select Move, navigate into its destination and tap **Move here**. Moving into the current parent or moving a folder into itself/its descendants is blocked. Providers may not support every mutation; check errors rather than assuming success.
+
+Open a recognized text/code file to edit it, then select **Save file** to write changes. You are warned before discarding unsaved edits. The current editor is limited to 256 KiB; larger files remain read-only, and binary/unsupported formats cannot be edited. Autosave, tabs, snapshots and recovery are not implemented yet.
 
 ## AI providers and execution
-**Planned.** AI processing uses configured cloud providers; the app will not require local model inference. Provider/model settings will share one source of truth. Execution views will show observable actions, affected files and verification results, not private chain-of-thought. A generated statement that work succeeded is not a substitute for a real build/test/read-back result.
+**Planned.** AI features are intended to use cloud providers. Show concise observable actions and verification evidence; model output alone is not proof a task succeeded.
 
 ## Approvals and security
-**Planned.** Protected actions will explain the requested capability, affected paths and risk. Approval can expire. A denial or expiry must prevent the protected operation. Credentials must never appear in chat transcripts, diagnostics or logs.
+**Planned.** Protected actions will explain capability, scope and risk. Never put credentials in chat or logs.
 
 ## Git, builds and delivery
-**Planned.** Show remote/local status, diffs, workflow logs, artifacts and build outcomes with timestamps and clear failure messages. Do not label a build or release ready until verification succeeds.
+**Planned.** Git/GitHub operations, build dispatch, artifact retrieval and reports are not complete yet.
 
 ## Settings
-**Planned.** Settings are being organized in the searchable More index: Appearance & Accessibility, Editor, AI & Models, Git & GitHub, Build & CI, Security & Notifications, Privacy & Storage, and About & Help. Most entries remain navigation placeholders until their features are implemented. Each shipped setting must document scope, default, validation and security implications where relevant.
+More offers a searchable index for workspace/editor, AI, Git/build, quality/security and support; most destination details are placeholders.
 
 ## Troubleshooting
-- **Workspace unavailable:** reselect the folder and grant access again.
-- **AI request failed:** check provider selection and connection status; retry only after reviewing any partial actions.
-- **Approval expired:** review the action again and approve only if its scope and purpose are clear.
-- **Build or workflow failed:** inspect the exact error log and test report; do not assume a retry fixes the underlying issue.
-- **Unsaved changes or interruption:** use recovery/snapshot features when available and verify the restored file before continuing.
+- Workspace access expired: choose the folder again and grant permission.
+- A file action failed: the provider may not support it, or permission may have been revoked.
+- File is read-only: provider write support may be absent, the format unsupported, or the file above the 256 KiB limit.
+- Unsaved edits: use Save before leaving or confirm discard.
+- Build/workflow failed: inspect the real logs and include sanitized reproduction steps in reports.
 
 ## Reporting a bug
-Include AstraCode version, Android version, reproducible steps, expected and actual behavior, and sanitized logs. Remove API keys, tokens, private source code and personal data before submitting reports.
+Include app/Android version, steps, expected and actual behavior, and sanitized logs. Remove keys, tokens, private source and personal data.
 
-## Navigation and responsive layout
-
-The main destinations are Chat, Code, Git, Build and More. Code provides initial SAF folder selection and read-only browsing. Phones use bottom navigation; wider layouts use a navigation rail. Selection is saved across activity recreation, and Android Back returns from a More detail or Help & Guide page to the More index. The More index supports searching entries by title, category and summary, includes an empty result state, and labels unfinished entries as planned rather than presenting them as complete features.
-
-## Interface icons and appearance
-
-The primary navigation uses AstraCode's custom-drawn Compose icons rather than generic text glyphs. The icon language combines cosmic cyan and blue with amber-gold and violet accents; icon colors adapt to the system dark/light theme. Icons are rendered locally and require no remote assets or additional icon dependency.
-
-## App icon
-
-The Android launcher icon uses the exact user-provided PNG at `app/src/main/res/drawable-nodpi/astracode_logo.png`. Both `android:icon` and `android:roundIcon` reference `@drawable/astracode_logo`; Android's resource lookup omits the `-nodpi` directory qualifier. The previous vector artwork is retained as `app/src/main/res/drawable-nodpi/astracode_logo_vector.xml` under a distinct resource name, avoiding a collision with the PNG. Verify launcher appearance after building and installing the updated APK.
+## Navigation and launcher
+Phones use bottom navigation; wider layouts use a navigation rail. More includes search and Help & Guide. The launcher uses the exact `app/src/main/res/drawable-nodpi/astracode_logo.png`; manifest references `@drawable/astracode_logo`. The old vector is retained with a distinct resource name.
