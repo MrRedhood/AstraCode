@@ -29,7 +29,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
@@ -58,6 +60,11 @@ internal fun WorkspaceScreen(){
     var previewLoading by remember{mutableStateOf(false)}
     var draft by remember{mutableStateOf("")}
     var original by remember{mutableStateOf("")}
+    var selection by remember{mutableStateOf(TextRange.Zero)}
+    var searchVisible by rememberSaveable{mutableStateOf(false)}
+    var searchQuery by rememberSaveable{mutableStateOf("")}
+    var replacementText by rememberSaveable{mutableStateOf("")}
+    var searchMessage by rememberSaveable{mutableStateOf<String?>(null)}
     var loading by remember{mutableStateOf(false)}
     var entries by remember{mutableStateOf<List<WorkspaceEntry>>(emptyList())}
     var dialogMode by rememberSaveable{mutableStateOf<String?>(null)}
@@ -77,7 +84,7 @@ internal fun WorkspaceScreen(){
     val dirty=isText&&draft!=original
     val editable=isText&&openedWritable&&!truncated&&previewError==null
 
-    fun clearFile(){openedId=null;openedName=null;openedMime=null;openedWritable=false;previewError=null;truncated=false;draft="";original=""}
+    fun clearFile(){openedId=null;openedName=null;openedMime=null;openedWritable=false;previewError=null;truncated=false;draft="";original="";selection=TextRange.Zero;searchVisible=false;searchQuery="";replacementText="";searchMessage=null}
     fun closeFile(){if(dirty)discardDialog=true else clearFile()}
     fun showAction(mode:String,entry:WorkspaceEntry?=null){dialogMode=mode;targetId=entry?.documentId;targetName=entry?.displayName.orEmpty();nameInput=if(mode=="rename")entry?.displayName.orEmpty()else"";dialogError=null;notice=null}
     fun mutate(action:()->Unit,onSuccess:()->Unit={}){
@@ -148,7 +155,45 @@ internal fun WorkspaceScreen(){
             if(previewLoading)CircularProgressIndicator()
             else if(previewError!=null)WorkspaceMessage(previewError.orEmpty(),null){}
             else if(isText){
-                TextField(value=draft,onValueChange={draft=it;notice=null},modifier=Modifier.fillMaxWidth().heightIn(min=260.dp),readOnly=!editable,label={Text("File contents")},textStyle=MaterialTheme.typography.bodyMedium.copy(fontFamily=FontFamily.Monospace))
+                TextField(value=TextFieldValue(text=draft,selection=selection),onValueChange={value->draft=value.text;selection=value.selection;notice=null;searchMessage=null},modifier=Modifier.fillMaxWidth().heightIn(min=260.dp),readOnly=!editable,label={Text("File contents")},textStyle=MaterialTheme.typography.bodyMedium.copy(fontFamily=FontFamily.Monospace))
+                OutlinedButton(onClick={searchVisible=!searchVisible;searchMessage=null},modifier=Modifier.fillMaxWidth()){Text(if(searchVisible)"Hide find / replace" else "Find / replace")}
+                if(searchVisible){
+                    OutlinedTextField(value=searchQuery,onValueChange={searchQuery=it;searchMessage=null},modifier=Modifier.fillMaxWidth(),label={Text("Find (case-insensitive)")},singleLine=true)
+                    OutlinedTextField(value=replacementText,onValueChange={replacementText=it},modifier=Modifier.fillMaxWidth(),label={Text("Replace with")},singleLine=true)
+                    Row(horizontalArrangement=Arrangement.spacedBy(8.dp),modifier=Modifier.fillMaxWidth()){
+                        OutlinedButton(onClick={
+                            if(searchQuery.isEmpty())searchMessage="Enter text to find."
+                            else{
+                                val from=if(selection.start==selection.end)selection.end else maxOf(selection.start,selection.end)
+                                val found=EditorTextActions.findNext(draft,searchQuery,from)
+                                if(found==null){selection=TextRange.Zero;searchMessage="No matches found."}
+                                else{selection=TextRange(found,found+searchQuery.length);searchMessage=null}
+                            }
+                        },modifier=Modifier.weight(1f)){Text("Find next")}
+                        OutlinedButton(onClick={
+                            if(searchQuery.isEmpty())searchMessage="Enter text to find."
+                            else{
+                                val selectedIsMatch=selection.end>selection.start&&selection.end-selection.start==searchQuery.length&&selection.start+searchQuery.length<=draft.length&&draft.regionMatches(selection.start,searchQuery,0,searchQuery.length,ignoreCase=true)
+                                val from=if(selectedIsMatch)selection.start else maxOf(selection.start,selection.end)
+                                val result=EditorTextActions.replaceNext(draft,searchQuery,replacementText,from)
+                                if(result==null)searchMessage="No matches found."
+                                else{draft=result.text;selection=TextRange(result.selectionStart,result.selectionEnd);notice=null;searchMessage="Replaced one match."}
+                            }
+                        },modifier=Modifier.weight(1f)){Text("Replace match")}
+                    }
+                    OutlinedButton(onClick={
+                        if(searchQuery.isEmpty())searchMessage="Enter text to find."
+                        else{
+                            val result=EditorTextActions.replaceAll(draft,searchQuery,replacementText)
+                            draft=result.text;selection=TextRange(result.selectionStart,result.selectionEnd);notice=null
+                            searchMessage=if(result.replacements==0)"No matches found." else "Replaced ${result.replacements} match(es)."
+                        }
+                    },modifier=Modifier.fillMaxWidth()){Text("Replace all")}
+                    val matchCount=EditorTextActions.countMatches(draft,searchQuery)
+                    val selectedMatch=if(searchQuery.isNotEmpty()&&selection.start+searchQuery.length<=draft.length&&selection.end-selection.start==searchQuery.length&&draft.regionMatches(selection.start,searchQuery,0,searchQuery.length,ignoreCase=true))EditorTextActions.matchNumber(draft,searchQuery,selection.start)else null
+                    Text(if(searchQuery.isEmpty())"Searches the current draft; saving is still manual." else "$matchCount match(es)${selectedMatch?.let{" · match $it"} .orEmpty()}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    if(searchMessage!=null)Text(searchMessage.orEmpty(),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.primary)
+                }
                 if(openedWritable&&!truncated){
                     Button(onClick={
                         val uri=tree;val id=openedId;val text=draft
@@ -195,7 +240,7 @@ internal fun WorkspaceScreen(){
                         var menu by remember(entry.documentId){mutableStateOf(false)}
                         Card(onClick={
                             if(entry.isDirectory){stack.add(WorkspaceBreadcrumb(entry.documentId,entry.displayName));query=""}
-                            else{openedId=entry.documentId;openedName=entry.displayName;openedMime=entry.mimeType;openedWritable=entry.canWrite;previewError=null;truncated=false;draft="";original="";notice=null}
+                            else{openedId=entry.documentId;openedName=entry.displayName;openedMime=entry.mimeType;openedWritable=entry.canWrite;previewError=null;truncated=false;draft="";original="";selection=TextRange.Zero;searchMessage=null;notice=null}
                         },modifier=Modifier.fillMaxWidth(),shape=MaterialTheme.shapes.large){
                             Row(modifier=Modifier.fillMaxWidth().padding(12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){
                                 AstraIcon(if(entry.isDirectory)"more"else"code",size=24.dp,description=if(entry.isDirectory)"Folder"else"File")

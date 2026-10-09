@@ -23,3 +23,11 @@
 - Updated `docs/ROADMAP.md`, `docs/ARCHITECTURE.md` and `docs/HELP_AND_GUIDE.md`.
 - CI follow-up: the first compile caught a missing `rememberSaveable` import and a malformed AlertDialog confirmation slot. Both are corrected in the next commit; verify the rerun before claiming green status.
 - Validation: changes committed directly to `main`; CI and UI smoke must complete on the exact final commit before success is claimed.
+
+
+## 2026-10-09 — Editor find and replace
+- Added case-insensitive plain-text find-next with wraparound, replace-match and replace-all in the current unsaved draft.
+- Editor selection follows find results and replacement caret position; replace-all reports its count and does not save implicitly.
+- Added isolated unit tests for wraparound, matching/counting, single replacement, replace-all and no-match behavior.
+- Updated the roadmap, architecture notes and Help & Guide. Autosave, tabs, draft recovery, folding and shared diff remain outstanding.
+- Validation: Android CI and UI Smoke are triggered by this commit; only their final results establish workflow status.

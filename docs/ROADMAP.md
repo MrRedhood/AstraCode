@@ -32,7 +32,8 @@ Primary destinations: Chat · Code · Git · Build · More. Phones use bottom na
 - [x] Bounded text/code preview (256 KiB).
 - [x] Create file/folder, rename/delete and move via `DocumentsContract`.
 - [x] Explicit-save text editor for supported files, unsaved-state warning and a 256 KiB read/write cap.
-- [ ] Add tabs, autosave, snapshots, recovery, search/replace, folding and shared diff.
+- [x] Add case-insensitive find-next, replace-match and replace-all for the in-memory editor draft.
+- [ ] Add tabs, autosave, snapshots, recovery, folding and shared diff.
 - [ ] Add measured large-file handling and Web Live Preview.
 - **Exit:** CRUD, save/recovery, scope and performance tests pass. Editor tabs/autosave/recovery remain outstanding.
 

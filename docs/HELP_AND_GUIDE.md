@@ -12,6 +12,8 @@ Use **New file** or **New folder** to create items. Each row's **Actions** menu 
 
 Open a recognized text/code file to edit it, then select **Save file** to write changes. You are warned before discarding unsaved edits. The current editor is limited to 256 KiB; larger files remain read-only, and binary/unsupported formats cannot be edited. Autosave, tabs, snapshots and recovery are not implemented yet.
 
+Use **Find / replace** in the editor to search case-insensitively. **Find next** selects the next match and wraps to the start. **Replace match** replaces the selected match, or the next match if none is selected. **Replace all** changes non-overlapping matches in the current draft only. Use **Save file** to write changes to storage.
+
 ## AI providers and execution
 **Planned.** AI features are intended to use cloud providers. Show concise observable actions and verification evidence; model output alone is not proof a task succeeded.
 

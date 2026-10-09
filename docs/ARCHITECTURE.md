@@ -22,7 +22,7 @@ Keep the one-module app until boundaries stabilize. Gradually introduce common, 
 8. Every user-facing change is documented in Help & Guide and `IMPLEMENTATION.md`.
 
 ## Workspace/editor
-Code uses Android's system tree picker, storing the SAF tree URI and persistent read permission. Directory queries and all mutations use `DocumentsContract` with document IDs in the selected tree. Create, rename, delete and move errors are surfaced if the provider doesn't support an operation. Moving a directory into itself or a descendant is blocked. Supported text/code files use a manual-save editor capped at 256 KiB; read-only provider documents and truncated files remain read-only. Tabs, autosave, snapshots, recovery, search/replace and folding remain planned.
+Code uses Android's system tree picker, storing the SAF tree URI and persistent read permission. Directory queries and all mutations use `DocumentsContract` with document IDs in the selected tree. Create, rename, delete and move errors are surfaced if the provider doesn't support an operation. Moving a directory into itself or a descendant is blocked. Supported text/code files use a manual-save editor capped at 256 KiB; read-only provider documents and truncated files remain read-only. Case-insensitive plain-text find/replace now operates on the in-memory draft; saving remains explicit. Tabs, autosave, snapshots, recovery, folding and shared diff remain planned.
 
 ## UI
 Chat, Code, Git, Build and More are the top-level destinations. Compact screens use bottom navigation, wider screens a navigation rail. More is searchable and includes Help & Guide. Incomplete sections remain labelled placeholders.
