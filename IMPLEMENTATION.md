@@ -44,3 +44,12 @@
 - Inspected the failed UI workflow's uploaded test report: both app and test APKs installed, but instrumentation terminated before executing any tests (0 tests reported); the report also recorded permission-denied attempts for the Android 15 emulator's additional-output directory, without a useful application exception.
 - Changed the UI smoke workflow to use the API 34 x86_64 Pixel 2 emulator and explicitly disable animations and emulator snapshots, using software rendering and no boot animation/audio to reduce emulator/instrumentation instability.
 - This is a diagnostic environment adjustment, not a claim that UI tests pass. The new `main` workflow run must complete before success is reported.
+
+## 2026-10-09 — Custom AstraCode UI icons
+
+- Added `AstraIcon.kt`, a local Jetpack Compose Canvas icon family with distinct custom motifs and cyan, blue, amber-gold and violet accents.
+- Replaced the five primary navigation's placeholder text glyphs with bespoke Chat/orbit, Code/prism, Git/node, Build/cube and More/diamond icons; the selected destination card also uses the matching custom icon.
+- Icon colors adapt to system dark/light theme. No remote icon assets or additional dependency were introduced.
+- Kept the existing app launcher icon unchanged.
+- Updated `docs/HELP_AND_GUIDE.md` to document the visual icon system and clarify that the current destinations remain scaffolding.
+- Validation status: source and documentation changes committed directly to `main`. CI and UI workflows have not been checked after these commits; compilation and emulator rendering remain unverified.
