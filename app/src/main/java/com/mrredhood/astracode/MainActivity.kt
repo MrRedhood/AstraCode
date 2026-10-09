@@ -27,11 +27,11 @@ import androidx.compose.ui.unit.dp
 private data class Destination(val label: String, val icon: String, val title: String, val description: String)
 
 private val destinations = listOf(
-    Destination("Chat", "✦", "AI coding workspace", "Plan work, inspect actions and verify changes with cloud AI."),
-    Destination("Code", "⌘", "Your workspace", "Choose a project to browse and edit files. Workspace access is coming next."),
-    Destination("Git", "⑂", "Version control", "Review changes, history and remote operations in one focused place."),
-    Destination("Build", "▶", "Build and verify", "Run builds, inspect test results and manage artifacts."),
-    Destination("More", "⋯", "Tools and settings", "Project activity, diagnostics, integrations, security, settings and Help & Guide.")
+    Destination("Chat", "chat", "AI coding workspace", "Plan work, inspect actions and verify changes with cloud AI."),
+    Destination("Code", "code", "Your workspace", "Choose a project to browse and edit files. Workspace access is coming next."),
+    Destination("Git", "git", "Version control", "Review changes, history and remote operations in one focused place."),
+    Destination("Build", "build", "Build and verify", "Run builds, inspect test results and manage artifacts."),
+    Destination("More", "more", "Tools and settings", "Project activity, diagnostics, integrations, security, settings and Help & Guide.")
 )
 
 class MainActivity : ComponentActivity() {
@@ -53,7 +53,7 @@ private fun AstraCodeApp() {
                         NavigationBarItem(
                             selected = selected == index,
                             onClick = { selected = index },
-                            icon = { Text(item.icon) },
+                            icon = { AstraIcon(item.icon, size = 26.dp, description = "${item.label} icon") },
                             label = { Text(item.label) }
                         )
                     }
@@ -71,7 +71,7 @@ private fun AstraCodeApp() {
                         color = MaterialTheme.colorScheme.surfaceVariant
                     ) {
                         Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text(destination.icon, style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
+                            AstraIcon(destination.icon, size = 48.dp, description = "${destination.label} icon")
                             Text(destination.description, style = MaterialTheme.typography.bodyLarge)
                             Text("Foundation build · Features are being implemented in phases.", style = MaterialTheme.typography.bodySmall)
                         }
