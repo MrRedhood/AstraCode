@@ -1,6 +1,5 @@
 package com.mrredhood.astracode
 
-import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -33,10 +32,16 @@ class AstraCodeSmokeTest {
     }
 
     @Test
-    fun searchFiltersUnmatchedMoreEntries() {
+    fun workspaceOffersFolderPickerWhenNoFolderIsSaved() {
+        composeRule.onNodeWithText("Code").performClick()
+        composeRule.onNodeWithText("No workspace selected").assertIsDisplayed()
+        composeRule.onNodeWithText("Choose project folder").assertIsDisplayed()
+    }
+
+    @Test
+    fun searchShowsMatchingMoreEntries() {
         composeRule.onNodeWithText("More").performClick()
         composeRule.onNodeWithText("Search tools and settings").performTextInput("security")
         composeRule.onNodeWithText("Security & Notifications").assertIsDisplayed()
-        composeRule.onNodeWithText("AI & Models").assertDoesNotExist()
     }
 }

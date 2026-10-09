@@ -6,7 +6,7 @@ This file is the source for the in-app **More → Help & Guide** experience as t
 AstraCode is designed for coding and project workflows from an Android device. The current build is a foundation shell; some areas in More are still planned.
 
 ## Workspace and files
-**Planned.** Workspace access and editing are being implemented. When available, select a project folder through Android's system picker and grant access only to the workspace you intend to use.
+**Available foundation:** open Code and choose a folder through Android's system picker. AstraCode stores the granted tree URI and persists read permission when allowed by the provider. Browse subfolders, filter the current folder, refresh the listing and open known text/code files in a read-only preview capped at 256 KiB. If permission expires, choose the folder again. **Planned:** create, rename, move and delete; editable tabs; autosave; snapshots and recovery.
 
 ## Editor and recovery
 **Planned.** The editor will distinguish saved and unsaved changes, explain autosave behavior, and provide recovery/snapshot access. Large-file mode and preview must show clear limitations or error states rather than silently dropping content.
@@ -35,7 +35,7 @@ Include AstraCode version, Android version, reproducible steps, expected and act
 
 ## Navigation and responsive layout
 
-The main destinations are Chat, Code, Git, Build and More. Phones use bottom navigation; wider layouts use a navigation rail. Selection is saved across activity recreation, and Android Back returns from a More detail or Help & Guide page to the More index. The More index supports searching entries by title, category and summary, includes an empty result state, and labels unfinished entries as planned rather than presenting them as complete features.
+The main destinations are Chat, Code, Git, Build and More. Code provides initial SAF folder selection and read-only browsing. Phones use bottom navigation; wider layouts use a navigation rail. Selection is saved across activity recreation, and Android Back returns from a More detail or Help & Guide page to the More index. The More index supports searching entries by title, category and summary, includes an empty result state, and labels unfinished entries as planned rather than presenting them as complete features.
 
 ## Interface icons and appearance
 

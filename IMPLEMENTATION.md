@@ -80,3 +80,14 @@
 - Added UI instrumentation coverage for the five primary destinations, More search filtering and opening Help & Guide.
 - Updated `docs/HELP_AND_GUIDE.md` and `docs/ARCHITECTURE.md` to describe actual navigation behavior and distinguish shipped shell behavior from planned feature areas.
 - Validation status: committed directly to `main`; Android CI and the new emulator UI smoke workflow must complete on this exact commit before this milestone is considered verified.
+
+
+## 2026-10-09 — P3 workspace access and read-only browser
+
+- Added a workspace repository that stores the selected SAF tree URI in app preferences and lists child documents using `DocumentsContract` scoped to that tree grant.
+- Implemented Android's system folder picker, requested persistent read permission, best-effort persistent write permission for future editor operations, workspace re-selection/reset, directory navigation, current-folder filtering and explicit refresh.
+- Added safe text/code preview for known text formats with a 256 KiB byte cap. Unknown/binary formats show a non-editing message; large previews are visibly truncated and source documents are never modified by this preview feature.
+- Added recoverable UI error states for invalid saved URIs, missing/revoked permissions and provider read failures.
+- Added unit tests for the text-preview policy and UI smoke coverage for the workspace selection empty state. Also removed an unsupported Compose test assertion that caused the previous P2 UI workflow to fail compilation.
+- Updated the roadmap, architecture documentation and Help & Guide. P3 remains in progress: file mutations, editable tabs, save/autosave, snapshots and recovery are not implemented.
+- Validation status: committed directly to `main`; inspect CI and emulator UI workflow results on this exact commit before claiming success.

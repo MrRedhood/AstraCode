@@ -42,7 +42,7 @@ private enum class PrimaryDestination(
     val description: String
 ) {
     Chat("Chat", "chat", "AI coding workspace", "Plan work, inspect actions and verify changes with cloud AI."),
-    Code("Code", "code", "Your workspace", "Choose a project to browse and edit files. Workspace access is coming next."),
+    Code("Code", "code", "Your workspace", "Select a project folder and browse its files and directories."),
     Git("Git", "git", "Version control", "Review changes, history and remote operations in one focused place."),
     Build("Build", "build", "Build and verify", "Run builds, inspect test results and manage artifacts."),
     More("More", "more", "Tools and settings", "Search tools, settings, help and project information.")
@@ -205,6 +205,8 @@ private fun DestinationScreen(
                     onBack = onBackToMore
                 )
             }
+        } else if (destination == PrimaryDestination.Code) {
+            WorkspaceScreen()
         } else {
             DestinationSummary(destination)
             if (destination == PrimaryDestination.Chat) {

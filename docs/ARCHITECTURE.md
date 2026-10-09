@@ -42,7 +42,7 @@ Use Room for structured local state and export schema JSON to version control. E
 
 ## UI and navigation
 
-The app currently has five top-level destinations: Chat, Code, Git, Build and More. Compact widths use bottom navigation; screens wider than 600 dp use a navigation rail. The More hub is searchable, grouped by category and has an empty-results message. Help & Guide is reachable in More; Back returns from nested More pages to the index, and primary destination/search state uses saveable Compose state. This is still a bootstrap shell: the listed tools/settings are explicit placeholders until the corresponding capabilities and tests are implemented.
+The app currently has five top-level destinations: Chat, Code, Git, Build and More. Compact widths use bottom navigation; screens wider than 600 dp use a navigation rail. The More hub is searchable, grouped by category and has an empty-results message. Help & Guide is reachable in More; Back returns from nested More pages to the index, and primary destination/search state uses saveable Compose state. The Code destination now uses Android's Storage Access Framework folder picker, persists the granted tree URI and read permission, browses document IDs under that tree, supports current-folder filtering/refresh, and offers bounded read-only text previews. Folder contents are queried using the selected tree URI and document ID; the app does not resolve paths outside the selected grant. Create/rename/move/delete, edit/save, tabs and recovery are still planned. Other listed tools/settings remain explicit placeholders until implemented and tested.
 
 Keep one centralized navigation owner as routes become more complex. Keyboard visibility, text scaling, accessibility labels, loading/empty/error states and touch targets remain requirements, not polish-only work.
 
@@ -52,4 +52,4 @@ Errors should be typed at service boundaries and mapped to actionable UI message
 
 ## Current implementation status
 
-The repository contains a compiling Android bootstrap, the five primary navigation destinations, custom local navigation icons, a PNG launcher resource, responsive primary navigation, a searchable More index and a Help & Guide screen. Workspace/editor, cloud AI, Git operations, builds and most settings are not implemented yet; track them in `docs/ROADMAP.md` and avoid describing the placeholders as functional.
+The repository contains an Android bootstrap, the five primary destinations, custom local navigation icons, a PNG launcher resource, responsive navigation, searchable More index, Help & Guide, and initial SAF workspace selection/browsing with bounded read-only text preview. Editing/CRUD mutations, cloud AI, Git operations, builds and most settings remain unimplemented; track them in `docs/ROADMAP.md` and do not describe placeholders as functional.

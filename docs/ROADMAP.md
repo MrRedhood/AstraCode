@@ -112,10 +112,13 @@ Retain a consistent, supported Android toolchain and JDK; record the actual sele
 - **Exit:** Back/restoration, accessibility, keyboard and layout tests pass.
 
 ### P3 — Workspace and editor
-- [ ] Implement SAF selection, scoped file operations, editor, tabs, autosave and recovery.
+- [x] Add initial SAF folder selection with persisted URI permission and an explicit workspace-reset action.
+- [x] Browse child directories and list files through the selected tree URI; filter the current directory and refresh its listing.
+- [x] Add safe read-only previews for known text/code formats, capped at 256 KiB, with clear errors for revoked access and unsupported file types.
+- [ ] Complete scoped create/rename/move/delete operations, editor, tabs, autosave and recovery (not yet implemented).
 - [ ] Add search/replace, folding, snapshots and shared diff primitives.
 - [ ] Add measured large-file path and Web Live Preview with relative resources/errors.
-- **Exit:** CRUD, save/recovery, security scope and performance tests pass.
+- **Exit:** CRUD, save/recovery, security scope and performance tests pass. The current implementation covers only workspace selection and read-only browsing; the P3 exit gate remains open.
 
 ### P4 — Settings and cloud AI
 - [ ] Add provider abstraction, routing, credentials, connection tests and attachment handling.
