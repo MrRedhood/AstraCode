@@ -21,4 +21,5 @@
 - Added an editor for known small text/code files, an explicit Save action, dirty-state indicator and discard confirmation. Truncated/unsupported/read-only files stay read-only. Reads/writes are capped at 256 KiB; no autosave/tabs/recovery claim.
 - Added unit tests for path-safe names and new-file MIME mapping.
 - Updated `docs/ROADMAP.md`, `docs/ARCHITECTURE.md` and `docs/HELP_AND_GUIDE.md`.
-- Validation: changes committed directly to `main`; CI and UI smoke must complete on this exact commit before success is claimed.
+- CI follow-up: the first compile caught a missing `rememberSaveable` import and a malformed AlertDialog confirmation slot. Both are corrected in the next commit; verify the rerun before claiming green status.
+- Validation: changes committed directly to `main`; CI and UI smoke must complete on the exact final commit before success is claimed.
