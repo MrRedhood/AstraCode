@@ -27,3 +27,8 @@
 - The signing configuration remains optional for local and pull-request builds; the release-validation workflow explicitly fails if any required secret is missing.
 - Security handling: the keystore is written to the runner temporary directory and is not committed or printed in workflow logs.
 - Validation status: workflow and Gradle configuration were updated through GitHub's repository API. The release workflow has not yet been run, so successful signing and artifact generation are not yet verified.
+
+## 2026-10-09 — CI Kotlin compilation fix
+
+- Fixed the compiler error reported by Android CI in `MainActivity.kt`: removed the invalid explicit import of `androidx.compose.foundation.layout.weight`. The `weight` modifier is available through the `ColumnScope` receiver at its call site.
+- Validation: the fix was committed directly to `main`; the CI workflow triggered by this commit must finish before build success can be claimed.
