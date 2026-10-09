@@ -10,6 +10,8 @@ AstraCode is under active development. Features, compatibility, and setup instru
 
 ## License
 
+Copyright 2026 MrRedhood.
+
 AstraCode's software is licensed under the **Apache License, Version 2.0**. See the [LICENSE](LICENSE) file for the complete license text.
 
 SPDX license identifier: `Apache-2.0`.
