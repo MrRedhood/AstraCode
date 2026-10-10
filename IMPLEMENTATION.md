@@ -318,7 +318,7 @@
 ## 2026-10-10 — Repair Android CI compilation and SDK setup
 
 - Fixed the Kotlin compilation failures reported by Android CI run [38063717672](https://github.com/MrRedhood/AstraCode/actions/runs/38063717672): imported Material 3 `Surface`, the text-family and `sp` types used by Terminal, and the Compose `Modifier.size` extension used for the brand logo. Terminal output uses the shared AstraCode monospace typography role.
-- Pinned installation of Android platform 36 and build-tools 36.0.0, and retained toolchain diagnostics.
+- Pinned installation of Android platform 36 and build-tools 36.0.0 using the SDK manager package-path syntax, and retained toolchain diagnostics.
 - The follow-up CI run [38064098366](https://github.com/MrRedhood/AstraCode/actions/runs/38064098366) failed before Gradle started because `android-actions/setup-android@v3` invoked `sdkmanager tools`, a package no longer available from the configured SDK repository. Removed that incompatible action and now configure the hosted runner's preinstalled SDK command-line tools directly before installing only the required SDK packages.
 - The debug APK is uploaded only after a successful build, with missing APK output treated as an error; build/test reports are uploaded on failure.
 - Validation caveat: this fix is committed directly to `main`; the workflow triggered by the resulting exact HEAD is the source of truth. A triggered run is not reported as passed before its conclusion is available.
