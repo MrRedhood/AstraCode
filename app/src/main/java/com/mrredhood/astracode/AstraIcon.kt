@@ -64,6 +64,32 @@ fun AstraIcon(
             drawPath(shape, color, style = if (filled) androidx.compose.ui.graphics.drawscope.Fill else stroke)
         }
         when (name.lowercase()) {
+            "home" -> {
+                path(cyan, .12f to .48f, .50f to .16f, .88f to .48f)
+                path(blue, .23f to .43f, .23f to .82f, .45f to .82f, .45f to .59f, .57f to .59f, .57f to .82f, .77f to .82f, .77f to .43f)
+                path(violet, .44f to .82f, .44f to .62f, .56f to .62f, .56f to .82f)
+            }
+            "approval" -> {
+                circle(.50f, .50f, .37f, cyan)
+                path(gold, .28f to .50f, .43f to .65f, .73f to .34f)
+                circle(.78f, .23f, .06f, violet, true)
+            }
+            "execution" -> {
+                line(p(.18f, .50f), p(.82f, .50f), violet)
+                circle(.20f, .50f, .11f, cyan, true)
+                circle(.50f, .50f, .11f, gold, true)
+                circle(.80f, .50f, .11f, violet, true)
+            }
+            "artifact" -> {
+                path(cyan, .50f to .12f, .82f to .30f, .50f to .48f, .18f to .30f, closed = true)
+                path(gold, .18f to .30f, .18f to .68f, .50f to .87f, .50f to .48f, closed = true)
+                path(violet, .82f to .30f, .82f to .68f, .50f to .87f, .50f to .48f, closed = true)
+            }
+            "storage" -> {
+                drawRoundRect(cyan, p(.18f, .20f), Size(w * .64f, h * .20f), androidx.compose.ui.geometry.CornerRadius(w * .10f), style = stroke)
+                drawRoundRect(violet, p(.18f, .40f), Size(w * .64f, h * .20f), androidx.compose.ui.geometry.CornerRadius(w * .10f), style = stroke)
+                drawRoundRect(gold, p(.18f, .60f), Size(w * .64f, h * .20f), androidx.compose.ui.geometry.CornerRadius(w * .10f), style = stroke)
+            }
             "chat" -> {
                 drawCircle(cyan, w * .29f, p(.47f, .45f), style = stroke)
                 path(gold, .66f to .20f, .82f to .17f, .77f to .33f)
