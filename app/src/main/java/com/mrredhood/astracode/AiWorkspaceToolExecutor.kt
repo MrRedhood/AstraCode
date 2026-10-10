@@ -25,6 +25,13 @@ internal class AiWorkspaceToolExecutor(context: Context) {
                         allowRoot = proposal.name == AiWorkspaceToolName.LIST_DIRECTORY
                     )
                 ) return@withContext failure(proposal, AiWorkspaceToolStatus.FAILED, "The requested relative path is invalid.")
+                if (proposal.name == AiWorkspaceToolName.MOVE_ITEM) {
+                    if (proposal.destination?.let { AiWorkspaceToolProtocol.isSafeMoveLocation(proposal.path, it) } != true) {
+                        return@withContext failure(proposal, AiWorkspaceToolStatus.FAILED, "The requested move source or destination is invalid.")
+                    }
+                } else if (proposal.destination != null) {
+                    return@withContext failure(proposal, AiWorkspaceToolStatus.FAILED, "Unexpected destination field for this tool.")
+                }
                 val tree = repository.savedTreeUri()
                     ?: return@withContext failure(
                         proposal, AiWorkspaceToolStatus.NO_WORKSPACE,
@@ -34,13 +41,18 @@ internal class AiWorkspaceToolExecutor(context: Context) {
                     AiWorkspaceToolName.LIST_DIRECTORY -> listDirectory(tree, proposal)
                     AiWorkspaceToolName.READ_TEXT_FILE -> readTextFile(tree, proposal)
                     AiWorkspaceToolName.CREATE_TEXT_FILE -> createTextFile(tree, proposal)
+                    AiWorkspaceToolName.MOVE_ITEM -> moveItem(tree, proposal)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
                 failure(
                     proposal, AiWorkspaceToolStatus.FAILED,
-                    "The workspace provider could not complete this operation."
+                    if (proposal.name == AiWorkspaceToolName.MOVE_ITEM) {
+                        "The move could not be completed or confirmed. Inspect both source and destination folders before retrying."
+                    } else {
+                        "The workspace provider could not complete this operation."
+                    }
                 )
             }
         }
@@ -72,6 +84,98 @@ internal class AiWorkspaceToolExecutor(context: Context) {
             listOf(
                 "Resolved within the persisted Android SAF tree grant.",
                 "Returned ${visible.size} item name(s); directory listing cap is $MAX_LIST_ENTRIES."
+            )
+        )
+    }
+
+
+    private fun moveItem(tree: Uri, proposal: AiWorkspaceToolProposal): AiWorkspaceToolResult {
+        val destinationPath = proposal.destination
+            ?: return failure(proposal, AiWorkspaceToolStatus.FAILED, "The destination folder was missing.")
+        if (!AiWorkspaceToolProtocol.isSafeMoveLocation(proposal.path, destinationPath)) {
+            return failure(proposal, AiWorkspaceToolStatus.FAILED, "Moving to that destination is not allowed.")
+        }
+
+        val sourceParts = proposal.path.split('/')
+        val itemName = sourceParts.last()
+        val sourceParentPath = sourceParts.dropLast(1).joinToString("/")
+        val sourceParentId = resolveDirectory(tree, sourceParentPath)
+            ?: return failure(proposal, AiWorkspaceToolStatus.NOT_FOUND, "The source parent folder was not found.")
+        val sourceMatches = repository.listChildren(tree, sourceParentId).filter { it.displayName == itemName }
+        if (sourceMatches.isEmpty()) {
+            return failure(proposal, AiWorkspaceToolStatus.NOT_FOUND, "The requested source file or folder was not found.")
+        }
+        if (sourceMatches.size != 1) {
+            return failure(proposal, AiWorkspaceToolStatus.FAILED, "The source folder contains ambiguous items with that name.")
+        }
+        val sourceItem = sourceMatches.single()
+        val destinationId = resolveDirectory(tree, destinationPath)
+            ?: return failure(proposal, AiWorkspaceToolStatus.NOT_FOUND, "The destination workspace folder was not found.")
+        if (sourceParentId == destinationId) {
+            return failure(proposal, AiWorkspaceToolStatus.FAILED, "The item is already in that folder; nothing was moved.")
+        }
+        if (sourceItem.isDirectory &&
+            (destinationPath == proposal.path || destinationPath.startsWith(proposal.path + "/"))
+        ) {
+            return failure(proposal, AiWorkspaceToolStatus.FAILED, "A folder cannot be moved into itself or a descendant.")
+        }
+        if (repository.listChildren(tree, destinationId).any { it.displayName == itemName }) {
+            return failure(
+                proposal,
+                AiWorkspaceToolStatus.ALREADY_EXISTS,
+                "An item with that name already exists in the destination. Nothing was overwritten."
+            )
+        }
+
+        val movedUri = try {
+            repository.moveDocument(tree, sourceItem.documentId, sourceParentId, destinationId)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return failure(
+                proposal,
+                AiWorkspaceToolStatus.FAILED,
+                "The storage provider could not confirm the move. Inspect both folders before retrying."
+            )
+        }
+        val movedId = runCatching { DocumentsContract.getDocumentId(movedUri) }.getOrNull()
+        val destinationMatches = repository.listChildren(tree, destinationId).filter {
+            it.displayName == itemName
+        }
+        val sourceStillContainsItem = repository.listChildren(tree, sourceParentId).any {
+            it.displayName == itemName || it.documentId == sourceItem.documentId
+        }
+        val destinationEntry = destinationMatches.singleOrNull()
+        val verified = movedId != null &&
+            destinationMatches.size == 1 &&
+            destinationEntry?.documentId == movedId &&
+            destinationEntry?.isDirectory == sourceItem.isDirectory &&
+            !sourceStillContainsItem
+        val resultPath = listOf(destinationPath, itemName).filter { it.isNotEmpty() }.joinToString("/")
+        if (!verified) {
+            return AiWorkspaceToolResult(
+                proposal,
+                AiWorkspaceToolStatus.VERIFICATION_FAILED,
+                "The provider did not confirm both destination presence and source removal. The move may have occurred; inspect both folders before retrying.",
+                evidence = listOf(
+                    "Requested source path: ${proposal.path}.",
+                    "Requested destination path: ${resultPath.ifEmpty { "/" }}.",
+                    "Destination entries with that name: ${destinationMatches.size}.",
+                    "Source still contains the original item name or ID: ${sourceStillContainsItem}."
+                )
+            )
+        }
+
+        return AiWorkspaceToolResult(
+            proposal,
+            AiWorkspaceToolStatus.SUCCESS,
+            "Moved the existing ${if (sourceItem.isDirectory) "folder" else "file"} and verified the destination and source listings.",
+            evidence = listOf(
+                "Explicit user approval was required before execution.",
+                "Source path: ${proposal.path}.",
+                "Verified destination path: ${resultPath.ifEmpty { "/" }}.",
+                "Verified provider-returned document ID matches the destination entry.",
+                "Verified the source folder no longer lists that item."
             )
         )
     }
@@ -195,7 +299,7 @@ internal class AiWorkspaceToolExecutor(context: Context) {
                 val outputBytes = ByteArrayOutputStream()
                 val buffer = ByteArray(4096)
                 while (true) {
-                    val remaining = AiWorkspaceToolProtocol.MAX_CREATE_BYTES + 1 - outputBytes.size()
+                    val remaining = AiWorkspaceToolProtocol.MAX_CREATE_BYTES_PER_FILE + 1 - outputBytes.size()
                     if (remaining <= 0) break
                     val count = stream.read(buffer, 0, minOf(buffer.size, remaining))
                     if (count < 0) break

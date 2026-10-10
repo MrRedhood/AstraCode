@@ -79,7 +79,7 @@ data class AiGenerationRequest(
             "Each attachment must be no larger than 25 MiB"
         }
         require(attachedFiles.sumOf { it.byteCount.toLong() } <= MAX_TOTAL_ATTACHMENT_BYTES) {
-            "Attachments for one provider request must total no more than 25 MiB"
+            "Attachments for one provider request must total no more than 100 MiB"
         }
         require(attachedFiles.all { it.data != null && it.data.size == it.byteCount }) {
             "Attachment bytes must be available before generating a provider request"
@@ -95,7 +95,7 @@ data class AiGenerationRequest(
     companion object {
         const val MAX_MESSAGES = 100
         const val MAX_TOTAL_CHARACTERS = 2L * 1024L * 1024L
-        const val MAX_TOTAL_ATTACHMENT_BYTES = 25 * 1024 * 1024
+        const val MAX_TOTAL_ATTACHMENT_BYTES = 100 * 1024 * 1024
         const val MAX_OUTPUT_TOKENS = 1_000_000
     }
 }

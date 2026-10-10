@@ -65,6 +65,7 @@ class AstraCodeSmokeTest {
         composeRule.onNodeWithText("Attach files").assertIsDisplayed()
         composeRule.onNodeWithText("/10 attached", substring = true).assertIsDisplayed()
         composeRule.onNodeWithText("25 MiB/file", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("100 MiB/request", substring = true).assertIsDisplayed()
         composeRule.onNodeWithText("Never attach secrets.", substring = true).assertIsDisplayed()
         composeRule.onNodeWithText("Configure AI provider").performClick()
         composeRule.onNodeWithText("AI provider settings").assertIsDisplayed()

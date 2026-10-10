@@ -63,7 +63,7 @@ class AiChatAttachmentPolicyTest {
     }
 
     @Test
-    fun enforcesTenFilesAnd25MibPerFileAndPerRequest() {
+    fun enforcesTenFilesAnd25MibPerFileAnd100MibPerRequest() {
         val ten = (1..10).map { attachment("file-$it.txt") }
         assertEquals(10, AiChatAttachmentPolicy.MAX_ATTACHMENTS)
         assertTrue(AiChatAttachmentPolicy.composeMessage("review", ten).displayContent.contains("file-10.txt"))
@@ -71,7 +71,8 @@ class AiChatAttachmentPolicyTest {
             AiChatAttachmentPolicy.composeMessage("review", ten + attachment("file-11.txt"))
         }.exceptionOrNull() is IllegalArgumentException)
         assertEquals(25 * 1024 * 1024, AiChatAttachmentPolicy.MAX_FILE_BYTES)
-        assertEquals(25 * 1024 * 1024, AiChatAttachmentPolicy.MAX_TOTAL_BYTES)
+        assertEquals(100 * 1024 * 1024, AiChatAttachmentPolicy.MAX_TOTAL_BYTES)
+        assertEquals(AiChatAttachmentPolicy.MAX_TOTAL_BYTES, AiGenerationRequest.MAX_TOTAL_ATTACHMENT_BYTES)
         assertEquals(1024L * 1024L * 1024L, AiChatAttachmentPolicy.MAX_STORED_BYTES)
         val maxFile = attachment("large.bin", "application/octet-stream", AiChatAttachmentPolicy.MAX_FILE_BYTES)
         assertTrue(AiChatAttachmentPolicy.composeMessage("review", listOf(maxFile)).displayContent.contains("25.0 MiB"))
@@ -79,12 +80,15 @@ class AiChatAttachmentPolicyTest {
         assertTrue(runCatching {
             AiChatAttachmentPolicy.composeMessage("review", listOf(tooLarge))
         }.exceptionOrNull() is IllegalArgumentException)
-        val aggregateTooLarge = listOf(
-            attachment("a.bin", "application/octet-stream", 13 * 1024 * 1024),
-            attachment("b.bin", "application/octet-stream", 13 * 1024 * 1024)
-        )
+        val maxAggregate = (1..4).map {
+            attachment("max-$it.bin", "application/octet-stream", 25 * 1024 * 1024)
+        }
+        assertTrue(AiChatAttachmentPolicy.composeMessage("review", maxAggregate).displayContent.contains("max-4.bin"))
         assertTrue(runCatching {
-            AiChatAttachmentPolicy.composeMessage("review", aggregateTooLarge)
+            AiChatAttachmentPolicy.composeMessage(
+                "review",
+                maxAggregate + attachment("extra.bin", "application/octet-stream", 1)
+            )
         }.exceptionOrNull() is IllegalArgumentException)
     }
 

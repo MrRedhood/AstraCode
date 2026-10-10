@@ -37,8 +37,8 @@ internal data class AiChatAttachmentMessage(val providerContent: String, val dis
 internal object AiChatAttachmentPolicy {
     const val MAX_ATTACHMENTS = 10
     const val MAX_FILE_BYTES = 25 * 1024 * 1024
-    /** Total raw attachment data hydrated into one provider request is bounded for mobile devices. */
-    const val MAX_TOTAL_BYTES = 25 * 1024 * 1024
+    /** Raw attachment data allowed across all messages in one provider request. */
+    const val MAX_TOTAL_BYTES = 100 * 1024 * 1024
     const val MAX_STORED_BYTES = 1024L * 1024L * 1024L
 
     private val textExtensions = setOf(
@@ -97,7 +97,7 @@ internal object AiChatAttachmentPolicy {
         require(attachments.size <= MAX_ATTACHMENTS) { "Too many attachments." }
         require(attachments.all { it.byteCount in 0..MAX_FILE_BYTES }) { "Each attachment must be no larger than 25 MiB." }
         require(attachments.sumOf { it.byteCount.toLong() } <= MAX_TOTAL_BYTES) {
-            "Attachments selected for one message must total no more than 25 MiB."
+            "Attachments selected for one message must total no more than 100 MiB."
         }
         val display = buildString {
             append(question.ifBlank { "Please review the attached file(s)." })
@@ -213,7 +213,7 @@ internal class AiChatAttachmentStorage(context: Context) {
             }
             if (total > hardLimit) {
                 if (hardLimit < AiChatAttachmentPolicy.MAX_FILE_BYTES) {
-                    throw AiChatAttachmentStorageException("The selected file would exceed the 25 MiB per-request payload or 1 GiB local-storage quota.")
+                    throw AiChatAttachmentStorageException("The selected file would exceed the 100 MiB per-request payload or 1 GiB local-storage quota.")
                 }
                 throw AiChatAttachmentTooLargeException()
             }
@@ -265,7 +265,7 @@ internal class AiChatAttachmentStorage(context: Context) {
             if (required > remainingBytes) {
                 hydrated[index] = message.copy(
                     content = message.content +
-                        "\n[File payloads from this earlier turn are omitted from this request because the 25 MiB attachment budget is reserved for newer files.]",
+                        "\n[File payloads from this earlier turn are omitted from this request because the 100 MiB attachment budget is reserved for newer files.]",
                     attachments = emptyList()
                 )
             } else {
@@ -335,7 +335,7 @@ internal class AiChatAttachmentReader(
                 }
                 val remaining = AiChatAttachmentPolicy.MAX_TOTAL_BYTES - acceptedBytes
                 if (remaining <= 0L) {
-                    warnings.add("Skipped " + name + ": attachments in one message are limited to 25 MiB total.")
+                    warnings.add("Skipped " + name + ": attachments in one message are limited to 100 MiB total.")
                     continue
                 }
                 val providerType = runCatching { appContext.contentResolver.getType(uri) }.getOrNull()

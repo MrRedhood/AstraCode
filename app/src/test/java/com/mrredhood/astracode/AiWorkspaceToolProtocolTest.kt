@@ -31,6 +31,48 @@ class AiWorkspaceToolProtocolTest {
 
 
     @Test
+    fun parsesMoveProposalWithAnExactSourceAndDestinationSchema() {
+        val envelope = org.json.JSONObject()
+            .put("name", "workspace_move")
+            .put("path", "src/Old.kt")
+            .put("destination", "archive")
+            .put("reason", "Organize archived code")
+        val proposal = AiWorkspaceToolProtocol.parse(marker(envelope.toString()))
+            as AiWorkspaceToolParseResult.Proposed
+        assertEquals(AiWorkspaceToolName.MOVE_ITEM, proposal.proposal.name)
+        assertEquals("src/Old.kt", proposal.proposal.path)
+        assertEquals("archive", proposal.proposal.destination)
+
+        val rootMove = AiWorkspaceToolProtocol.parse(
+            marker(org.json.JSONObject()
+                .put("name", "workspace_move")
+                .put("path", "src/Old.kt")
+                .put("destination", "")
+                .put("reason", "Return the file to the workspace root")
+                .toString())
+        ) as AiWorkspaceToolParseResult.Proposed
+        assertEquals("", rootMove.proposal.destination)
+    }
+
+    @Test
+    fun moveProtocolRejectsTraversalSameParentAndMovingIntoSelf() {
+        fun parse(source: String, destination: String) = AiWorkspaceToolProtocol.parse(
+            marker(org.json.JSONObject()
+                .put("name", "workspace_move")
+                .put("path", source)
+                .put("destination", destination)
+                .put("reason", "Move the item")
+                .toString())
+        ) as AiWorkspaceToolParseResult.Invalid
+        assertEquals(AiWorkspaceToolParseFailure.INVALID_PATH, parse("src/Old.kt", "../outside").failure)
+        assertEquals(AiWorkspaceToolParseFailure.INVALID_PATH, parse("src/Old.kt", "src").failure)
+        assertEquals(AiWorkspaceToolParseFailure.INVALID_PATH, parse("src/folder", "src/folder/child").failure)
+        assertFalse(AiWorkspaceToolProtocol.isSafeMoveLocation("/absolute.kt", "archive"))
+        assertFalse(AiWorkspaceToolProtocol.isSafeMoveLocation("src/Old.kt", "src"))
+        assertTrue(AiWorkspaceToolProtocol.isSafeMoveLocation("src/Old.kt", "archive"))
+    }
+
+    @Test
     fun parsesCreateFileProposalWithExactContentField() {
         val content = "package demo\n\nfun answer() = 42\n"
         val envelope = org.json.JSONObject()
@@ -62,7 +104,7 @@ class AiWorkspaceToolProtocolTest {
         assertEquals(AiWorkspaceToolParseFailure.UNSUPPORTED_FILE, parse("image.png", "").failure)
         assertEquals(
             AiWorkspaceToolParseFailure.INVALID_CONTENT,
-            parse("src/Large.kt", "x".repeat(AiWorkspaceToolProtocol.MAX_CREATE_BYTES + 1)).failure
+            parse("src/Large.kt", "x".repeat(AiWorkspaceToolProtocol.MAX_CREATE_BYTES_PER_FILE + 1)).failure
         )
         assertEquals(
             AiWorkspaceToolParseFailure.INVALID_CONTENT,
@@ -91,6 +133,14 @@ class AiWorkspaceToolProtocolTest {
         assertTrue(approved.contains("Reason: Add a small helper"))
         assertTrue(approved.contains("Proposed content SHA-256: " + expectedHash))
         assertFalse(approved.contains(content))
+
+        val move = AiWorkspaceToolProposal(
+            AiWorkspaceToolName.MOVE_ITEM, "src/Old.kt", "Organize code", destination = "archive"
+        )
+        val moveApproval = AiWorkspaceToolAudit.approvalMessage(move).content
+        assertTrue(moveApproval.contains("Path: src/Old.kt"))
+        assertTrue(moveApproval.contains("Destination: archive"))
+        assertTrue(AiWorkspaceToolAudit.declineMessage(move).content.contains("Destination: archive"))
 
         val declined = AiWorkspaceToolAudit.declineMessage(proposal).content
         assertTrue(declined.contains("Decision: declined by the user"))
@@ -171,9 +221,9 @@ class AiWorkspaceToolProtocolTest {
 
     @Test
     fun acceptsFifteenMibCreateContentAndRejectsAnythingLarger() {
-        assertEquals(15 * 1024 * 1024, AiWorkspaceToolProtocol.MAX_CREATE_BYTES)
-        assertTrue(AiWorkspaceToolProtocol.MAX_ENVELOPE_CHARS >= 2 * AiWorkspaceToolProtocol.MAX_CREATE_BYTES + 4096)
-        val maximum = "x".repeat(AiWorkspaceToolProtocol.MAX_CREATE_BYTES)
+        assertEquals(15 * 1024 * 1024, AiWorkspaceToolProtocol.MAX_CREATE_BYTES_PER_FILE)
+        assertTrue(AiWorkspaceToolProtocol.MAX_ENVELOPE_CHARS >= 2 * AiWorkspaceToolProtocol.MAX_CREATE_BYTES_PER_FILE + 4096)
+        val maximum = "x".repeat(AiWorkspaceToolProtocol.MAX_CREATE_BYTES_PER_FILE)
         assertTrue(AiWorkspaceToolProtocol.isValidCreateContent(maximum))
         assertFalse(AiWorkspaceToolProtocol.isValidCreateContent(maximum + "x"))
     }

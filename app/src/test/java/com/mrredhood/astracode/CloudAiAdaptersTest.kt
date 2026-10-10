@@ -256,9 +256,12 @@ class CloudAiAdaptersTest {
     }
 
     @Test
-    fun transportResponseBudgetCanCarryMaximumCreateProposalWithEscaping() {
+    fun transportBudgetsCoverHundredMibAttachmentsAndFifteenMibPerFileCreation() {
+        assertEquals(100 * 1024 * 1024, AiGenerationRequest.MAX_TOTAL_ATTACHMENT_BYTES)
+        assertEquals(256 * 1024 * 1024, UrlConnectionAiHttpTransport.MAX_REQUEST_BYTES)
+        assertTrue(UrlConnectionAiHttpTransport.MAX_REQUEST_BYTES > 2 * AiGenerationRequest.MAX_TOTAL_ATTACHMENT_BYTES)
         assertEquals(64 * 1024 * 1024, UrlConnectionAiHttpTransport.MAX_RESPONSE_BYTES)
-        assertTrue(UrlConnectionAiHttpTransport.MAX_RESPONSE_BYTES > 4 * AiWorkspaceToolProtocol.MAX_CREATE_BYTES)
+        assertTrue(UrlConnectionAiHttpTransport.MAX_RESPONSE_BYTES > 4 * AiWorkspaceToolProtocol.MAX_CREATE_BYTES_PER_FILE)
     }
 
     @Test

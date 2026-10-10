@@ -55,12 +55,12 @@ internal class WorkspaceRepository(context:Context) {
         val uri=DocumentsContract.buildDocumentUriUsingTree(tree,id)
         if(!DocumentsContract.deleteDocument(resolver,uri))throw IOException("The provider did not delete the item.")
     }
-    fun moveDocument(tree:Uri,id:String,sourceParent:String,targetParent:String){
+    fun moveDocument(tree:Uri,id:String,sourceParent:String,targetParent:String):Uri {
         require(sourceParent!=targetParent){"Choose a different destination folder."}
         val source=DocumentsContract.buildDocumentUriUsingTree(tree,id)
         val from=DocumentsContract.buildDocumentUriUsingTree(tree,sourceParent)
         val to=DocumentsContract.buildDocumentUriUsingTree(tree,targetParent)
-        DocumentsContract.moveDocument(resolver,source,from,to)?:throw IOException("This provider does not support moving this item.")
+        return DocumentsContract.moveDocument(resolver,source,from,to)?:throw IOException("This provider does not support moving this item.")
     }
     fun readTextPreview(tree:Uri,id:String):WorkspaceTextPreview{
         val uri=DocumentsContract.buildDocumentUriUsingTree(tree,id)

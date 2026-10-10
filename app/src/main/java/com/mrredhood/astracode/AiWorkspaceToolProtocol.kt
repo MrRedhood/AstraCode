@@ -11,7 +11,8 @@ internal enum class AiWorkspaceToolName(
 ) {
     LIST_DIRECTORY("workspace_list", "List workspace folder", "Read the names and metadata of items in a folder."),
     READ_TEXT_FILE("workspace_read", "Read text/code file", "Read a small text or code file."),
-    CREATE_TEXT_FILE("workspace_create_file", "Create new text/code file", "Create and verify a new text/code file without overwriting existing files.");
+    CREATE_TEXT_FILE("workspace_create_file", "Create new text/code file", "Create and verify a new text/code file without overwriting existing files."),
+    MOVE_ITEM("workspace_move", "Move workspace item", "Move a file or folder to another existing folder without overwriting.");
 
     companion object {
         fun fromWireName(value: String): AiWorkspaceToolName? =
@@ -23,7 +24,8 @@ internal data class AiWorkspaceToolProposal(
     val name: AiWorkspaceToolName,
     val path: String,
     val reason: String,
-    val content: String? = null
+    val content: String? = null,
+    val destination: String? = null
 )
 
 /** Durable audit records bind each decision to its exact proposed path and, for writes, content hash. */
@@ -35,6 +37,7 @@ internal object AiWorkspaceToolAudit {
             append("Decision: approved by the user before execution\n")
             append("Tool: ").append(proposal.name.wireName).append('\n')
             append("Path: ").append(proposal.path).append('\n')
+            proposal.destination?.let { append("Destination: ").append(it.ifEmpty { "/" }).append('\n') }
             append("Reason: ").append(proposal.reason)
             if (content != null) {
                 val bytes = content.toByteArray(Charsets.UTF_8)
@@ -54,6 +57,7 @@ internal object AiWorkspaceToolAudit {
             "AstraCode workspace tool approval\nDecision: declined by the user; no workspace operation was run.\n" +
                 "Tool: " + proposal.name.wireName + "\n" +
                 "Path: " + proposal.path + "\n" +
+                (proposal.destination?.let { "Destination: " + it.ifEmpty { "/" } + "\n" } ?: "") +
                 "Reason: " + proposal.reason
         )
 }
@@ -112,10 +116,10 @@ internal object AiWorkspaceToolProtocol {
 
         val name = AiWorkspaceToolName.fromWireName(json.getString("name"))
             ?: return AiWorkspaceToolParseResult.Invalid(AiWorkspaceToolParseFailure.UNSUPPORTED_TOOL)
-        val expectedFields = if (name == AiWorkspaceToolName.CREATE_TEXT_FILE) {
-            setOf("name", "path", "reason", "content")
-        } else {
-            setOf("name", "path", "reason")
+        val expectedFields = when (name) {
+            AiWorkspaceToolName.CREATE_TEXT_FILE -> setOf("name", "path", "reason", "content")
+            AiWorkspaceToolName.MOVE_ITEM -> setOf("name", "path", "destination", "reason")
+            else -> setOf("name", "path", "reason")
         }
         if (!fieldNames.containsAll(expectedFields)) {
             return AiWorkspaceToolParseResult.Invalid(AiWorkspaceToolParseFailure.MALFORMED_JSON)
@@ -126,9 +130,16 @@ internal object AiWorkspaceToolProtocol {
         if (name == AiWorkspaceToolName.CREATE_TEXT_FILE && json.opt("content") !is String) {
             return AiWorkspaceToolParseResult.Invalid(AiWorkspaceToolParseFailure.MALFORMED_JSON)
         }
+        if (name == AiWorkspaceToolName.MOVE_ITEM && json.opt("destination") !is String) {
+            return AiWorkspaceToolParseResult.Invalid(AiWorkspaceToolParseFailure.MALFORMED_JSON)
+        }
 
         val path = json.getString("path")
         if (!isValidRelativePath(path, allowRoot = name == AiWorkspaceToolName.LIST_DIRECTORY)) {
+            return AiWorkspaceToolParseResult.Invalid(AiWorkspaceToolParseFailure.INVALID_PATH)
+        }
+        val destination = if (name == AiWorkspaceToolName.MOVE_ITEM) json.getString("destination") else null
+        if (name == AiWorkspaceToolName.MOVE_ITEM && !isSafeMoveLocation(path, destination.orEmpty())) {
             return AiWorkspaceToolParseResult.Invalid(AiWorkspaceToolParseFailure.INVALID_PATH)
         }
         if (name == AiWorkspaceToolName.CREATE_TEXT_FILE && path.substringAfterLast('/').let {
@@ -144,18 +155,29 @@ internal object AiWorkspaceToolProtocol {
         if (content != null && !isValidCreateContent(content)) {
             return AiWorkspaceToolParseResult.Invalid(AiWorkspaceToolParseFailure.INVALID_CONTENT)
         }
-        return AiWorkspaceToolParseResult.Proposed(AiWorkspaceToolProposal(name, path, reason, content))
+        return AiWorkspaceToolParseResult.Proposed(AiWorkspaceToolProposal(name, path, reason, content, destination))
     }
 
     fun isValidCreateContent(content: String): Boolean {
         val bytes = content.toByteArray(Charsets.UTF_8)
-        if (bytes.size > MAX_CREATE_BYTES || AiChatAttachmentPolicy.decodeUtf8(bytes) != content) return false
+        if (bytes.size > MAX_CREATE_BYTES_PER_FILE || AiChatAttachmentPolicy.decodeUtf8(bytes) != content) return false
         return content.none { char ->
             char == '\u0000' || (char.isISOControl() && char != '\n' && char != '\r' && char != '\t')
         }
     }
 
-    const val MAX_CREATE_BYTES = 15 * 1024 * 1024
+    /** Maximum UTF-8 content for each separate workspace_create_file action; no multi-file sum cap. */
+    const val MAX_CREATE_BYTES_PER_FILE = 15 * 1024 * 1024
+
+    fun isSafeMoveLocation(sourcePath: String, destinationDirectory: String): Boolean {
+        if (!isValidRelativePath(sourcePath, allowRoot = false) ||
+            !isValidRelativePath(destinationDirectory, allowRoot = true)
+        ) return false
+        val sourceParent = sourcePath.substringBeforeLast('/', "")
+        return destinationDirectory != sourceParent &&
+            destinationDirectory != sourcePath &&
+            !destinationDirectory.startsWith(sourcePath + "/")
+    }
 
     fun isValidRelativePath(path: String, allowRoot: Boolean): Boolean {
         if (path.isEmpty()) return allowRoot
@@ -190,6 +212,7 @@ internal data class AiWorkspaceToolResult(
         append("Tool: ").append(proposal.name.wireName)
         append("\nPath: ").append(proposal.path.ifEmpty { "/" })
         append("\nStatus: ").append(status.name)
+        proposal.destination?.let { append("\nDestination: ").append(it.ifEmpty { "/" }) }
         append("\nResult: ").append(summary)
         if (evidence.isNotEmpty()) {
             append("\nEvidence:\n")

@@ -104,7 +104,8 @@ class UrlConnectionAiHttpTransport : AiHttpTransport {
     companion object {
         const val CONNECT_TIMEOUT_MS = 15_000
         const val READ_TIMEOUT_MS = 60_000
-        const val MAX_REQUEST_BYTES = 64 * 1024 * 1024
+        /** Allows a 100 MiB raw attachment payload plus Base64 and JSON framing overhead. */
+        const val MAX_REQUEST_BYTES = 256 * 1024 * 1024
         /** Covers nested JSON escaping for a maximum-size AI create-file proposal. */
         const val MAX_RESPONSE_BYTES = 64 * 1024 * 1024
     }
@@ -158,7 +159,7 @@ abstract class JsonCloudAiProvider(
             val (path, headers) = pathAndHeaders(apiKey, modelId)
             val payload = createPayload(modelId, request).toString()
             if (payload.length > UrlConnectionAiHttpTransport.MAX_REQUEST_BYTES) {
-                return failure(AiProviderFailureCode.INVALID_REQUEST, false, "The provider payload exceeds the 64 MiB request limit. Reduce the attachment size.")
+                return failure(AiProviderFailureCode.INVALID_REQUEST, false, "The provider payload exceeds the 256 MiB request body limit. Reduce the attachment size.")
             }
             val response = transport.execute(AiHttpRequest(joinUrl(baseUrl, path), headers, payload))
             currentCoroutineContext().ensureActive()
@@ -172,7 +173,7 @@ abstract class JsonCloudAiProvider(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (requestTooLarge: AiRequestLimitException) {
-            failure(AiProviderFailureCode.INVALID_REQUEST, false, "The attachment payload exceeds the 64 MiB request limit. Reduce file sizes.")
+            failure(AiProviderFailureCode.INVALID_REQUEST, false, "The attachment payload exceeds the 256 MiB request body limit. Reduce file sizes.")
         } catch (unsupported: AiUnsupportedAttachmentException) {
             failure(AiProviderFailureCode.INVALID_REQUEST, false, unsupported.message ?: "The selected provider cannot accept this attachment format.")
         } catch (tooLarge: AiResponseLimitException) {
