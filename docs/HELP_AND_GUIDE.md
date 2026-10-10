@@ -18,7 +18,8 @@ Open up to eight recognized text/code files as tabs. Switch tabs from the horizo
 Use **Find / replace** in the editor to search case-insensitively. **Find next** selects the next match and wraps to the start. **Replace match** replaces the selected match, or the next match if none is selected. **Replace all** changes non-overlapping matches in the current draft only. Changes auto-save to storage after a short pause; use **Save now** to request an immediate write.
 
 ## AI providers and execution
-**Planned.** AI features are intended to use cloud providers. Show concise observable actions and verification evidence; model output alone is not proof a task succeeded.
+
+A provider-neutral cloud AI contract and explicit provider/model router are now in the internal foundation. This does not yet connect a live provider or expose AI generation in the UI. Provider adapters, encrypted credential storage, connection tests, attachments, observable task plans and execution verification remain planned. AstraCode will not silently switch providers when the selected provider/model is unavailable, and provider failures must not expose credentials or raw response bodies. Model output alone is not proof a task succeeded.
 
 ## Approvals and security
 **Planned.** Protected actions will explain capability, scope and risk. Never put credentials in chat or logs.

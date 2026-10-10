@@ -140,3 +140,11 @@
 
 
 - Documentation follow-up: clarified that live preview itself is read-only, while source draft edits and restored snapshots follow the same debounced workspace-autosave/conflict policy; removed the duplicate autosave checkbox in the roadmap.
+
+## 2026-10-10 — Cloud AI provider boundary and explicit routing
+- Added vendor-neutral cloud request/message, model capability, token usage, response and typed failure contracts without adding a bundled local model or vendor SDK.
+- Added an explicit provider/model router with model capability and output-token-limit checks. Unknown providers/models are rejected rather than silently routing project content to another provider.
+- Bounded request size/message count and validated model IDs, temperature and token limits before adapter execution.
+- Added unit tests for explicit routing, no-fallback behavior, capability limits, duplicate provider registration, request validation and typed provider outcomes.
+- Updated architecture, roadmap and Help & Guide to distinguish this internal foundation from live adapters, credential storage and user-facing AI execution, which remain planned.
+- Validation: source and test changes committed directly to main. Android CI and UI smoke for the new exact HEAD are authoritative; no local Gradle result is claimed.

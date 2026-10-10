@@ -41,7 +41,8 @@ Primary destinations: Chat · Code · Git · Build · More. Phones use bottom na
 - **Exit:** CRUD, debounced workspace autosave/conflict handling, shared bounded diff, recovery, scope and performance tests pass. The folding view remains read-only rather than an editable syntax-aware fold map.
 
 ### P4 — Settings and cloud AI
-- [ ] Provider abstraction, routing, secure credentials, connection tests and attachments.
+- [x] Add provider-neutral cloud request/result/capability contracts and explicit provider/model routing, with bounded request validation and no implicit provider fallback.
+- [ ] Implement provider adapters, encrypted credential storage, connection tests and attachments.
 - [ ] Observable plans/tool activity, approval gates, cancellation and verified completion.
 - [ ] Consolidated settings source of truth and help topics.
 
