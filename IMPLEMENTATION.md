@@ -288,3 +288,12 @@
 
 - Renamed the dashboard shortcut cards to `Terminal tools` and `Project files` so their text does not duplicate the persistent Terminal and Projects navigation labels. This keeps Compose UI test selection deterministic and makes the shortcut intent clearer.
 - No changes to workspace scope or command capabilities; all existing approval and SAF boundaries are retained.
+
+
+## 2026-10-10 — Finish appearance settings and font-system integration
+
+- Extracted the uploaded font pack's mobile-first type scale into `AstraCodeTypography`; display, UI and code roles use the specified system-family fallbacks because the pack contains no font binaries. Terminal text uses the shared monospace role.
+- Added app-private persistence for the selected theme and accent. Theme switching updates Android status/navigation bar colors and corresponding light/dark icon contrast flags.
+- Reused the existing `astracode_logo` drawable in the AstraCode screen header; launcher artwork remains unchanged. Cleared redundant accessibility descriptions from decorative hero/card glyphs and made Storage and Security settings summaries informational rather than routing them into unrelated screens.
+- Expanded Android UI smoke coverage for Create Project navigation, honest AI Execution status, safe terminal refusal, and persisted theme/accent choices.
+- Validation: this environment has no local Gradle executable or Android SDK and outbound GitHub networking is unavailable, so local compilation/emulator execution could not be performed. Latest-head workflow outcomes must be verified in GitHub Actions; no earlier workflow run is treated as proof for these commits.
