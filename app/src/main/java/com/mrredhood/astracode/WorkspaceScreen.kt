@@ -42,9 +42,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.Locale
 import java.util.Date
 import java.text.SimpleDateFormat
@@ -87,7 +90,14 @@ internal fun WorkspaceScreen(){
     var foldLoading by remember(openedId){mutableStateOf(false)}
     var foldAnalysis by remember(openedId){mutableStateOf<EditorFoldingAnalysis?>(null)}
     var foldedStarts by remember(openedId){mutableStateOf<Set<Int>>(emptySet())}
-    var diffView by remember{mutableStateOf<EditorSnapshotDiffView?>(null)}
+    var diffView by remember{mutableStateOf<EditorDiffView?>(null)}
+    val autosaveConflicts=remember(treeUriString){mutableStateMapOf<String,Boolean>()}
+    val workspaceWriteMutex=remember(treeUriString){Mutex()}
+    var autosaveMessage by remember{mutableStateOf<String?>(null)}
+    var saveImmediately by remember{mutableStateOf(false)}
+    var leaveAfterAutosave by remember{mutableStateOf(false)}
+    var overwriteDialog by rememberSaveable{mutableStateOf(false)}
+    var reloadDialog by rememberSaveable{mutableStateOf(false)}
     var selection by remember{mutableStateOf(TextRange.Zero)}
     var searchVisible by rememberSaveable{mutableStateOf(false)}
     var searchQuery by rememberSaveable{mutableStateOf("")}
@@ -131,7 +141,7 @@ internal fun WorkspaceScreen(){
         if(id!=null&&draftReady)editorBuffers[id]=WorkspaceEditorBuffer(draft,original,range.start,range.end,truncated,previewError)
     }
     fun clearActiveEditor(){
-        openedId=null;openedName=null;openedMime=null;openedWritable=false;previewError=null;truncated=false;draft="";original="";draftReady=false;previewLoading=false;recoveryStatus=null;selection=TextRange.Zero;searchVisible=false;searchQuery="";replacementText="";searchMessage=null
+        openedId=null;openedName=null;openedMime=null;openedWritable=false;previewError=null;truncated=false;draft="";original="";draftReady=false;previewLoading=false;recoveryStatus=null;autosaveMessage=null;saveImmediately=false;leaveAfterAutosave=false;selection=TextRange.Zero;searchVisible=false;searchQuery="";replacementText="";searchMessage=null
     }
     fun persistActiveDraft(){
         cacheActiveBuffer()
@@ -143,7 +153,12 @@ internal fun WorkspaceScreen(){
     }
     fun backToFiles(){
         persistActiveDraft()
-        clearActiveEditor()
+        val id=openedId
+        if(id!=null&&dirty&&editable&&autosaveConflicts[id]!=true){
+            leaveAfterAutosave=true
+            saveImmediately=true
+            autosaveMessage="Saving changes before returning to files…"
+        }else clearActiveEditor()
     }
     fun closeTabInUi(id:String,discardRecovery:Boolean){
         if(discardRecovery){
@@ -173,6 +188,12 @@ internal fun WorkspaceScreen(){
             draft="";original="";selection=TextRange.Zero;draftReady=false;previewLoading=true;recoveryStatus=null
         }
         searchVisible=false;searchQuery="";replacementText="";searchMessage=null;notice=null
+        autosaveMessage=when{
+            autosaveConflicts[tab.documentId]==true -> "File changed on storage. Autosave is paused to prevent overwriting it."
+            buffer!=null&&buffer.draft!=buffer.original -> "Changes save to the workspace after a short pause."
+            else -> null
+        }
+        saveImmediately=false;leaveAfterAutosave=false
     }
     fun openDocument(entry:WorkspaceEntry){
         val requested=WorkspaceEditorTab(entry.documentId,entry.displayName,entry.mimeType,entry.canWrite)
@@ -230,10 +251,41 @@ internal fun WorkspaceScreen(){
                 snapshotError="This snapshot is unavailable or damaged."
             }else{
                 val result=withContext(Dispatchers.Default){EditorTextDiff.compare(record.content,currentText)}
-                diffView=EditorSnapshotDiffView(name,summary,result)
+                diffView=EditorDiffView(
+                    title="Diff · ${summary.fileName}",
+                    description="Local snapshot compared with the current editor draft for $name.",
+                    leftLabel="Local snapshot",
+                    rightLabel="Current draft",
+                    result=result,
+                )
                 snapshotDialog=false
             }
             snapshotBusy=false
+        }
+    }
+    fun compareWorkspaceFile(){
+        val uri=tree;val id=openedId;val treeKey=treeUriString;val text=draft;val name=openedName.orEmpty()
+        if(uri==null||id==null||treeKey==null||!draftReady)return
+        snapshotBusy=true;snapshotError=null
+        scope.launch{
+            try{
+                val stored=withContext(Dispatchers.IO){workspaceWriteMutex.withLock{repository.readTextPreview(uri,id)}}
+                if(openedId!=id||treeUriString!=treeKey)return@launch
+                if(stored.truncated){
+                    snapshotError="The workspace file now exceeds the 2 MiB comparison limit."
+                }else{
+                    val result=withContext(Dispatchers.Default){EditorTextDiff.compare(stored.text,text)}
+                    diffView=EditorDiffView(
+                        title="Workspace diff · $name",
+                        description="Stored workspace content compared with the current editor draft.",
+                        leftLabel="Workspace file",
+                        rightLabel="Current draft",
+                        result=result,
+                    )
+                }
+            }catch(e:Exception){
+                snapshotError=e.message?:"Could not read the current workspace file for comparison."
+            }finally{snapshotBusy=false}
         }
     }
     fun requestRestoreSnapshot(summary:EditorSnapshotSummary){
@@ -268,6 +320,51 @@ internal fun WorkspaceScreen(){
                 snapshotNotice="Snapshot deleted."
                 loadSnapshots(openDialog=true)
             }else snapshotError="Could not delete this snapshot."
+        }
+    }
+    fun reloadWorkspaceFile(){
+        val uri=tree;val id=openedId;val treeKey=treeUriString
+        if(uri==null||id==null||treeKey==null)return
+        reloadDialog=false
+        scope.launch{
+            loading=true;autosaveMessage="Reloading workspace file…"
+            try{
+                val stored=withContext(Dispatchers.IO){workspaceWriteMutex.withLock{repository.readTextPreview(uri,id)}}
+                if(openedId!=id||treeUriString!=treeKey)return@launch
+                if(stored.truncated){
+                    autosaveMessage="Reload blocked: the workspace file exceeds the 2 MiB editor limit."
+                }else{
+                    draft=stored.text;original=stored.text;selection=TextRange.Zero;draftReady=true
+                    editorBuffers[id]=WorkspaceEditorBuffer(stored.text,stored.text,0,0,false,null)
+                    autosaveConflicts.remove(id);recoveryStatus=null;autosaveMessage="Reloaded the latest workspace file."
+                    withContext(Dispatchers.IO){draftStore.delete(treeKey,id)}
+                }
+            }catch(e:Exception){
+                autosaveMessage="Could not reload the workspace file. ${e.message.orEmpty()}"
+            }finally{loading=false}
+        }
+    }
+    fun overwriteWorkspaceFile(){
+        val uri=tree;val id=openedId;val treeKey=treeUriString;val text=draft
+        if(uri==null||id==null||treeKey==null)return
+        overwriteDialog=false
+        scope.launch{
+            loading=true;autosaveMessage="Overwriting workspace file…"
+            try{
+                withContext(Dispatchers.IO){workspaceWriteMutex.withLock{repository.writeText(uri,id,text)}}
+                if(openedId==id&&treeUriString==treeKey){
+                    val latestDraft=draft
+                    original=text
+                    editorBuffers[id]=WorkspaceEditorBuffer(latestDraft,text,selection.start,selection.end,truncated,previewError)
+                    autosaveConflicts.remove(id);recoveryStatus=null
+                    autosaveMessage=if(latestDraft==text)"Workspace file overwritten." else "Saved the confirmed version; newer edits remain pending."
+                }else{
+                    editorBuffers[id]?.let{editorBuffers[id]=it.copy(original=text)}
+                    autosaveConflicts.remove(id)
+                }
+            }catch(e:Exception){
+                autosaveMessage="Could not overwrite the workspace file. ${e.message.orEmpty()}"
+            }finally{loading=false}
         }
     }
     fun openFoldView(){
@@ -378,6 +475,58 @@ internal fun WorkspaceScreen(){
             EditorDraftWriteResult.Failed->"Could not save a local recovery copy; use Save file."
         }
     }
+    LaunchedEffect(treeUriString,openedId,draft,original,draftReady,openedWritable,truncated,previewError,autosaveConflicts[openedId],saveImmediately,leaveAfterAutosave){
+        val uri=tree;val id=openedId;val treeKey=treeUriString;val text=draft;val baseline=original
+        if(uri==null||id==null||treeKey==null||!draftReady||!openedWritable||truncated||previewError!=null)return@LaunchedEffect
+        if(autosaveConflicts[id]==true)return@LaunchedEffect
+        if(text==baseline){
+            if(leaveAfterAutosave&&openedId==id){leaveAfterAutosave=false;clearActiveEditor()}
+            if(saveImmediately)saveImmediately=false
+            return@LaunchedEffect
+        }
+        if(!saveImmediately)delay(900)
+        autosaveMessage="Saving to workspace…"
+        withContext(NonCancellable+Dispatchers.IO){
+            workspaceWriteMutex.withLock{
+                val stillCurrent=withContext(Dispatchers.Main.immediate){
+                    openedId==id&&treeUriString==treeKey&&draft==text&&original==baseline&&draftReady&&openedWritable&&!truncated&&previewError==null&&autosaveConflicts[id]!=true
+                }
+                if(stillCurrent){
+                    val result=repository.writeTextIfUnchanged(uri,id,baseline,text)
+                    withContext(Dispatchers.Main.immediate){
+                        when(result){
+                            WorkspaceWriteResult.Saved->{
+                                val active=openedId==id&&treeUriString==treeKey
+                                val buffer=editorBuffers[id]
+                                val latestDraft=if(active)draft else buffer?.draft?:text
+                                val start=if(active)selection.start else buffer?.selectionStart?:0
+                                val end=if(active)selection.end else buffer?.selectionEnd?:0
+                                editorBuffers[id]=WorkspaceEditorBuffer(latestDraft,text,start.coerceIn(0,latestDraft.length),end.coerceIn(0,latestDraft.length),buffer?.truncated?:false,buffer?.previewError)
+                                autosaveConflicts.remove(id)
+                                if(active){
+                                    original=text
+                                    autosaveMessage=if(latestDraft==text)"Saved automatically to workspace." else "Earlier edits saved; newer edits are pending."
+                                    recoveryStatus=null
+                                    if(leaveAfterAutosave&&draft==text){leaveAfterAutosave=false;clearActiveEditor()}
+                                }
+                            }
+                            WorkspaceWriteResult.Conflict->{
+                                autosaveConflicts[id]=true
+                                if(openedId==id){autosaveMessage="File changed on storage. Autosave paused to avoid overwriting external edits.";leaveAfterAutosave=false}
+                            }
+                            WorkspaceWriteResult.TooLarge->{
+                                if(openedId==id){autosaveMessage="Autosave stopped: this draft exceeds the 2 MiB workspace limit.";leaveAfterAutosave=false}
+                            }
+                            WorkspaceWriteResult.Failed->{
+                                if(openedId==id){autosaveMessage="Autosave failed. Check workspace access, then tap Save now to retry.";leaveAfterAutosave=false}
+                            }
+                        }
+                        if(openedId==id&&saveImmediately)saveImmediately=false
+                    }
+                }
+            }
+        }
+    }
     BackHandler(enabled=openedId!=null||stack.size>1){if(openedId!=null)backToFiles()else if(stack.size>1)stack.removeAt(stack.lastIndex)}
 
     Column(verticalArrangement=Arrangement.spacedBy(12.dp)){
@@ -401,13 +550,20 @@ internal fun WorkspaceScreen(){
                 OutlinedButton(onClick={backToFiles()},modifier=Modifier.weight(1f)){Text("Back to files")}
                 OutlinedButton(onClick={requestCloseActiveTab()},enabled=!loading&&!previewLoading,modifier=Modifier.weight(1f)){Text("Close tab")}
             }
-            if(dirty){Text("Unsaved changes",color=MaterialTheme.colorScheme.error);Text(recoveryStatus?:"Recovery copy saves locally after a short pause.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+            if(dirty){Text("Pending changes",color=MaterialTheme.colorScheme.error);Text(recoveryStatus?:"A local recovery copy is kept while changes are pending.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+            if(autosaveMessage!=null)Text(autosaveMessage.orEmpty(),style=MaterialTheme.typography.bodySmall,color=if(autosaveConflicts[openedId]==true||autosaveMessage.orEmpty().contains("failed",ignoreCase=true))MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+            if(autosaveConflicts[openedId]==true){
+                Row(horizontalArrangement=Arrangement.spacedBy(8.dp),modifier=Modifier.fillMaxWidth()){
+                    OutlinedButton(onClick={compareWorkspaceFile()},enabled=!snapshotBusy&&!loading,modifier=Modifier.weight(1f)){Text("Compare changes")}
+                    OutlinedButton(onClick={reloadDialog=true},enabled=!loading,modifier=Modifier.weight(1f)){Text("Reload file")}
+                }
+            }
             Text(openedName.orEmpty(),style=MaterialTheme.typography.titleLarge)
             Text(when{
                 !isText->"Unsupported file type."
                 truncated->"Read-only: file exceeds the 2 MiB editor limit."
                 !openedWritable->"Read-only: storage provider did not grant write support."
-                else->"Edit text and use Save file to write changes."
+                else->"Changes auto-save to the workspace after a short pause."
             },style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
             if(previewLoading)CircularProgressIndicator()
             else if(previewError!=null)WorkspaceMessage(previewError.orEmpty(),null){}
@@ -498,9 +654,10 @@ internal fun WorkspaceScreen(){
                     },modifier=Modifier.fillMaxWidth()){Text("Replace all")}
                     val matchCount=EditorTextActions.countMatches(draft,searchQuery)
                     val selectedMatch=if(searchQuery.isNotEmpty()&&selection.start+searchQuery.length<=draft.length&&selection.end-selection.start==searchQuery.length&&draft.regionMatches(selection.start,searchQuery,0,searchQuery.length,ignoreCase=true))EditorTextActions.matchNumber(draft,searchQuery,selection.start)else null
-                    Text(if(searchQuery.isEmpty())"Searches the current draft; saving is still manual." else "$matchCount match(es)${selectedMatch?.let{" · match $it"} .orEmpty()}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(if(searchQuery.isEmpty())"Searches the current draft; changes auto-save after a short pause." else "$matchCount match(es)${selectedMatch?.let{" · match $it"} .orEmpty()}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     if(searchMessage!=null)Text(searchMessage.orEmpty(),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.primary)
                 }
+                OutlinedButton(onClick={compareWorkspaceFile()},enabled=draftReady&&!truncated&&isText&&previewError==null&&!snapshotBusy,modifier=Modifier.fillMaxWidth()){Text("Compare workspace file with draft")}
                 Row(horizontalArrangement=Arrangement.spacedBy(8.dp),modifier=Modifier.fillMaxWidth()){
                     OutlinedButton(onClick={createSnapshot()},enabled=draftReady&&!truncated&&isText&&previewError==null&&!snapshotBusy,modifier=Modifier.weight(1f)){Text(if(snapshotBusy)"Working…" else "Create snapshot")}
                     OutlinedButton(onClick={loadSnapshots(openDialog=true)},enabled=draftReady&&!truncated&&isText&&previewError==null&&!snapshotBusy,modifier=Modifier.weight(1f)){Text("Snapshots / diff")}
@@ -508,10 +665,11 @@ internal fun WorkspaceScreen(){
                 if(snapshotNotice!=null)Text(snapshotNotice.orEmpty(),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.primary)
                 if(snapshotError!=null&&!snapshotDialog)Text(snapshotError.orEmpty(),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)
                 if(openedWritable&&!truncated){
-                    Button(onClick={
-                        val uri=tree;val id=openedId;val text=draft
-                        if(uri!=null&&id!=null)mutate({repository.writeText(uri,id,text)},{original=text;recoveryStatus=null;editorBuffers[id]=WorkspaceEditorBuffer(text,text,selection.start,selection.end,truncated,previewError);notice="Saved ${openedName.orEmpty()}."})
-                    },enabled=dirty&&!loading,modifier=Modifier.fillMaxWidth()){Text(if(loading)"Saving…" else "Save file")}
+                    Button(
+                        onClick={if(autosaveConflicts[openedId]==true)overwriteDialog=true else saveImmediately=true},
+                        enabled=dirty&&!loading,
+                        modifier=Modifier.fillMaxWidth()
+                    ){Text(if(loading)"Saving…" else if(autosaveConflicts[openedId]==true)"Overwrite file…" else "Save now")}
                 }
             }
             if(notice!=null)Text(notice.orEmpty(),color=MaterialTheme.colorScheme.primary)
@@ -708,11 +866,12 @@ internal fun WorkspaceScreen(){
     val diff=diffView
     if(diff!=null)AlertDialog(
         onDismissRequest={diffView=null},
-        title={Text("Diff · ${diff.snapshot.fileName}")},
+        title={Text(diff.title)},
         text={
             Column(modifier=Modifier.heightIn(max=460.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(2.dp)){
-                Text("Snapshot compared with the current draft for ${diff.currentFileName}.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-                if(diff.result.approximate)Text("Approximate summary used for a very large diff.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)
+                Text(diff.description,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("${diff.leftLabel}  →  ${diff.rightLabel}",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                if(diff.result.approximate)Text("Large diff shown as a bounded summary.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)
                 diff.result.lines.forEach{line->
                     Text(line,fontFamily=FontFamily.Monospace,style=MaterialTheme.typography.bodySmall,color=when{
                         line.startsWith("+ ") -> MaterialTheme.colorScheme.primary
@@ -725,6 +884,20 @@ internal fun WorkspaceScreen(){
             }
         },
         confirmButton={TextButton(onClick={diffView=null}){Text("Done")}}
+    )
+    if(overwriteDialog)AlertDialog(
+        onDismissRequest={overwriteDialog=false},
+        title={Text("Overwrite workspace file?")},
+        text={Text("A change was detected on storage after this draft was opened. Overwriting replaces the stored file with your current draft and cannot recover those external edits automatically.")},
+        confirmButton={TextButton(onClick={overwriteWorkspaceFile},enabled=!loading){Text("Overwrite file")}},
+        dismissButton={TextButton(onClick={overwriteDialog=false}){Text("Cancel")}}
+    )
+    if(reloadDialog)AlertDialog(
+        onDismissRequest={reloadDialog=false},
+        title={Text("Reload from storage?")},
+        text={Text("Discard the current editor draft and load the latest workspace file. Compare changes first if you need to keep part of your draft.")},
+        confirmButton={TextButton(onClick={reloadWorkspaceFile},enabled=!loading){Text("Reload file")}},
+        dismissButton={TextButton(onClick={reloadDialog=false}){Text("Keep draft")}}
     )
 }
 

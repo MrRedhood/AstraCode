@@ -184,9 +184,11 @@ internal data class EditorTextDiffResult(
     val omittedLineCount: Int = 0,
 )
 
-internal data class EditorSnapshotDiffView(
-    val currentFileName: String,
-    val snapshot: EditorSnapshotSummary,
+internal data class EditorDiffView(
+    val title: String,
+    val description: String,
+    val leftLabel: String,
+    val rightLabel: String,
     val result: EditorTextDiffResult,
 )
 
@@ -197,7 +199,7 @@ internal object EditorTextDiff {
     private const val SUMMARY_SIDE_LIMIT = 100
 
     fun compare(before: String, after: String): EditorTextDiffResult {
-        if (before == after) return EditorTextDiffResult(listOf("No differences from this snapshot."))
+        if (before == after) return EditorTextDiffResult(listOf("No differences."))
         val oldCount = countLines(before)
         val newCount = countLines(after)
         val cells = (oldCount + 1L) * (newCount + 1L)

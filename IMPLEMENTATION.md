@@ -115,3 +115,11 @@
 ## 2026-10-10 — Keep UI smoke resilient to longer Help & Guide
 - Updated the Help & Guide instrumentation test to scroll to the “Build verification” section before asserting visibility. The guide expanded as live preview and large-file limits were documented, so the previous on-screen-only assertion was no longer reliable.
 - Previous exact-head Android CI passed; Android UI Smoke failed this visibility assertion. A fresh workflow run is triggered by this test correction.
+
+
+## 2026-10-10 — Workspace autosave and shared bounded diff
+- Added a 900 ms debounced workspace-file autosave for eligible writable text drafts, plus a Save now action. Autosave and immediate saves are serialized per selected workspace; completed writes update the saved baseline without replacing newer in-memory edits.
+- Re-read the document immediately before a normal write and compare it with the editor's last saved baseline. If a mismatch or truncated stored file is detected, pause autosave and expose compare/reload/explicit-overwrite actions rather than silently overwriting external edits. This is best-effort conflict protection because SAF providers do not expose atomic compare-and-swap semantics.
+- Reused one bounded diff model and renderer for local-snapshot-to-draft and stored-workspace-to-draft comparisons. The existing compact summary path still handles large inputs.
+- Added unit coverage for autosave decisions (unchanged draft, matching baseline, external conflict, truncation and UTF-8 size cap); updated diff tests and the roadmap, architecture and in-app Help & Guide.
+- Validation: changes committed directly to `main`; Android CI and Android UI Smoke should be checked against the exact new commit before claiming success.

@@ -13,6 +13,8 @@ internal data class WorkspaceEntry(val documentId:String,val displayName:String,
 }
 internal data class WorkspaceTextPreview(val text:String,val truncated:Boolean)
 
+internal enum class WorkspaceWriteResult { Saved, Conflict, TooLarge, Failed }
+
 internal class WorkspaceRepository(context:Context) {
     private val resolver=context.applicationContext.contentResolver
     private val prefs=context.applicationContext.getSharedPreferences("astracode_workspace",Context.MODE_PRIVATE)
@@ -75,5 +77,25 @@ internal class WorkspaceRepository(context:Context) {
         val out=resolver.openOutputStream(uri,"wt")?:throw IOException("The provider did not open this file for writing.")
         out.use{it.write(bytes);it.flush()}
     }
+
+    /** Re-reads the document before writing so detected external edits are not silently overwritten. */
+    fun writeTextIfUnchanged(tree:Uri,id:String,expectedBaseline:String,text:String):WorkspaceWriteResult {
+        if(text.toByteArray(StandardCharsets.UTF_8).size>MAX_BYTES)return WorkspaceWriteResult.TooLarge
+        return try {
+            val stored=readTextPreview(tree,id)
+            when(WorkspaceAutosavePolicy.evaluate(expectedBaseline,stored.text,stored.truncated,text)) {
+                WorkspaceAutosaveDecision.Unchanged -> WorkspaceWriteResult.Saved
+                WorkspaceAutosaveDecision.Conflict -> WorkspaceWriteResult.Conflict
+                WorkspaceAutosaveDecision.TooLarge -> WorkspaceWriteResult.TooLarge
+                WorkspaceAutosaveDecision.Save -> {
+                    writeText(tree,id,text)
+                    WorkspaceWriteResult.Saved
+                }
+            }
+        } catch (_:Exception) {
+            WorkspaceWriteResult.Failed
+        }
+    }
+
     companion object{private const val MAX_BYTES=2*1024*1024}
 }

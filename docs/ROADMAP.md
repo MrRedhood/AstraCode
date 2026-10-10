@@ -35,11 +35,11 @@ Primary destinations: Chat · Code · Git · Build · More. Phones use bottom na
 - [x] Add case-insensitive find-next, replace-match and replace-all for the in-memory editor draft.
 - [x] Add debounced app-private draft recovery, validated against the saved file baseline and excluded from Android backup.
 - [x] Add an eight-tab limit, switchable editor tabs, per-tab dirty markers and draft/selection retention.
-- [ ] Add workspace-file autosave and shared diff.
+- [x] Add debounced workspace-file autosave with baseline conflict protection and one bounded diff view shared by workspace content and local snapshots.
 - [x] Add bounded per-file local snapshots and snapshot-to-draft text diff/restore-to-draft.
 - [x] Add measured editor line/byte metrics and a bounded read-only brace-folding view (1,500,000-line / 2 MiB analysis cap).
 - [x] Add debounced WebView live preview for HTML/HTM, CSS and JavaScript, with network/file access blocked.
-- **Exit:** CRUD, save/recovery, scope and performance tests pass. Workspace-file autosave and shared diff remain outstanding; the folding view is read-only rather than an editable syntax-aware fold map.
+- **Exit:** CRUD, debounced workspace autosave/conflict handling, shared bounded diff, recovery, scope and performance tests pass. The folding view remains read-only rather than an editable syntax-aware fold map.
 
 ### P4 — Settings and cloud AI
 - [ ] Provider abstraction, routing, secure credentials, connection tests and attachments.

@@ -50,7 +50,7 @@ class EditorTextDiffTest {
     @Test
     fun reportsNoDifferenceForEqualContent() {
         val result = EditorTextDiff.compare("same\ntext", "same\ntext")
-        assertEquals(listOf("No differences from this snapshot."), result.lines)
+        assertEquals(listOf("No differences."), result.lines)
         assertFalse(result.approximate)
     }
 
