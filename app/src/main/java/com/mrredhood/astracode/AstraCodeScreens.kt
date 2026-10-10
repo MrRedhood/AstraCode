@@ -172,7 +172,7 @@ internal fun AstraPageHero(
                 ),
                 contentAlignment = Alignment.Center
             ) {
-                AstraIcon(icon, size = 35.dp, description = title)
+                AstraIcon(icon, size = 35.dp, description = null)
             }
         }
     }
@@ -271,7 +271,7 @@ private fun AstraFeatureCard(
             Box(
                 modifier = Modifier.size(42.dp).background(tint.copy(alpha = .16f), RoundedCornerShape(14.dp)),
                 contentAlignment = Alignment.Center
-            ) { AstraIcon(icon, size = 27.dp, description = title) }
+            ) { AstraIcon(icon, size = 27.dp, description = null) }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -724,8 +724,8 @@ internal fun AstraSettingsScreen(
         SettingsSection("AI providers", "Cloud models, encrypted API keys and connection tests.", "chat", onOpenAiSettings)
         SettingsSection("Terminal", "Scoped folder listing and built-in commands only.", "terminal", onOpenTerminal)
         SettingsSection("Build & Run", "Build targets and status; execution remains unavailable.", "build", onOpenBuild)
-        SettingsSection("File & storage", "Attachments: up to 10 per message, 25 MiB each, 100 MiB per request; private storage quota 1 GiB.", "storage", onOpenProjects)
-        SettingsSection("Security & privacy", "SAF workspace scope, approval audit, credential encryption and backup exclusions.", "approval", onOpenAiSettings)
+        SettingsSection("File & storage", "Attachments: up to 10 per message, 25 MiB each, 100 MiB per request; private storage quota 1 GiB.", "storage")
+        SettingsSection("Security & privacy", "SAF workspace scope, approval audit, credential encryption and backup exclusions.", "approval")
         AstraPanel(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("About AstraCode", style = MaterialTheme.typography.titleMedium)
@@ -738,16 +738,15 @@ internal fun AstraSettingsScreen(
 }
 
 @Composable
-private fun SettingsSection(title: String, summary: String, icon: String, onClick: () -> Unit) {
+private fun SettingsSection(title: String, summary: String, icon: String, onClick: (() -> Unit)? = null) {
     Card(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .7f))
     ) {
         Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            AstraIcon(icon, size = 29.dp, description = title)
+            AstraIcon(icon, size = 29.dp, description = null)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(title, style = MaterialTheme.typography.titleSmall)
                 Text(summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
