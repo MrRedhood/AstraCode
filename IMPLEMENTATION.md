@@ -57,3 +57,13 @@
 - Updated the roadmap, architecture, in-app Help & Guide and this implementation log.
 - Validation: Android CI and UI Smoke are triggered for this commit; only exact workflow results determine success.
 - Follow-up validation on 2026-10-10: fixed a missing brace in the tab-close dialog caught by Android CI and preserved existing recovery copies when closing a tab whose supported text file could not be loaded.
+
+
+## 2026-10-10 — Per-file snapshots and bounded text diff
+- Added app-private per-file snapshots (up to ten per file, 256 KiB each), versioned record validation, atomic writes and cleanup when a workspace document is deleted.
+- Added a snapshots manager to create, compare, load a snapshot into the draft after confirmation, and delete snapshots. None of these operations writes to the SAF document implicitly.
+- Added a bounded line-diff engine: exact LCS for small inputs, line/output caps, and compact approximate summaries for inputs too large for the LCS matrix.
+- Added JVM tests for snapshot record validation and diff output/large-input behavior.
+- Fixed the tab Close button callback invocation identified in the preceding CI result.
+- Updated roadmap, architecture, in-app Help & Guide and this implementation log.
+- Validation: Android CI and UI Smoke are triggered on the resulting main commit; only exact workflow results determine status.

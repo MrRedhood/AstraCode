@@ -35,7 +35,8 @@ Primary destinations: Chat · Code · Git · Build · More. Phones use bottom na
 - [x] Add case-insensitive find-next, replace-match and replace-all for the in-memory editor draft.
 - [x] Add debounced app-private draft recovery, validated against the saved file baseline and excluded from Android backup.
 - [x] Add an eight-tab limit, switchable editor tabs, per-tab dirty markers and draft/selection retention.
-- [ ] Add workspace-file autosave, snapshots, folding and shared diff.
+- [ ] Add workspace-file autosave, folding and shared diff.
+- [x] Add bounded per-file local snapshots and snapshot-to-draft text diff/restore-to-draft.
 - [ ] Add measured large-file handling and Web Live Preview.
 - **Exit:** CRUD, save/recovery, scope and performance tests pass. Workspace-file autosave, snapshots, folding and shared diff remain outstanding.
 

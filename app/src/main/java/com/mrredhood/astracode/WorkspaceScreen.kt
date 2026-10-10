@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -41,6 +42,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
+import java.util.Date
+import java.text.SimpleDateFormat
 
 private data class WorkspaceBreadcrumb(val documentId:String,val name:String)
 
@@ -49,6 +52,7 @@ internal fun WorkspaceScreen(){
     val context=LocalContext.current
     val repository=remember(context){WorkspaceRepository(context.applicationContext)}
     val draftStore=remember(context){EditorDraftStore(context.applicationContext)}
+    val snapshotStore=remember(context){EditorSnapshotStore(context.applicationContext)}
     val scope=rememberCoroutineScope()
     var treeUriString by rememberSaveable{mutableStateOf(repository.savedTreeUri()?.toString())}
     var error by rememberSaveable{mutableStateOf<String?>(null)}
@@ -66,6 +70,15 @@ internal fun WorkspaceScreen(){
     var original by remember{mutableStateOf("")}
     var draftReady by remember{mutableStateOf(false)}
     var recoveryStatus by remember{mutableStateOf<String?>(null)}
+    var snapshotDialog by rememberSaveable{mutableStateOf(false)}
+    var snapshotLoading by remember{mutableStateOf(false)}
+    var snapshotBusy by remember{mutableStateOf(false)}
+    var snapshotNotice by remember{mutableStateOf<String?>(null)}
+    var snapshotError by remember{mutableStateOf<String?>(null)}
+    var snapshots by remember{mutableStateOf<List<EditorSnapshotSummary>>(emptyList())}
+    var pendingDeleteSnapshot by remember{mutableStateOf<EditorSnapshotSummary?>(null)}
+    var pendingRestoreSnapshot by remember{mutableStateOf<EditorSnapshotSummary?>(null)}
+    var diffView by remember{mutableStateOf<EditorSnapshotDiffView?>(null)}
     var selection by remember{mutableStateOf(TextRange.Zero)}
     var searchVisible by rememberSaveable{mutableStateOf(false)}
     var searchQuery by rememberSaveable{mutableStateOf("")}
@@ -171,6 +184,82 @@ internal fun WorkspaceScreen(){
         if(draftReady&&isText&&draft!=original){
             closeTabError=null;closeTabTarget=id
         }else closeTabInUi(id,discardRecovery=true)
+    }
+    fun loadSnapshots(openDialog:Boolean=false){
+        val treeKey=treeUriString;val id=openedId
+        if(treeKey==null||id==null){snapshotError="Open a file first.";return}
+        if(openDialog)snapshotDialog=true
+        snapshotLoading=true;snapshotError=null
+        scope.launch{
+            try{snapshots=withContext(Dispatchers.IO){snapshotStore.list(treeKey,id)}}
+            catch(e:Exception){snapshotError=e.message?:"Could not load local snapshots."}
+            finally{snapshotLoading=false}
+        }
+    }
+    fun createSnapshot(){
+        val treeKey=treeUriString;val id=openedId;val name=openedName.orEmpty();val text=draft
+        if(treeKey==null||id==null||!draftReady||!isText||truncated||previewError!=null){snapshotError="This file is not ready for a complete text snapshot.";return}
+        scope.launch{
+            snapshotBusy=true;snapshotError=null
+            val result=withContext(Dispatchers.IO){snapshotStore.create(treeKey,id,name,text)}
+            snapshotBusy=false
+            when(result){
+                EditorSnapshotCreateResult.Created->{snapshotNotice="Snapshot saved locally.";snapshotError=null}
+                EditorSnapshotCreateResult.TooLarge->{snapshotNotice=null;snapshotError="Snapshot exceeds the 256 KiB limit."}
+                EditorSnapshotCreateResult.Failed->{snapshotNotice=null;snapshotError="Could not save the snapshot on this device."}
+            }
+            if(snapshotDialog)loadSnapshots()
+        }
+    }
+    fun compareSnapshot(summary:EditorSnapshotSummary){
+        val treeKey=treeUriString;val id=openedId;val currentText=draft;val name=openedName.orEmpty()
+        if(treeKey==null||id==null)return
+        snapshotBusy=true;snapshotError=null
+        scope.launch{
+            val record=withContext(Dispatchers.IO){snapshotStore.read(treeKey,id,summary.id)}
+            if(record==null){
+                snapshotError="This snapshot is unavailable or damaged."
+            }else{
+                val result=withContext(Dispatchers.Default){EditorTextDiff.compare(record.content,currentText)}
+                diffView=EditorSnapshotDiffView(name,summary,result)
+                snapshotDialog=false
+            }
+            snapshotBusy=false
+        }
+    }
+    fun requestRestoreSnapshot(summary:EditorSnapshotSummary){
+        pendingRestoreSnapshot=summary;snapshotError=null;snapshotDialog=false
+    }
+    fun restoreSnapshot(summary:EditorSnapshotSummary){
+        val treeKey=treeUriString;val id=openedId
+        if(treeKey==null||id==null)return
+        scope.launch{
+            snapshotBusy=true;snapshotError=null
+            val record=withContext(Dispatchers.IO){snapshotStore.read(treeKey,id,summary.id)}
+            snapshotBusy=false
+            if(record==null){
+                snapshotError="This snapshot is unavailable or damaged."
+            }else if(openedId==id){
+                updateDraft(record.content,TextRange.Zero)
+                recoveryStatus="Snapshot loaded into the editor draft; use Save file to update the workspace."
+                snapshotNotice="Snapshot loaded into draft."
+                pendingRestoreSnapshot=null
+            }
+        }
+    }
+    fun deleteSnapshot(summary:EditorSnapshotSummary){
+        val treeKey=treeUriString;val id=openedId
+        if(treeKey==null||id==null)return
+        scope.launch{
+            snapshotBusy=true;snapshotError=null
+            val deleted=withContext(Dispatchers.IO){snapshotStore.delete(treeKey,id,summary.id)}
+            snapshotBusy=false
+            if(deleted){
+                pendingDeleteSnapshot=null
+                snapshotNotice="Snapshot deleted."
+                loadSnapshots(openDialog=true)
+            }else snapshotError="Could not delete this snapshot."
+        }
     }
     fun showAction(mode:String,entry:WorkspaceEntry?=null){dialogMode=mode;targetId=entry?.documentId;targetName=entry?.displayName.orEmpty();nameInput=if(mode=="rename")entry?.displayName.orEmpty()else"";dialogError=null;notice=null}
     fun mutate(action:()->Unit,onSuccess:()->Unit={}){
@@ -285,7 +374,7 @@ internal fun WorkspaceScreen(){
         }else if(openedId!=null){
             Row(horizontalArrangement=Arrangement.spacedBy(8.dp),modifier=Modifier.fillMaxWidth()){
                 OutlinedButton(onClick={backToFiles()},modifier=Modifier.weight(1f)){Text("Back to files")}
-                OutlinedButton(onClick={requestCloseActiveTab},enabled=!loading&&!previewLoading,modifier=Modifier.weight(1f)){Text("Close tab")}
+                OutlinedButton(onClick={requestCloseActiveTab()},enabled=!loading&&!previewLoading,modifier=Modifier.weight(1f)){Text("Close tab")}
             }
             if(dirty){Text("Unsaved changes",color=MaterialTheme.colorScheme.error);Text(recoveryStatus?:"Recovery copy saves locally after a short pause.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
             Text(openedName.orEmpty(),style=MaterialTheme.typography.titleLarge)
@@ -337,6 +426,12 @@ internal fun WorkspaceScreen(){
                     Text(if(searchQuery.isEmpty())"Searches the current draft; saving is still manual." else "$matchCount match(es)${selectedMatch?.let{" · match $it"} .orEmpty()}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     if(searchMessage!=null)Text(searchMessage.orEmpty(),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.primary)
                 }
+                Row(horizontalArrangement=Arrangement.spacedBy(8.dp),modifier=Modifier.fillMaxWidth()){
+                    OutlinedButton(onClick={createSnapshot()},enabled=draftReady&&!truncated&&isText&&previewError==null&&!snapshotBusy,modifier=Modifier.weight(1f)){Text(if(snapshotBusy)"Working…" else "Create snapshot")}
+                    OutlinedButton(onClick={loadSnapshots(openDialog=true)},enabled=draftReady&&!truncated&&isText&&previewError==null&&!snapshotBusy,modifier=Modifier.weight(1f)){Text("Snapshots / diff")}
+                }
+                if(snapshotNotice!=null)Text(snapshotNotice.orEmpty(),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.primary)
+                if(snapshotError!=null&&!snapshotDialog)Text(snapshotError.orEmpty(),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)
                 if(openedWritable&&!truncated){
                     Button(onClick={
                         val uri=tree;val id=openedId;val text=draft
@@ -426,7 +521,10 @@ internal fun WorkspaceScreen(){
                 if(uri==null)dialogError="Choose a workspace first."
                 else if(deleting&&target!=null)mutate({repository.deleteDocument(uri,target)}){
                     val treeKey=treeUriString
-                    if(treeKey!=null)scope.launch(Dispatchers.IO){draftStore.delete(treeKey,target)}
+                    if(treeKey!=null)scope.launch(Dispatchers.IO){
+                        draftStore.delete(treeKey,target)
+                        snapshotStore.deleteAll(treeKey,target)
+                    }
                     editorTabs.removeAll{it.documentId==target};editorBuffers.remove(target)
                     if(openedId==target)clearActiveEditor()
                     notice="Deleted $targetName.";dialogMode=null;dialogError=null
@@ -483,6 +581,76 @@ internal fun WorkspaceScreen(){
             TextButton(onClick={closeTabTarget=null;closeTabError=null}){Text("Cancel")}
         }}
     )
+    if(snapshotDialog)AlertDialog(
+        onDismissRequest={snapshotDialog=false;snapshotError=null},
+        title={Text("Snapshots · ${openedName.orEmpty()}")},
+        text={
+            Column(modifier=Modifier.heightIn(max=440.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)){
+                Text("Snapshots are local copies on this device. Compare them with the current editor draft or load one back into the draft. Workspace files are only changed by Save file.")
+                if(snapshotLoading)CircularProgressIndicator()
+                if(snapshotError!=null)Text(snapshotError.orEmpty(),color=MaterialTheme.colorScheme.error)
+                if(!snapshotLoading&&snapshots.isEmpty())Text("No snapshots yet. Create a snapshot to record the current draft.")
+                snapshots.forEach{snapshot->
+                    Surface(modifier=Modifier.fillMaxWidth(),shape=MaterialTheme.shapes.large,color=MaterialTheme.colorScheme.surfaceVariant){
+                        Column(modifier=Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(6.dp)){
+                            Text(snapshot.fileName,style=MaterialTheme.typography.titleSmall)
+                            Text(formatSnapshotTime(snapshot.createdAtMillis)+" · "+formatSize(snapshot.contentBytes.toLong()),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                            Row(horizontalArrangement=Arrangement.spacedBy(4.dp),modifier=Modifier.fillMaxWidth()){
+                                TextButton(onClick={compareSnapshot(snapshot)},enabled=!snapshotBusy&&draftReady,modifier=Modifier.weight(1f)){Text("Compare")}
+                                TextButton(onClick={requestRestoreSnapshot(snapshot)},enabled=!snapshotBusy&&draftReady,modifier=Modifier.weight(1f)){Text("Restore")}
+                                TextButton(onClick={pendingDeleteSnapshot=snapshot;snapshotDialog=false;snapshotError=null},enabled=!snapshotBusy,modifier=Modifier.weight(1f)){Text("Delete")}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton={TextButton(onClick={snapshotDialog=false}){Text("Done")}}
+    )
+    val restoreTarget=pendingRestoreSnapshot
+    if(restoreTarget!=null)AlertDialog(
+        onDismissRequest={pendingRestoreSnapshot=null;snapshotError=null},
+        title={Text("Restore snapshot to draft?")},
+        text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
+            Text("This replaces the current in-memory draft for ${openedName.orEmpty()}. It does not save to the workspace file.")
+            if(dirty)Text("Your current draft has unsaved edits. Save it or keep a local recovery copy before restoring if you need those edits.",color=MaterialTheme.colorScheme.error)
+            if(snapshotError!=null)Text(snapshotError.orEmpty(),color=MaterialTheme.colorScheme.error)
+        }},
+        confirmButton={TextButton(onClick={restoreSnapshot(restoreTarget)},enabled=!snapshotBusy){Text("Restore to draft")}},
+        dismissButton={TextButton(onClick={pendingRestoreSnapshot=null;snapshotError=null}){Text("Cancel")}}
+    )
+    val deleteTarget=pendingDeleteSnapshot
+    if(deleteTarget!=null)AlertDialog(
+        onDismissRequest={pendingDeleteSnapshot=null;snapshotError=null},
+        title={Text("Delete snapshot?")},
+        text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
+            Text("Delete the local snapshot from ${formatSnapshotTime(deleteTarget.createdAtMillis)}? This cannot be undone.")
+            if(snapshotError!=null)Text(snapshotError.orEmpty(),color=MaterialTheme.colorScheme.error)
+        }},
+        confirmButton={TextButton(onClick={deleteSnapshot(deleteTarget)},enabled=!snapshotBusy){Text("Delete snapshot")}},
+        dismissButton={TextButton(onClick={pendingDeleteSnapshot=null;snapshotError=null}){Text("Cancel")}}
+    )
+    val diff=diffView
+    if(diff!=null)AlertDialog(
+        onDismissRequest={diffView=null},
+        title={Text("Diff · ${diff.snapshot.fileName}")},
+        text={
+            Column(modifier=Modifier.heightIn(max=460.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(2.dp)){
+                Text("Snapshot compared with the current draft for ${diff.currentFileName}.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                if(diff.result.approximate)Text("Approximate summary used for a very large diff.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)
+                diff.result.lines.forEach{line->
+                    Text(line,fontFamily=FontFamily.Monospace,style=MaterialTheme.typography.bodySmall,color=when{
+                        line.startsWith("+ ") -> MaterialTheme.colorScheme.primary
+                        line.startsWith("- ") -> MaterialTheme.colorScheme.error
+                        line.startsWith("…") -> MaterialTheme.colorScheme.tertiary
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    })
+                }
+                if(diff.result.omittedLineCount>0)Text("… ${diff.result.omittedLineCount} diff line(s) omitted to keep the view responsive.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.tertiary)
+            }
+        },
+        confirmButton={TextButton(onClick={diffView=null}){Text("Done")}}
+    )
 }
 
 @Composable
@@ -494,6 +662,7 @@ private fun WorkspaceMessage(message:String,actionLabel:String?,onAction:()->Uni
         }
     }
 }
+private fun formatSnapshotTime(timestamp:Long):String=SimpleDateFormat("yyyy-MM-dd HH:mm",Locale.getDefault()).format(Date(timestamp))
 private fun formatSize(bytes:Long):String=when{
     bytes<0->"File";bytes<1024->"$bytes B";bytes<1024*1024->String.format(Locale.ROOT,"%.1f KiB",bytes/1024.0)
     else->String.format(Locale.ROOT,"%.1f MiB",bytes/(1024.0*1024.0))

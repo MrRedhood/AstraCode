@@ -356,7 +356,7 @@ private fun HelpGuideScreen(onBack: () -> Unit) {
     )
     GuideSection(
         title = "Workspace and files",
-        body = "Choose a project folder through Android's system picker. Browse, filter, refresh, create, rename, move or delete items within that selected tree. Open up to eight text/code files as tabs; switch tabs without losing each tab's in-memory draft or selection. An asterisk marks unsaved changes. Back to files keeps tabs open. Closing a dirty tab lets you keep a local recovery draft or discard it; workspace files still change only when Save file is used. A debounced app-private recovery copy is restored only while the on-disk file matches its saved baseline. Drafts above 256 KiB are not recoverable. Large, unsupported or binary files stay read-only."
+        body = "Choose a project folder through Android's system picker. Browse, filter, refresh, create, rename, move or delete items within that selected tree. Open up to eight text/code files as tabs and switch tabs without losing each draft or selection. Create up to ten local snapshots per file, compare a snapshot against the current draft with a bounded diff view, or restore a snapshot into the draft. Restoring does not write to the workspace; select Save file to commit it. Dirty drafts also receive app-private recovery copies when small enough. Large, unsupported or binary files stay read-only."
     )
     GuideSection(
         title = "Editor find and replace",
