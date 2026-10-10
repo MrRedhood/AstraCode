@@ -202,3 +202,6 @@
 - Added unit policy tests for file-type handling, strict UTF-8, binary rejection, display/payload separation and count/size caps; extended UI smoke assertions for attachment controls and the secrets warning.
 - Updated in-app Help & Guide, architecture and roadmap.
 - Validation: committed directly to main with expected-head protection. Exact-head Android CI/UI Smoke status is authoritative; no pending workflow was waited on.
+
+
+- Roadmap correction: marked explicit text/code attachments complete and left controlled tool execution and end-to-end verification open as the next AI increment.

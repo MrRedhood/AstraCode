@@ -47,7 +47,8 @@ Primary destinations: Chat · Code · Git · Build · More. Phones use bottom na
 - [x] Add Android Keystore AES-GCM API-key vault, backup exclusion, provider/model/endpoint settings and user-triggered connection test UI.
 - [x] Discover available models for the documented provider APIs and connect configured provider/model settings to a cancellable Chat flow with bounded local session history and typed errors.
 - [x] Add bounded local SQLite chat sessions with restore/new/delete controls, schema tests and Android-backup exclusion.
-- [ ] Add attachments, controlled tool execution and end-to-end task verification.
+- [x] Add explicitly selected text/code attachments with bounded UTF-8 reads, visible attachment summaries/removal, local persistence and privacy warnings.
+- [ ] Add controlled tool execution and end-to-end task verification.
 - [ ] Observable plans/tool activity, approval gates, cancellation and verified completion.
 - [ ] Consolidated settings source of truth and help topics.
 
