@@ -41,11 +41,11 @@ private enum class PrimaryDestination(
     val title: String,
     val description: String
 ) {
-    Chat("Chat", "chat", "AI coding workspace", "Plan work, inspect actions and verify changes with cloud AI."),
-    Code("Code", "code", "Your workspace", "Select a project folder and browse its files and directories."),
-    Git("Git", "git", "Version control", "Review changes, history and remote operations in one focused place."),
-    Build("Build", "build", "Build and verify", "Run builds, inspect test results and manage artifacts."),
-    More("More", "more", "Tools and settings", "Search tools, settings, help and project information.")
+    Home("Home", "home", "Your coding space", "Build, browse, and get help from cloud AI."),
+    Projects("Projects", "files", "Project workspace", "Select a folder and manage files safely."),
+    AI("AI", "chat", "AI coding workspace", "Chat with a configured cloud model and review approved actions."),
+    Terminal("Terminal", "terminal", "Safe terminal", "Run built-in commands scoped to your selected workspace."),
+    More("More", "more", "Tools and settings", "Find configuration, build options, execution status and help.")
 }
 
 private data class MoreEntry(
@@ -55,16 +55,19 @@ private data class MoreEntry(
 )
 
 private val moreEntries = listOf(
+    MoreEntry("Create Project", "Workspace & editing", "Choose a starter framework and configure a project."),
     MoreEntry("Workspace", "Workspace & editing", "Project access, files, folders and editor preferences."),
     MoreEntry("Editor", "Workspace & editing", "Editing, tabs, autosave, search and preview options."),
     MoreEntry("AI & Models", "AI & automation", "Cloud providers, model selection and connection status."),
+    MoreEntry("AI Execution", "AI & automation", "Task lifecycle and honest execution capability status."),
     MoreEntry("Automation & Operations", "AI & automation", "Task activity, scheduled work and operation history."),
     MoreEntry("Git & GitHub", "Git & delivery", "Repository connections, history and remote integrations."),
-    MoreEntry("Build & CI", "Git & delivery", "Build targets, workflow status, logs and verification."),
+    MoreEntry("Build & Run", "Git & delivery", "Build targets and configuration; execution is not yet wired."),
+    MoreEntry("Build & CI", "Git & delivery", "Hosted workflow status, logs and verification."),
     MoreEntry("Artifacts & Reports", "Git & delivery", "Build outputs, test reports and diagnostics."),
     MoreEntry("Quality & Diagnostics", "Quality & safety", "Application health, troubleshooting and reports."),
     MoreEntry("Security & Notifications", "Quality & safety", "Permissions, approvals, privacy and notification controls."),
-    MoreEntry("Settings", "Settings & support", "App appearance, accessibility and configuration."),
+    MoreEntry("Settings", "Settings & support", "App appearance, accent colors, and coding workflow settings."),
     MoreEntry("Help & Guide", "Settings & support", "Learn how AstraCode works and troubleshoot common problems."),
     MoreEntry("About AstraCode", "Settings & support", "Application identity, version and project information.")
 )
@@ -78,10 +81,12 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun AstraCodeApp() {
-    var selectedName by rememberSaveable { mutableStateOf(PrimaryDestination.Chat.name) }
+    var selectedName by rememberSaveable { mutableStateOf(PrimaryDestination.Home.name) }
     var selectedMoreEntry by rememberSaveable { mutableStateOf<String?>(null) }
     var moreSearchQuery by rememberSaveable { mutableStateOf("") }
-    val selected = PrimaryDestination.values().firstOrNull { it.name == selectedName } ?: PrimaryDestination.Chat
+    var themeMode by rememberSaveable { mutableStateOf("Dark") }
+    var accentName by rememberSaveable { mutableStateOf("Blue") }
+    val selected = PrimaryDestination.values().firstOrNull { it.name == selectedName } ?: PrimaryDestination.Home
 
     BackHandler(enabled = selected == PrimaryDestination.More && selectedMoreEntry != null) {
         selectedMoreEntry = null
@@ -92,7 +97,7 @@ private fun AstraCodeApp() {
         if (destination != PrimaryDestination.More) selectedMoreEntry = null
     }
 
-    MaterialTheme {
+    AstraCodeTheme(mode = themeMode, accent = accentName) {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                 val compact = AstraCodeLayoutPolicy.usesBottomNavigation(maxWidth.value)
@@ -126,6 +131,10 @@ private fun AstraCodeApp() {
                             onBackToMore = { selectedMoreEntry = null },
                             onSelectDestination = ::selectDestination,
                             compact = true,
+                            themeMode = themeMode,
+                            onThemeModeChange = { themeMode = it },
+                            accentName = accentName,
+                            onAccentChange = { accentName = it },
                             modifier = Modifier.padding(innerPadding)
                         )
                     }
@@ -157,6 +166,10 @@ private fun AstraCodeApp() {
                                 onBackToMore = { selectedMoreEntry = null },
                                 onSelectDestination = ::selectDestination,
                                 compact = false,
+                                themeMode = themeMode,
+                                onThemeModeChange = { themeMode = it },
+                                accentName = accentName,
+                                onAccentChange = { accentName = it },
                                 modifier = Modifier.padding(innerPadding)
                             )
                         }
@@ -177,13 +190,17 @@ private fun DestinationScreen(
     onBackToMore: () -> Unit,
     onSelectDestination: (PrimaryDestination) -> Unit,
     compact: Boolean,
+    themeMode: String,
+    onThemeModeChange: (String) -> Unit,
+    accentName: String,
+    onAccentChange: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier
             .fillMaxSize()
             .then(
-                if (destination == PrimaryDestination.Chat) Modifier
+                if (destination == PrimaryDestination.AI) Modifier
                 else Modifier.verticalScroll(rememberScrollState())
             )
             .padding(horizontal = if (compact) 20.dp else 36.dp, vertical = 24.dp),
@@ -204,14 +221,36 @@ private fun DestinationScreen(
                 )
                 "Help & Guide" -> HelpGuideScreen(onBack = onBackToMore)
                 "AI & Models" -> AiProviderSettingsScreen(onBack = onBackToMore)
+                "Create Project" -> CreateProjectScreen(onOpenProjects = { onSelectDestination(PrimaryDestination.Projects) })
+                "Build & Run" -> BuildRunScreen()
+                "AI Execution" -> AiExecutionScreen(onOpenChat = { onSelectDestination(PrimaryDestination.AI) })
+                "Settings" -> AstraSettingsScreen(
+                    themeMode = themeMode,
+                    onThemeModeChange = onThemeModeChange,
+                    accent = accentName,
+                    onAccentChange = onAccentChange,
+                    onOpenAiSettings = { onOpenMoreEntry("AI & Models") },
+                    onOpenProjects = { onSelectDestination(PrimaryDestination.Projects) },
+                    onOpenTerminal = { onSelectDestination(PrimaryDestination.Terminal) },
+                    onOpenBuild = { onOpenMoreEntry("Build & Run") }
+                )
                 else -> MoreEntryDetailScreen(
                     entry = moreEntries.firstOrNull { it.title == selectedMoreEntry },
                     onBack = onBackToMore
                 )
             }
-        } else if (destination == PrimaryDestination.Code) {
+        } else if (destination == PrimaryDestination.Home) {
+            HomeDashboardScreen(
+                onOpenProjects = { onSelectDestination(PrimaryDestination.Projects) },
+                onOpenChat = { onSelectDestination(PrimaryDestination.AI) },
+                onOpenTerminal = { onSelectDestination(PrimaryDestination.Terminal) },
+                onOpenBuild = { onSelectDestination(PrimaryDestination.More); onOpenMoreEntry("Build & Run") },
+                onCreateProject = { onSelectDestination(PrimaryDestination.More); onOpenMoreEntry("Create Project") },
+                onOpenExecution = { onSelectDestination(PrimaryDestination.More); onOpenMoreEntry("AI Execution") }
+            )
+        } else if (destination == PrimaryDestination.Projects) {
             WorkspaceScreen()
-        } else if (destination == PrimaryDestination.Chat) {
+        } else if (destination == PrimaryDestination.AI) {
             AiChatScreen(
                 onOpenAiSettings = {
                     onSelectDestination(PrimaryDestination.More)
@@ -219,6 +258,8 @@ private fun DestinationScreen(
                 },
                 modifier = Modifier.weight(1f).fillMaxWidth()
             )
+        } else if (destination == PrimaryDestination.Terminal) {
+            TerminalScreen()
         } else {
             DestinationSummary(destination)
         }
