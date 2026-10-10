@@ -275,3 +275,10 @@
 - Updated the Help & Guide's workspace path and AI destination names to match the new navigation.
 - Fixed hero/panel contrast for Light mode and switched custom Compose icon palette selection to the app's chosen theme rather than only Android's system theme.
 - Validation remains pending for this new HEAD: no local Gradle build was available, and earlier CI/UI runs target earlier commits. Do not treat those historical runs as evidence for the current HEAD.
+
+
+## 2026-10-10 — Complete custom UI navigation icon set
+
+- Added dedicated locally drawn Compose glyphs for Home, approval, execution, artifact and storage so the new destination/status names no longer render as the generic fallback icon. Icons adapt to the selected AstraCode theme.
+- Kept the local Canvas icon system to avoid introducing SVG runtime dependencies; the uploaded pack’s palette and icon semantics inform these additions. The pack does not change the existing app launcher asset.
+- Validation for the latest UI commits remains unverified pending current-head CI/UI results; no local Android SDK/Gradle run was available in this execution environment.
