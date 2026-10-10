@@ -297,3 +297,12 @@
 - Reused the existing `astracode_logo` drawable in the AstraCode screen header; launcher artwork remains unchanged. Cleared redundant accessibility descriptions from decorative hero/card glyphs and made Storage and Security settings summaries informational rather than routing them into unrelated screens.
 - Expanded Android UI smoke coverage for Create Project navigation, honest AI Execution status, safe terminal refusal, and persisted theme/accent choices.
 - Validation: this environment has no local Gradle executable or Android SDK and outbound GitHub networking is unavailable, so local compilation/emulator execution could not be performed. Latest-head workflow outcomes must be verified in GitHub Actions; no earlier workflow run is treated as proof for these commits.
+
+
+## 2026-10-10 — Complete Settings typography and visual polish
+
+- Added a saved code-font-size preference (11, 12, 13, 14, 16 or 18 sp) and connected the Settings controls to the editor and structural inspection text. Source line-height scales proportionally with the chosen size. Theme/accent/code-size choices are stored in app-private SharedPreferences.
+- Added a lightweight Compose robot mascot illustration to the Home, Create Project, Build & Run and AI Execution hero panels, keeping artwork local/vector-like and avoiding large remote or raster dependencies on lower-end Android devices.
+- Tightened settings affordances: informational File & Storage and Security & Privacy sections no longer show a chevron or route to unrelated screens. The UI header reuses the existing launcher artwork without changing it.
+- Expanded the UI smoke test to verify the code-font-size preference survives activity recreation. Help & Guide, architecture and implementation docs were updated to match behavior.
+- Validation: code changes and commits are present on `main`; this environment has no local Gradle executable/Android SDK and cannot reach GitHub directly. The available connector exposed only earlier workflow runs (the handoff Android CI succeeded, and the handoff UI Smoke run failed during emulator startup/install); no green status is confirmed for the latest UI commits.
