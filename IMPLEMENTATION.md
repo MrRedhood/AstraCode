@@ -123,3 +123,6 @@
 - Reused one bounded diff model and renderer for local-snapshot-to-draft and stored-workspace-to-draft comparisons. The existing compact summary path still handles large inputs.
 - Added unit coverage for autosave decisions (unchanged draft, matching baseline, external conflict, truncation and UTF-8 size cap); updated diff tests and the roadmap, architecture and in-app Help & Guide.
 - Validation: changes committed directly to `main`; Android CI and Android UI Smoke should be checked against the exact new commit before claiming success.
+
+
+- Source-review follow-up: corrected the conflict-dialog callbacks to invoke the overwrite/reload actions before checking the new commit's workflows.

@@ -889,14 +889,14 @@ internal fun WorkspaceScreen(){
         onDismissRequest={overwriteDialog=false},
         title={Text("Overwrite workspace file?")},
         text={Text("A change was detected on storage after this draft was opened. Overwriting replaces the stored file with your current draft and cannot recover those external edits automatically.")},
-        confirmButton={TextButton(onClick={overwriteWorkspaceFile},enabled=!loading){Text("Overwrite file")}},
+        confirmButton={TextButton(onClick={overwriteWorkspaceFile()},enabled=!loading){Text("Overwrite file")}},
         dismissButton={TextButton(onClick={overwriteDialog=false}){Text("Cancel")}}
     )
     if(reloadDialog)AlertDialog(
         onDismissRequest={reloadDialog=false},
         title={Text("Reload from storage?")},
         text={Text("Discard the current editor draft and load the latest workspace file. Compare changes first if you need to keep part of your draft.")},
-        confirmButton={TextButton(onClick={reloadWorkspaceFile},enabled=!loading){Text("Reload file")}},
+        confirmButton={TextButton(onClick={reloadWorkspaceFile()},enabled=!loading){Text("Reload file")}},
         dismissButton={TextButton(onClick={reloadDialog=false}){Text("Keep draft")}}
     )
 }
