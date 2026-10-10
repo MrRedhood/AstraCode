@@ -25,7 +25,7 @@ Primary destinations: Chat · Code · Git · Build · More. Phones use bottom na
 
 ### P2 — Navigation and design system
 - [x] Add searchable More index, adaptive navigation and in-app Help & Guide.
-- [ ] Expand accessibility, restoration and adaptive-layout coverage.
+- [x] Expand accessibility semantics, saveable navigation restoration and adaptive-layout breakpoint coverage with unit/UI tests.
 
 ### P3 — Workspace and editor
 - [x] SAF folder picker and persistent URI read permission; scoped directory browse/filter/refresh.

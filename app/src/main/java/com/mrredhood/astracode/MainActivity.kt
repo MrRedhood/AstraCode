@@ -95,7 +95,7 @@ private fun AstraCodeApp() {
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                val compact = maxWidth < 600.dp
+                val compact = AstraCodeLayoutPolicy.usesBottomNavigation(maxWidth.value)
                 if (compact) {
                     Scaffold(
                         bottomBar = {
@@ -108,7 +108,7 @@ private fun AstraCodeApp() {
                                             AstraIcon(
                                                 destination.icon,
                                                 size = 26.dp,
-                                                description = "${destination.label} icon"
+                                                description = null
                                             )
                                         },
                                         label = { Text(destination.label) }
@@ -140,7 +140,7 @@ private fun AstraCodeApp() {
                                         AstraIcon(
                                             destination.icon,
                                             size = 26.dp,
-                                            description = "${destination.label} icon"
+                                            description = null
                                         )
                                     },
                                     label = { Text(destination.label) }
@@ -355,12 +355,16 @@ private fun HelpGuideScreen(onBack: () -> Unit) {
         body = "AstraCode is designed for coding and project workflows from an Android device. The current build is a foundation shell; some areas in More are still planned."
     )
     GuideSection(
+        title = "Accessibility and adaptive navigation",
+        body = "Primary navigation items keep visible text labels for assistive technology; their custom icon drawings are decorative to avoid reading the same name twice. Narrow windows use a bottom navigation bar, while windows 600 dp and wider use a navigation rail. Primary selection, More search text and the selected More section are saveable and are restored when Android recreates the activity with saved instance state."
+    )
+    GuideSection(
         title = "Workspace and files",
-        body = "Choose a project folder through Android's system picker. Browse, filter, refresh, create, rename, move or delete items within that selected tree. Open up to eight text/code files as tabs and switch tabs without losing each draft or selection. Create up to ten local snapshots per file, compare a snapshot against the current draft with a bounded diff view, or restore a snapshot into the draft. Restoring does not write to the workspace; select Save file to commit it. Dirty drafts up to 2 MiB receive app-private recovery copies. Supported text/code files up to 2 MiB can be edited and saved, though performance depends on the device. **Fold / inspect code** supports up to 1,500,000 lines and 2 MiB, using virtualized rows and a bounded fold-region index. Above those folding limits, AstraCode shows metrics without the line listing or fold regions. Files above 2 MiB, unsupported types and binary files stay read-only. HTML/HTM, CSS and JavaScript files also offer **Show live preview**. The preview stays below the source editor, refreshes after typing pauses and does not save workspace changes. CSS/JavaScript use a sample page; HTML renders standalone. Network requests, remote resources, file access, form submissions and navigation are blocked; linked sibling files are not loaded."
+        body = "Choose a project folder through Android's system picker. Browse, filter, refresh, create, rename, move or delete items within that selected tree. Open up to eight text/code files as tabs and switch tabs without losing each draft or selection. Create up to ten local snapshots per file, compare a snapshot against the current draft with a bounded diff view, or restore a snapshot into the draft. Restoring does not write to the workspace; the editable draft auto-saves after a short pause, or use Save now to request an immediate save. Dirty drafts up to 2 MiB receive app-private recovery copies. Supported text/code files up to 2 MiB can be edited and saved, though performance depends on the device. **Fold / inspect code** supports up to 1,500,000 lines and 2 MiB, using virtualized rows and a bounded fold-region index. Above those folding limits, AstraCode shows metrics without the line listing or fold regions. Files above 2 MiB, unsupported types and binary files stay read-only. HTML/HTM, CSS and JavaScript files also offer **Show live preview**. The preview stays below the source editor, refreshes after typing pauses and does not save workspace changes. CSS/JavaScript use a sample page; HTML renders standalone. Network requests, remote resources, file access, form submissions and navigation are blocked; linked sibling files are not loaded."
     )
     GuideSection(
         title = "Editor find and replace",
-        body = "In a supported text/code file, open Find / replace. Search is case-insensitive. Find next selects each match and wraps to the start; Replace match replaces the selection or next match; Replace all applies to non-overlapping matches in the current draft. Find/replace changes are not written to storage until you select Save file."
+        body = "In a supported text/code file, open Find / replace. Search is case-insensitive. Find next selects each match and wraps to the start; Replace match replaces the selection or next match; Replace all applies to non-overlapping matches in the current draft. Find/replace changes auto-save to storage after a short pause; use Save now to request an immediate save."
     )
     GuideSection(
         title = "AI and security",

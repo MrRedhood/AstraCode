@@ -30,7 +30,7 @@ fun AstraIcon(
     name: String,
     modifier: Modifier = Modifier,
     size: Dp = 26.dp,
-    description: String = name.replace('-', ' ')
+    description: String? = name.replace('-', ' ')
 ) {
     val dark = isSystemInDarkTheme()
     val cyan = if (dark) Color(0xFF63D8F2) else Color(0xFF087FA8)
@@ -40,7 +40,12 @@ fun AstraIcon(
     val ink = if (dark) Color(0xFFE6F0FF) else Color(0xFF172544)
     val stroke = Stroke(width = 2.1.dp.toPxSafe(), cap = StrokeCap.Round, join = StrokeJoin.Round)
 
-    Canvas(modifier = modifier.size(size).semantics { contentDescription = description }) {
+    val iconModifier = modifier.size(size)
+    val accessibleModifier = if (description == null) iconModifier else iconModifier.semantics {
+        contentDescription = description
+    }
+
+    Canvas(modifier = accessibleModifier) {
         val w = this.size.width
         val h = this.size.height
         fun p(x: Float, y: Float) = Offset(w * x, h * y)

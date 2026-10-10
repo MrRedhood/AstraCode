@@ -129,3 +129,11 @@
 
 
 - Autosave follow-up: flush pending writable drafts when switching tabs or closing a tab after choosing to keep its recovery draft. Treat a write that already placed the identical draft on storage as successful, avoiding a false external-conflict warning from duplicate serialized save requests. Updated the roadmap and architecture wording to remove the obsolete explicit-save description.
+
+
+## 2026-10-10 — Accessibility, UI restoration and adaptive navigation
+- Extracted the 600 dp bottom-bar/navigation-rail breakpoint into a deterministic policy and added boundary tests for compact, just-below-threshold and expanded widths.
+- Made custom navigation glyphs decorative when the navigation item already has a visible text label, avoiding duplicate icon and label announcements for screen readers.
+- Added an Android UI smoke test that recreates the activity and verifies More search state and selected subsection restoration; navigation keeps visible text labels.
+- Updated in-app Help & Guide, architecture notes and roadmap. Corrected stale in-app/editor-guide copy that described explicit-only saves after workspace autosave shipped.
+- Validation: committed directly to `main`; exact-head Android CI and Android UI Smoke results determine whether validation is green.

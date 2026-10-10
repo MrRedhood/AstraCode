@@ -33,6 +33,20 @@ class AstraCodeSmokeTest {
     }
 
     @Test
+    fun moreSearchAndSelectedEntrySurviveActivityRecreation() {
+        composeRule.onNodeWithText("More").performClick()
+        composeRule.onNodeWithText("Search tools and settings").performTextInput("security")
+        composeRule.activityRule.scenario.recreate()
+        composeRule.onNodeWithText("Security & Notifications").assertIsDisplayed()
+
+        composeRule.onNodeWithText("Security & Notifications").performClick()
+        composeRule.activityRule.scenario.recreate()
+        composeRule.onNodeWithText("This entry is a navigation placeholder", substring = true)
+            .performScrollTo()
+            .assertIsDisplayed()
+    }
+
+    @Test
     fun workspaceOffersFolderPickerWhenNoFolderIsSaved() {
         composeRule.onNodeWithText("Code").performClick()
         composeRule.onNodeWithText("No workspace selected").assertIsDisplayed()
