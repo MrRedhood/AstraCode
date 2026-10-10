@@ -38,12 +38,12 @@ class CloudAiProviderCatalogTest {
     }
 
     @Test
-    fun customOpenAiCompatibleProviderRequiresUserSuppliedEndpoint() {
+    fun openAiCompatibleProviderHasDefaultEndpointAndAllowsCustomOverride() {
         val custom = CloudAiProviderCatalog.find(CloudAiProviderId.OPENAI_COMPATIBLE)
 
         assertNotNull(custom)
-        assertNull(custom?.defaultBaseUrl)
-        assertTrue(custom!!.supportsCustomBaseUrl)
+        assertEquals("https://api.openai.com/v1", custom!!.defaultBaseUrl)
+        assertTrue(custom.supportsCustomBaseUrl)
         assertEquals(CloudAiApiProtocol.OPENAI_CHAT_COMPLETIONS, custom.apiProtocol)
     }
 

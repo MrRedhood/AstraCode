@@ -72,3 +72,11 @@ Primary destinations: Chat · Code · Git · Build · More. Phones use bottom na
 
 ## Definition of done
 Touch-friendly and adaptive UI; real-operation evidence; safe permission scope and retries; exact latest relevant CI/UI green before claiming success; synced docs; direct commits to `main`.
+
+
+## 2026-10-10 — Provider onboarding and compact chat layout
+
+- [x] Reduce standard provider setup to provider selection and API key entry; discover a chat model automatically.
+- [x] Give all catalogued providers an HTTPS default while preserving existing saved custom endpoint overrides.
+- [x] Keep chat status text full-width and move chat actions to a horizontally scrollable row on compact phones.
+- [x] Add model-selector and API-key-only validation coverage; repair known UI smoke navigation/selectors.

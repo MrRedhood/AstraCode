@@ -67,11 +67,11 @@ object CloudAiProviderCatalog {
         CloudAiProviderDefinition(
             CloudAiProviderId.OPENAI_COMPATIBLE,
             CloudAiApiProtocol.OPENAI_CHAT_COMPLETIONS,
-            null,
+            "https://api.openai.com/v1",
             "https://platform.openai.com/docs",
-            "Endpoint API key (if required)",
+            "OpenAI-compatible API key",
             true,
-            "Custom cloud endpoint that implements the OpenAI-compatible Chat Completions contract."
+            "OpenAI-compatible Chat Completions using the standard OpenAI HTTPS endpoint by default."
         ),
         CloudAiProviderDefinition(
             CloudAiProviderId.GEMINI,

@@ -322,3 +322,13 @@
 - The follow-up CI run [38064098366](https://github.com/MrRedhood/AstraCode/actions/runs/38064098366) failed before Gradle started because `android-actions/setup-android@v3` invoked `sdkmanager tools`, a package no longer available from the configured SDK repository. Removed that incompatible action and now configure the hosted runner's preinstalled SDK command-line tools directly before installing only the required SDK packages.
 - The debug APK is uploaded only after a successful build, with missing APK output treated as an error; build/test reports are uploaded on failure.
 - Validation caveat: this fix is committed directly to `main`; the workflow triggered by the resulting exact HEAD is the source of truth. A triggered run is not reported as passed before its conclusion is available.
+
+
+## 2026-10-10 — API-key-only AI setup and compact chat layout
+
+- Simplified More → AI & Models to provider selection, one API-key field and Save & connect. The app discovers available models, filters obvious non-chat modalities and selects a likely general-purpose chat model automatically; users no longer need to enter a model ID or endpoint.
+- Added a standard HTTPS default for the OpenAI-compatible catalog entry. Existing saved custom endpoint overrides remain in effect. API keys remain encrypted with Android Keystore; the short connection test warns about potential charges and never attaches workspace files.
+- Fixed the compact chat header: status and conversation text use full width; AI settings, New chat and History actions move to a horizontally scrollable row instead of squeezing status text into a vertical strip.
+- Updated Help & Guide and architecture/roadmap documentation. Added model selection and API-key-only validation tests and updated UI smoke assertions.
+- Repaired three known UI Smoke failures from run [38064335972](https://github.com/MrRedhood/AstraCode/actions/runs/38064335972): Create Project return navigation and ambiguous Settings / AI & Models selectors.
+- Validation: changes are prepared for direct commit to `main`; no post-change test/workflow result is claimed.

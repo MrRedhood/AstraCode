@@ -24,7 +24,9 @@ object AiProviderSettingsValidation {
         val definition = requireNotNull(CloudAiProviderCatalog.find(configuration.providerId)) {
             "Unknown AI provider"
         }
-        AiModelTarget(configuration.providerId, configuration.modelId)
+        if (configuration.modelId.isNotBlank()) {
+            AiModelTarget(configuration.providerId, configuration.modelId)
+        }
         val endpoint = configuration.baseUrlOverride.trim()
         if (endpoint.isEmpty()) {
             require(definition.defaultBaseUrl != null) {

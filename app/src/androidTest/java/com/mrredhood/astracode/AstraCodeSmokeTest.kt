@@ -2,6 +2,7 @@ package com.mrredhood.astracode
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -48,19 +49,21 @@ class AstraCodeSmokeTest {
     }
 
     @Test
-    fun aiProviderSettingsExposeProviderModelAndSecureKeyControls() {
+    fun aiProviderSettingsRequireOnlyAnApiKeyAndSelectModelAutomatically() {
         composeRule.onNodeWithText("More").performClick()
         composeRule.onNodeWithText("Search tools and settings").performTextInput("AI & Models")
-        composeRule.onNodeWithText("AI & Models").assertIsDisplayed().performClick()
+        composeRule.onAllNodesWithText("AI & Models", substring = false).onLast().performClick()
         composeRule.onNodeWithText("AI provider settings").assertIsDisplayed()
-        composeRule.onNodeWithText("Model ID").assertIsDisplayed()
-        composeRule.onNodeWithText("API key (optional when already saved)").assertIsDisplayed()
-        composeRule.onNodeWithText("Discover models").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Save & test").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("API key").assertIsDisplayed()
+        composeRule.onNodeWithText("Save & connect").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("AstraCode uses the provider's standard HTTPS endpoint", substring = true)
+            .performScrollTo().assertIsDisplayed()
+        composeRule.onAllNodesWithText("Model ID", substring = true).assertCountEquals(0)
+        composeRule.onAllNodesWithText("Custom HTTPS base URL", substring = true).assertCountEquals(0)
     }
 
     @Test
-    fun chatShowsSetupActionUntilAProviderAndModelAreConfigured() {
+    fun chatShowsSetupActionUntilApiKeyConnectionIsComplete() {
         composeRule.onNodeWithText("AI").performClick()
         composeRule.onNodeWithText("Cloud AI not configured").assertIsDisplayed()
         composeRule.onNodeWithText("Attach files").assertIsDisplayed()
@@ -116,8 +119,7 @@ class AstraCodeSmokeTest {
         composeRule.onNodeWithText("Create a new project").assertIsDisplayed()
         composeRule.onNodeWithText("Flutter").assertIsDisplayed()
 
-        composeRule.onNodeWithText("Back to More").performClick()
-        composeRule.onNodeWithText("Home").performClick()
+        composeRule.onNodeWithText("Home", substring = false).performClick()
         composeRule.onNodeWithText("View execution").performScrollTo().performClick()
         composeRule.onNodeWithText("Execution lifecycle").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("This page does not simulate progress or claim that a task has run.", substring = true)
@@ -129,7 +131,7 @@ class AstraCodeSmokeTest {
     fun settingsThemeAndAccentPreferencesPersist() {
         composeRule.onNodeWithText("More").performClick()
         composeRule.onNodeWithText("Search tools and settings").performTextInput("Settings")
-        composeRule.onNodeWithText("Settings").performClick()
+        composeRule.onAllNodesWithText("Settings", substring = false).onLast().performClick()
         composeRule.onNodeWithText("Light").performScrollTo().performClick()
         composeRule.onNodeWithText("Pink").performScrollTo().performClick()
         composeRule.onNodeWithText("14").performScrollTo().performClick()

@@ -189,3 +189,48 @@ private fun JSONArray.containsString(expected: String): Boolean =
 
 private fun JSONObject.optIntOrNull(name: String): Int? =
     if (!has(name) || isNull(name)) null else optInt(name).takeIf { it > 0 }
+
+
+/**
+ * Selects a likely general-purpose text/chat model without asking users to know provider-specific IDs.
+ * Provider model-list order remains the final fallback because providers often return recommended models first.
+ */
+object AiDefaultModelSelector {
+    private val nonChatMarkers = listOf(
+        "embed", "moderation", "whisper", "transcrib", "text-to-speech", "-tts",
+        "rerank", "ranker", "dall-e", "stable-diffusion", "realtime", "audio",
+        "speech", "video", "imagegen", "image-generation"
+    )
+
+    private val preferredMarkers: Map<CloudAiProviderId, List<String>> = mapOf(
+        CloudAiProviderId.OPENROUTER to listOf("openrouter/auto", "flash", "mini", "claude", "gpt-", "deepseek-chat", "llama"),
+        CloudAiProviderId.OPENAI to listOf("gpt-4o-mini", "gpt-4.1-mini", "gpt-5-mini", "gpt-", "o4-mini", "o3-mini"),
+        CloudAiProviderId.OPENAI_COMPATIBLE to listOf("chat", "gpt-", "llama", "qwen", "deepseek"),
+        CloudAiProviderId.GEMINI to listOf("flash", "gemini-"),
+        CloudAiProviderId.ANTHROPIC to listOf("haiku", "sonnet", "claude-"),
+        CloudAiProviderId.XAI to listOf("mini", "grok-"),
+        CloudAiProviderId.DEEPSEEK to listOf("deepseek-chat", "deepseek-"),
+        CloudAiProviderId.MISTRAL to listOf("small", "mistral-"),
+        CloudAiProviderId.GROQ to listOf("llama", "deepseek", "qwen", "groq-"),
+        CloudAiProviderId.TOGETHER_AI to listOf("llama", "qwen", "deepseek", "meta-llama"),
+        CloudAiProviderId.FIREWORKS_AI to listOf("llama", "qwen", "deepseek"),
+        CloudAiProviderId.PERPLEXITY to listOf("sonar"),
+        CloudAiProviderId.CEREBRAS to listOf("llama", "qwen", "deepseek"),
+        CloudAiProviderId.SAMBANOVA to listOf("deepseek", "llama", "qwen"),
+        CloudAiProviderId.NVIDIA_NIM to listOf("llama", "nemotron", "qwen"),
+        CloudAiProviderId.COHERE to listOf("command-r", "command")
+    )
+
+    fun select(providerId: CloudAiProviderId, models: List<AiDiscoveredModel>): AiDiscoveredModel? {
+        val candidates = models.filter { model ->
+            model.id.isNotBlank() &&
+                nonChatMarkers.none { marker -> model.id.contains(marker, ignoreCase = true) } &&
+                nonChatMarkers.none { marker -> model.displayName.contains(marker, ignoreCase = true) }
+        }
+        if (candidates.isEmpty()) return null
+        for (marker in preferredMarkers[providerId].orEmpty()) {
+            candidates.firstOrNull { it.id.contains(marker, ignoreCase = true) }?.let { return it }
+        }
+        return candidates.first()
+    }
+}

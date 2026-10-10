@@ -2,6 +2,8 @@ package com.mrredhood.astracode
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -294,28 +296,31 @@ fun AiChatScreen(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Row(
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    if (isConfigured) configuration.modelId else "Cloud AI not configured",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    if (isConfigured) configuration.providerId.displayName else "Configure a provider to start",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    "Conversation: " + (sessions.firstOrNull { it.id == activeSessionId }?.title ?: "Loading history…"),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            Text(
+                if (isConfigured) configuration.providerId.displayName else "Cloud AI not configured",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                if (isConfigured) "Connected · model selected automatically" else "Add an API key to start",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                "Conversation: " + (sessions.firstOrNull { it.id == activeSessionId }?.title ?: "Loading history…"),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             OutlinedButton(onClick = onOpenAiSettings, enabled = !isSending && pendingToolProposal == null && !isExecutingTool) {
                 Text("AI settings")
             }
@@ -367,7 +372,7 @@ fun AiChatScreen(
                 ) {
                     Text("Connect a cloud model", style = MaterialTheme.typography.titleSmall)
                     Text(
-                        "Choose a provider, discover or enter a model ID, save its API key, and run Save & test. Only files you explicitly select are attached to a message; workspace files are never added automatically.",
+                        "Choose a provider and connect with its API key. AstraCode finds a chat model automatically. Only files you explicitly select are attached to a message; workspace files are never added automatically.",
                         style = MaterialTheme.typography.bodySmall
                     )
                     Button(onClick = onOpenAiSettings) { Text("Configure AI provider") }
