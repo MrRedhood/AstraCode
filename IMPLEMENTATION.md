@@ -137,3 +137,6 @@
 - Added an Android UI smoke test that recreates the activity and verifies More search state and selected subsection restoration; navigation keeps visible text labels.
 - Updated in-app Help & Guide, architecture notes and roadmap. Corrected stale in-app/editor-guide copy that described explicit-only saves after workspace autosave shipped.
 - Validation: committed directly to `main`; exact-head Android CI and Android UI Smoke results determine whether validation is green.
+
+
+- Documentation follow-up: clarified that live preview itself is read-only, while source draft edits and restored snapshots follow the same debounced workspace-autosave/conflict policy; removed the duplicate autosave checkbox in the roadmap.
