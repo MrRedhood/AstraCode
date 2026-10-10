@@ -46,6 +46,7 @@ class WebPreviewPolicyTest {
     fun rejectsUnsupportedAndOversizedPreviewDocuments() {
         assertNull(WebPreviewPolicy.buildDocument("Main.kt", "fun main() {}"))
         assertNull(WebPreviewPolicy.buildDocument("index.html", "x".repeat(WebPreviewPolicy.MAX_PREVIEW_BYTES + 1)))
+        assertNotNull(WebPreviewPolicy.buildDocument("index.html", "x".repeat(WebPreviewPolicy.MAX_PREVIEW_BYTES)))
         assertNotNull(WebPreviewPolicy.buildDocument("index.html", "x".repeat(1024)))
     }
 }

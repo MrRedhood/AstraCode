@@ -29,6 +29,15 @@ class EditorDraftRecordCodecTest {
     }
 
     @Test
+    fun acceptsDraftAtNewTwoMiBLimit() {
+        val text = "x".repeat(EditorDraftRecordCodec.MAX_DRAFT_BYTES)
+        val encoded = requireNotNull(EditorDraftRecordCodec.encode(
+            EditorDraftSnapshot(EditorDraftRecordCodec.fingerprint("base"), text),
+        ))
+        assertEquals(text.length, requireNotNull(EditorDraftRecordCodec.decode(encoded)).text.length)
+    }
+
+    @Test
     fun rejectsCorruptTruncatedAndTrailingRecords() {
         val valid = requireNotNull(EditorDraftRecordCodec.encode(EditorDraftSnapshot(EditorDraftRecordCodec.fingerprint("base"), "draft")))
         assertNull(EditorDraftRecordCodec.decode(byteArrayOf(1, 2, 3)))

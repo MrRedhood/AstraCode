@@ -57,5 +57,9 @@ class EditorCodeFoldingTest {
         assertTrue(folded.any { it.placeholder && it.text == "… 2 lines folded …" })
         assertTrue(folded.any { it.lineNumber == 3 && it.text == "}" })
         assertTrue(folded.any { it.text == "after()" })
+
+        val indexedRows = EditorCodeFolding.createRows(analysis, setOf(0))
+        val indexed = (0 until indexedRows.rowCount).map { indexedRows.rowAt(it, analysis, source) }
+        assertEquals(folded, indexed)
     }
 }

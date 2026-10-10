@@ -19,6 +19,19 @@ class EditorSnapshotCodecTest {
     }
 
     @Test
+    fun acceptsSnapshotAtNewTwoMiBLimit() {
+        val content = "x".repeat(EditorSnapshotCodec.MAX_CONTENT_BYTES)
+        val record = EditorSnapshotRecord(
+            "1791500000000-01234567-89ab-cdef-0123-456789abcdef",
+            "large.txt",
+            1791500000000L,
+            content,
+        )
+        val encoded = requireNotNull(EditorSnapshotCodec.encode(record))
+        assertEquals(content.length, requireNotNull(EditorSnapshotCodec.decode(encoded)).content.length)
+    }
+
+    @Test
     fun rejectsInvalidIdsOversizeContentAndCorruptRecords() {
         val invalid = EditorSnapshotRecord("invalid", "file.txt", 1L, "body")
         assertNull(EditorSnapshotCodec.encode(invalid))
@@ -48,6 +61,15 @@ class EditorTextDiffTest {
         assertTrue(result.lines.any { it == "+ BETA" })
         assertTrue(result.lines.any { it == "+ delta" })
         assertTrue(result.lines.any { it == "  alpha" })
+    }
+
+    @Test
+    fun summarizesLargeLineInputsWithoutSplitLists() {
+        val commonPrefix = "same\n".repeat(100_000)
+        val result = EditorTextDiff.compare(commonPrefix + "old", commonPrefix + "new")
+        assertTrue(result.approximate)
+        assertTrue(result.lines.any { it == "- old" })
+        assertTrue(result.lines.any { it == "+ new" })
     }
 
     @Test
