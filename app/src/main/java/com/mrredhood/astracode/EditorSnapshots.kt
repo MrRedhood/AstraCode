@@ -194,14 +194,17 @@ internal data class EditorSnapshotDiffView(
 internal object EditorTextDiff {
     private const val MAX_MATRIX_CELLS = 40_000L
     private const val MAX_VISIBLE_LINES = 240
+    private const val SUMMARY_SIDE_LIMIT = 100
 
     fun compare(before: String, after: String): EditorTextDiffResult {
         if (before == after) return EditorTextDiffResult(listOf("No differences from this snapshot."))
+        val oldCount = countLines(before)
+        val newCount = countLines(after)
+        val cells = (oldCount + 1L) * (newCount + 1L)
+        if (cells > MAX_MATRIX_CELLS) return summaryDiff(before, after, oldCount, newCount)
+
         val oldLines = before.split('\n').map { it.removeSuffix("\r") }
         val newLines = after.split('\n').map { it.removeSuffix("\r") }
-        val cells = (oldLines.size + 1L) * (newLines.size + 1L)
-        if (cells > MAX_MATRIX_CELLS) return summaryDiff(oldLines, newLines)
-
         val table = Array(oldLines.size + 1) { IntArray(newLines.size + 1) }
         for (i in oldLines.lastIndex downTo 0) {
             for (j in newLines.lastIndex downTo 0) {
@@ -217,38 +220,131 @@ internal object EditorTextDiff {
         var i = 0
         var j = 0
         while (i < oldLines.size && j < newLines.size) {
-            if (oldLines[i] == newLines[j]) { append("  ${oldLines[i]}"); i++; j++ }
-            else if (table[i + 1][j] >= table[i][j + 1]) { append("- ${oldLines[i]}"); i++ }
-            else { append("+ ${newLines[j]}"); j++ }
+            if (oldLines[i] == newLines[j]) { append("  " + oldLines[i]); i++; j++ }
+            else if (table[i + 1][j] >= table[i][j + 1]) { append("- " + oldLines[i]); i++ }
+            else { append("+ " + newLines[j]); j++ }
         }
-        while (i < oldLines.size) append("- ${oldLines[i++]}")
-        while (j < newLines.size) append("+ ${newLines[j++]}")
+        while (i < oldLines.size) append("- " + oldLines[i++])
+        while (j < newLines.size) append("+ " + newLines[j++])
         if (omitted > 0) output.add("… additional diff line(s) omitted …")
         return EditorTextDiffResult(output, omittedLineCount = omitted)
     }
 
-    private fun summaryDiff(oldLines: List<String>, newLines: List<String>): EditorTextDiffResult {
+    private fun summaryDiff(before: String, after: String, oldCount: Int, newCount: Int): EditorTextDiffResult {
         var prefix = 0
-        while (prefix < oldLines.size && prefix < newLines.size && oldLines[prefix] == newLines[prefix]) prefix++
+        val oldForward = ForwardLineCursor(before)
+        val newForward = ForwardLineCursor(after)
+        val sharedLimit = minOf(oldCount, newCount)
+        while (prefix < sharedLimit) {
+            if (!oldForward.advance() || !newForward.advance()) break
+            if (!oldForward.sameLine(newForward)) break
+            prefix++
+        }
+
         var suffix = 0
-        while (suffix < oldLines.size - prefix && suffix < newLines.size - prefix &&
-            oldLines[oldLines.lastIndex - suffix] == newLines[newLines.lastIndex - suffix]
-        ) suffix++
-        val oldChanged = oldLines.subList(prefix, oldLines.size - suffix)
-        val newChanged = newLines.subList(prefix, newLines.size - suffix)
-        val sideLimit = 100
+        val oldBackward = BackwardLineCursor(before)
+        val newBackward = BackwardLineCursor(after)
+        val suffixLimit = minOf(oldCount - prefix, newCount - prefix)
+        while (suffix < suffixLimit) {
+            if (!oldBackward.advance() || !newBackward.advance()) break
+            if (!oldBackward.sameLine(newBackward)) break
+            suffix++
+        }
+
+        val oldChangedCount = (oldCount - prefix - suffix).coerceAtLeast(0)
+        val newChangedCount = (newCount - prefix - suffix).coerceAtLeast(0)
         val lines = mutableListOf(
             "Large file diff summary",
-            "Old: ${oldLines.size} lines; current: ${newLines.size} lines",
-            "Common prefix: ${prefix} line(s); common suffix: ${suffix} line(s)",
+            "Old: " + oldCount + " lines; current: " + newCount + " lines",
+            "Common prefix: " + prefix + " line(s); common suffix: " + suffix + " line(s)",
         )
-        oldChanged.take(sideLimit).forEach { lines.add("- $it") }
-        val oldOmitted = (oldChanged.size - sideLimit).coerceAtLeast(0)
-        if (oldOmitted > 0) lines.add("… $oldOmitted removed line(s) omitted …")
-        newChanged.take(sideLimit).forEach { lines.add("+ $it") }
-        val newOmitted = (newChanged.size - sideLimit).coerceAtLeast(0)
-        if (newOmitted > 0) lines.add("… $newOmitted added line(s) omitted …")
-        if (suffix > 0) lines.add("  … $suffix shared trailing line(s) …")
+        val oldSample = sampleChangedLines(before, prefix, oldChangedCount)
+        oldSample.forEach { lines.add("- " + it) }
+        val oldOmitted = (oldChangedCount - oldSample.size).coerceAtLeast(0)
+        if (oldOmitted > 0) lines.add("… " + oldOmitted + " removed line(s) omitted …")
+        val newSample = sampleChangedLines(after, prefix, newChangedCount)
+        newSample.forEach { lines.add("+ " + it) }
+        val newOmitted = (newChangedCount - newSample.size).coerceAtLeast(0)
+        if (newOmitted > 0) lines.add("… " + newOmitted + " added line(s) omitted …")
+        if (suffix > 0) lines.add("  … " + suffix + " shared trailing line(s) …")
         return EditorTextDiffResult(lines.take(MAX_VISIBLE_LINES), approximate = true, omittedLineCount = oldOmitted + newOmitted)
+    }
+
+    private fun sampleChangedLines(text: String, skip: Int, changedCount: Int): List<String> {
+        if (changedCount <= 0) return emptyList()
+        val cursor = ForwardLineCursor(text)
+        var skipped = 0
+        while (skipped < skip && cursor.advance()) skipped++
+        val output = ArrayList<String>(minOf(changedCount, SUMMARY_SIDE_LIMIT))
+        var sampled = 0
+        while (sampled < minOf(changedCount, SUMMARY_SIDE_LIMIT) && cursor.advance()) {
+            output += cursor.currentLine()
+            sampled++
+        }
+        return output
+    }
+
+    private fun countLines(text: String): Int {
+        var count = 1
+        for (char in text) if (char == '\n') count++
+        return count
+    }
+
+    private abstract class LineCursor(protected val text: String) {
+        var lineStart: Int = 0
+            protected set
+        var lineEnd: Int = 0
+            protected set
+
+        fun sameLine(other: LineCursor): Boolean {
+            val leftLength = lineEnd - lineStart
+            val rightLength = other.lineEnd - other.lineStart
+            return leftLength == rightLength &&
+                text.regionMatches(lineStart, other.text, other.lineStart, leftLength, ignoreCase = false)
+        }
+
+        fun currentLine(): String = text.substring(lineStart, lineEnd)
+
+        protected fun trimCarriageReturn() {
+            if (lineEnd > lineStart && text[lineEnd - 1] == '\r') lineEnd--
+        }
+
+        abstract fun advance(): Boolean
+    }
+
+    private class ForwardLineCursor(text: String) : LineCursor(text) {
+        private var nextStart = 0
+        private var finished = false
+
+        override fun advance(): Boolean {
+            if (finished) return false
+            val newline = text.indexOf('\n', nextStart)
+            if (newline < 0) {
+                lineStart = nextStart
+                lineEnd = text.length
+                finished = true
+            } else {
+                lineStart = nextStart
+                lineEnd = newline
+                nextStart = newline + 1
+            }
+            trimCarriageReturn()
+            return true
+        }
+    }
+
+    private class BackwardLineCursor(text: String) : LineCursor(text) {
+        private var nextEnd = text.length
+        private var finished = false
+
+        override fun advance(): Boolean {
+            if (finished) return false
+            val newline = text.lastIndexOf('\n', nextEnd - 1)
+            lineStart = newline + 1
+            lineEnd = nextEnd
+            if (newline < 0) finished = true else nextEnd = newline
+            trimCarriageReturn()
+            return true
+        }
     }
 }
