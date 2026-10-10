@@ -731,6 +731,8 @@ internal fun AstraSettingsScreen(
     onThemeModeChange: (String) -> Unit,
     accent: String,
     onAccentChange: (String) -> Unit,
+    codeFontSize: Int,
+    onCodeFontSizeChange: (Int) -> Unit,
     onOpenAiSettings: () -> Unit,
     onOpenProjects: () -> Unit,
     onOpenTerminal: () -> Unit,
@@ -766,8 +768,27 @@ internal fun AstraSettingsScreen(
                 }
             }
         }
+        AstraPanel(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                AstraSectionTitle("Editor preferences")
+                Text("Code font size · $codeFontSize sp", style = MaterialTheme.typography.titleSmall)
+                AstraChoiceRow(
+                    options = listOf("11", "12", "13", "14", "16", "18"),
+                    selected = codeFontSize.toString(),
+                    onSelect = { it.toIntOrNull()?.let(onCodeFontSizeChange) }
+                )
+                Text(
+                    "Used by the code editor and structural inspection. JetBrains Mono is the target family; system monospace is used until licensed font files are bundled.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedButton(onClick = onOpenProjects, modifier = Modifier.fillMaxWidth()) {
+                    Text("Open editor and workspace")
+                }
+            }
+        }
         SettingsSection(
-            "Editor preferences",
+            "Editor workspace",
             "File tabs, autosave, find/replace, snapshots and code inspection.",
             "code",
             onOpenProjects
