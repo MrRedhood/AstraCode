@@ -36,6 +36,7 @@ internal class AiChatSessionStore(
                 session_id INTEGER NOT NULL,
                 role TEXT NOT NULL,
                 content TEXT NOT NULL,
+                display_content TEXT NOT NULL DEFAULT '',
                 created_at INTEGER NOT NULL,
                 FOREIGN KEY(session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
             )
@@ -46,7 +47,9 @@ internal class AiChatSessionStore(
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Future schema changes must use explicit, additive migrations.
+        if (oldVersion < 2) {
+            db.execSQL("ALTER TABLE chat_messages ADD COLUMN display_content TEXT NOT NULL DEFAULT ''")
+        }
     }
 
     @Synchronized
@@ -81,14 +84,17 @@ internal class AiChatSessionStore(
     fun loadMessages(sessionId: Long): List<AiChatMessage> {
         val result = ArrayList<AiChatMessage>(MAX_MESSAGES_PER_SESSION)
         readableDatabase.query(
-            "chat_messages", arrayOf("role", "content"),
+            "chat_messages", arrayOf("role", "content", "display_content"),
             "session_id = ?", arrayOf(sessionId.toString()),
             null, null, "id DESC", MAX_MESSAGES_PER_SESSION.toString()
         ).use { cursor ->
             while (cursor.moveToNext()) {
                 val role = parsePersistedRole(cursor)
                 val content = cursor.getString(1)
-                if (role != null && content.isNotBlank()) result.add(AiChatMessage(role, boundMessage(content)))
+                if (role != null && content.isNotBlank()) {
+                    val display = cursor.getString(2).orEmpty().takeIf { it.isNotBlank() && it != content }
+                    result.add(AiChatMessage(role, boundMessage(content), display))
+                }
             }
         }
         result.reverse()
@@ -111,6 +117,7 @@ internal class AiChatSessionStore(
                 put("session_id", sessionId)
                 put("role", message.role.name)
                 put("content", boundMessage(message.content))
+                put("display_content", boundMessage(message.displayContent ?: message.content))
                 put("created_at", nowMillis)
             }
             db.insertOrThrow("chat_messages", null, values)
@@ -128,7 +135,7 @@ internal class AiChatSessionStore(
             if (message.role == AiMessageRole.USER) {
                 db.update(
                     "chat_sessions",
-                    ContentValues().apply { put("title", normalizedTitle(message.content)) },
+                    ContentValues().apply { put("title", normalizedTitle(message.displayContent ?: message.content)) },
                     "id = ? AND title = ?",
                     arrayOf(sessionId.toString(), NEW_SESSION_TITLE)
                 )
@@ -185,7 +192,7 @@ internal class AiChatSessionStore(
         const val MAX_MESSAGE_CHARS = 60_000
         const val NEW_SESSION_TITLE = "New chat"
         const val DATABASE_NAME = "astracode_chat.db"
-        private const val DATABASE_VERSION = 1
+        private const val DATABASE_VERSION = 2
         private val WHITESPACE = Regex("\\s+")
     }
 }

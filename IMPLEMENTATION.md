@@ -192,3 +192,13 @@
 - Added instrumentation coverage for persistence across store recreation, title generation, session/message retention bounds, system-message rejection and cascading deletion.
 - Updated the in-app Help & Guide, architecture and roadmap.
 - Validation: committed directly to main with expected-head protection. Android CI and UI Smoke statuses are tied to this exact commit and reported separately; no pending workflow was waited on.
+
+
+## 2026-10-10 — Explicit text/code attachments for cloud chat
+- Added Android system document-picker attachments with strict text/code file validation, strict UTF-8 decoding and NUL/binary rejection; no workspace files are included implicitly.
+- Limited each chat message to three attachments, 16 KiB per file and 32 KiB combined. Chat displays names/sizes, allows removal before sending and permits attachment-only requests. The UI warns that selected content is sent to the chosen model and stored in local history.
+- Kept provider content separate from visible user-message text so attached source is available in later turns and durable history without rendering full files in chat bubbles.
+- Migrated the local chat schema to version 2 with a display-content column while preserving prior sessions.
+- Added unit policy tests for file-type handling, strict UTF-8, binary rejection, display/payload separation and count/size caps; extended UI smoke assertions for attachment controls and the secrets warning.
+- Updated in-app Help & Guide, architecture and roadmap.
+- Validation: committed directly to main with expected-head protection. Exact-head Android CI/UI Smoke status is authoritative; no pending workflow was waited on.

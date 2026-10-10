@@ -45,7 +45,9 @@ enum class AiMessageRole { SYSTEM, USER, ASSISTANT }
 
 data class AiChatMessage(
     val role: AiMessageRole,
-    val content: String
+    val content: String,
+    /** Optional visible text; adapters send content and ignore this presentation field. */
+    val displayContent: String? = null
 ) {
     init {
         require(content.isNotBlank()) { "Message content must not be blank" }
