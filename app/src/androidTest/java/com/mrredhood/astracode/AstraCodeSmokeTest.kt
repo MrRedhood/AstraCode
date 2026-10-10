@@ -5,6 +5,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performScrollTo
 import org.junit.Rule
 import org.junit.Test
 
@@ -28,7 +29,7 @@ class AstraCodeSmokeTest {
         composeRule.onNodeWithText("Help & Guide").assertIsDisplayed()
         composeRule.onNodeWithText("Help & Guide").performClick()
         composeRule.onNodeWithText("AstraCode Help & Guide").assertIsDisplayed()
-        composeRule.onNodeWithText("Build verification").assertIsDisplayed()
+        composeRule.onNodeWithText("Build verification").performScrollTo().assertIsDisplayed()
     }
 
     @Test

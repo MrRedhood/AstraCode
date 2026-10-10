@@ -110,3 +110,8 @@
 - Validation: Android CI and Android UI Smoke are triggered on the latest commit; only the exact run results determine success.
 
 - Documentation correction: clarify that exceeding the 1,500,000-line folding limit suppresses the folding line listing; only files above the 2 MiB editor byte cap are read-only.
+
+
+## 2026-10-10 — Keep UI smoke resilient to longer Help & Guide
+- Updated the Help & Guide instrumentation test to scroll to the “Build verification” section before asserting visibility. The guide expanded as live preview and large-file limits were documented, so the previous on-screen-only assertion was no longer reliable.
+- Previous exact-head Android CI passed; Android UI Smoke failed this visibility assertion. A fresh workflow run is triggered by this test correction.
