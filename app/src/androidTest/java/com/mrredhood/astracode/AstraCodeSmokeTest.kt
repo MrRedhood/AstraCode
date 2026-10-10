@@ -118,7 +118,7 @@ class AstraCodeSmokeTest {
 
         composeRule.onNodeWithText("Back to More").performClick()
         composeRule.onNodeWithText("Home").performClick()
-        composeRule.onNodeWithText("View execution").performClick()
+        composeRule.onNodeWithText("View execution").performScrollTo().performClick()
         composeRule.onNodeWithText("Execution lifecycle").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("This page does not simulate progress or claim that a task has run.", substring = true)
             .performScrollTo()
