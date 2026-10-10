@@ -37,7 +37,8 @@ Primary destinations: Chat · Code · Git · Build · More. Phones use bottom na
 - [x] Add an eight-tab limit, switchable editor tabs, per-tab dirty markers and draft/selection retention.
 - [ ] Add workspace-file autosave and shared diff.
 - [x] Add bounded per-file local snapshots and snapshot-to-draft text diff/restore-to-draft.
-- [x] Add measured editor line/byte metrics and a bounded read-only brace-folding view (12,000-line / 256 KiB analysis cap).\n- [ ] Add Web Live Preview.
+- [x] Add measured editor line/byte metrics and a bounded read-only brace-folding view (12,000-line / 256 KiB analysis cap).
+- [x] Add debounced WebView live preview for HTML/HTM, CSS and JavaScript, with network/file access blocked.
 - **Exit:** CRUD, save/recovery, scope and performance tests pass. Workspace-file autosave and shared diff remain outstanding; the folding view is read-only rather than an editable syntax-aware fold map.
 
 ### P4 — Settings and cloud AI

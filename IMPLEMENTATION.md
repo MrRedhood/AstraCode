@@ -82,3 +82,12 @@
 ## 2026-10-10 — Folding inspection robustness follow-up
 - Corrected the fold-view line delimiter and changed UTF-8 byte measurement to count bytes without allocating a second full copy of the draft.
 - This keeps the inspection path bounded on mobile even when the current in-memory draft exceeds the save limit.
+
+
+## 2026-10-10 — Sandboxed Web Live Preview
+- Added a debounced WebView preview for HTML/HTM, CSS and JavaScript source drafts. CSS/JS use a small sample page; HTML remains a standalone page. The preview updates after a short pause in typing and remains separate from workspace saving.
+- Applied a restrictive Content Security Policy and WebView settings that block network loads, file/content access, external navigation, DOM storage, mixed content, forms and multi-window behavior. No JavaScript bridge is exposed.
+- Capped preview source at 256 KiB; external and sibling assets are deliberately not loaded in this first slice.
+- Added JVM tests for supported extensions, CSP injection, HTML fragments, CSS/JS wrappers and the preview size cap.
+- Updated Help & Guide, architecture and roadmap. Corrected the malformed literal newline in the prior roadmap entry.
+- Validation: Android CI and Android UI Smoke are triggered on this commit; check exact run results before claiming success.

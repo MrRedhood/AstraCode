@@ -83,6 +83,7 @@ internal fun WorkspaceScreen(){
     var pendingDeleteSnapshot by remember{mutableStateOf<EditorSnapshotSummary?>(null)}
     var pendingRestoreSnapshot by remember{mutableStateOf<EditorSnapshotSummary?>(null)}
     var foldViewVisible by rememberSaveable(openedId){mutableStateOf(false)}
+    var webPreviewVisible by rememberSaveable(openedId,openedName){mutableStateOf(false)}
     var foldLoading by remember(openedId){mutableStateOf(false)}
     var foldAnalysis by remember(openedId){mutableStateOf<EditorFoldingAnalysis?>(null)}
     var foldedStarts by remember(openedId){mutableStateOf<Set<Int>>(emptySet())}
@@ -411,6 +412,9 @@ internal fun WorkspaceScreen(){
             if(previewLoading)CircularProgressIndicator()
             else if(previewError!=null)WorkspaceMessage(previewError.orEmpty(),null){}
             else if(isText){
+                if(webPreviewVisible){
+                    WebLivePreviewPane(fileName=openedName.orEmpty(),source=draft)
+                }else{
                 if(foldViewVisible && foldAnalysis!=null){
                     val analysis=foldAnalysis!!
                     Text("Read-only folding view · switch back to Edit source to change text.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -449,8 +453,19 @@ internal fun WorkspaceScreen(){
                 OutlinedButton(onClick={if(foldViewVisible)foldViewVisible=false else openFoldView()},enabled=draftReady&&!previewLoading&&!foldLoading&&!truncated&&previewError==null,modifier=Modifier.fillMaxWidth()){
                     Text(when{foldLoading->"Analyzing…";foldViewVisible->"Close folding view";else->"Fold / inspect code"})
                 }
-                OutlinedButton(onClick={searchVisible=!searchVisible;searchMessage=null},enabled=!foldViewVisible,modifier=Modifier.fillMaxWidth()){Text(if(searchVisible)"Hide find / replace" else "Find / replace")}
-                if(searchVisible&&!foldViewVisible){
+                }
+                if(WebPreviewPolicy.supports(openedName.orEmpty())){
+                    OutlinedButton(
+                        onClick={
+                            if(webPreviewVisible)webPreviewVisible=false
+                            else{webPreviewVisible=true;foldViewVisible=false;searchVisible=false;searchMessage=null}
+                        },
+                        enabled=draftReady&&!previewLoading&&!truncated&&previewError==null,
+                        modifier=Modifier.fillMaxWidth()
+                    ){Text(if(webPreviewVisible)"Edit source" else "Show live preview")}
+                }
+                OutlinedButton(onClick={searchVisible=!searchVisible;searchMessage=null},enabled=!foldViewVisible&&!webPreviewVisible,modifier=Modifier.fillMaxWidth()){Text(if(searchVisible)"Hide find / replace" else "Find / replace")}
+                if(searchVisible&&!foldViewVisible&&!webPreviewVisible){
                     OutlinedTextField(value=searchQuery,onValueChange={searchQuery=it;searchMessage=null},modifier=Modifier.fillMaxWidth(),label={Text("Find (case-insensitive)")},singleLine=true)
                     OutlinedTextField(value=replacementText,onValueChange={replacementText=it},modifier=Modifier.fillMaxWidth(),label={Text("Replace with")},singleLine=true)
                     Row(horizontalArrangement=Arrangement.spacedBy(8.dp),modifier=Modifier.fillMaxWidth()){
