@@ -144,6 +144,9 @@ internal fun AstraPageHero(
     icon: String = "more",
     trailing: (@Composable () -> Unit)? = null
 ) {
+    val dark = MaterialTheme.colorScheme.background == AstraNavy
+    val heroTitleColor = if (dark) Color(0xFFEAF3FF) else Color(0xFF12203B)
+    val heroBodyColor = if (dark) AstraMuted else Color(0xFF52627F)
     AstraPanel(
         modifier = Modifier.fillMaxWidth(),
         gradient = true
@@ -154,8 +157,8 @@ internal fun AstraPageHero(
             horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                Text(title, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface)
-                Text(description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(title, style = MaterialTheme.typography.headlineMedium, color = heroTitleColor)
+                Text(description, style = MaterialTheme.typography.bodyMedium, color = heroBodyColor)
                 if (trailing != null) {
                     Spacer(Modifier.height(4.dp))
                     trailing()
@@ -180,10 +183,11 @@ internal fun AstraPanel(
     gradient: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val fill = if (gradient) {
-        Brush.linearGradient(
-            listOf(Color(0xFF101F3C), Color(0xFF10152D), Color(0xFF17142F))
-        )
+    val dark = MaterialTheme.colorScheme.background == AstraNavy
+    val fill = if (gradient && dark) {
+        Brush.linearGradient(listOf(Color(0xFF101F3C), Color(0xFF10152D), Color(0xFF17142F)))
+    } else if (gradient) {
+        Brush.linearGradient(listOf(Color(0xFFE7F0FF), Color(0xFFF0EAFE), Color(0xFFF9EFFF)))
     } else {
         Brush.linearGradient(listOf(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.surfaceVariant))
     }
