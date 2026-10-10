@@ -10,7 +10,7 @@ Use the visible navigation labels rather than relying on icon appearance alone. 
 
 ## Dashboard, terminal and execution screens
 
-Home provides shortcuts to Projects, AI Chat, Terminal, Build & Run, Create Project and AI Execution. Projects keeps the existing SAF-based file browser/editor and its autosave, recovery, snapshots, find/replace and live preview. Settings lets you change the theme between Dark, Light and System and choose the app accent color; those choices are saveable for activity recreation.
+Home provides shortcuts to Projects, AI Chat, Terminal, Build & Run, Create Project and AI Execution. Projects keeps the existing SAF-based file browser/editor and its autosave, recovery, snapshots, find/replace and live preview. Settings lets you change the theme between Dark, Light and System and choose from six accent colors. Both choices are saved locally and persist across activity recreation and app restarts; system status/navigation bar colors and icon contrast follow the selected theme.
 
 The Terminal screen is intentionally scoped: the only executable built-ins are `help`, `pwd`, `ls` and `clear`. They do not invoke a shell. `ls` lists children of the explicitly selected SAF workspace root. Arbitrary shell, Flutter, Git, Python, package-manager and build commands are refused before a process is started.
 
