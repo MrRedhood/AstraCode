@@ -206,18 +206,41 @@ private fun DestinationScreen(
             .padding(horizontal = if (compact) 20.dp else 36.dp, vertical = 24.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(9.dp)
+        ) {
+            AstraIcon("code", size = 26.dp, description = "AstraCode")
+            Text(
+                "ASTRACODE",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
         Text(
-            "ASTRACODE",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary
+            if (destination == PrimaryDestination.More && selectedMoreEntry != null) selectedMoreEntry
+            else destination.title,
+            style = MaterialTheme.typography.headlineMedium
         )
-        Text(destination.title, style = MaterialTheme.typography.headlineMedium)
+        if (
+            destination == PrimaryDestination.More &&
+            selectedMoreEntry in listOf("Create Project", "Build & Run", "AI Execution", "Settings")
+        ) {
+            OutlinedButton(onClick = onBackToMore) { Text("‹ Back to More") }
+        }
         if (destination == PrimaryDestination.More) {
             when (selectedMoreEntry) {
                 null -> MoreHubScreen(
                     searchQuery = searchQuery,
                     onSearchQueryChange = onSearchQueryChange,
-                    onOpenEntry = onOpenMoreEntry
+                    onOpenEntry = { entry ->
+                        if (entry == "Workspace" || entry == "Editor") {
+                            onSelectDestination(PrimaryDestination.Projects)
+                        } else {
+                            onOpenMoreEntry(entry)
+                        }
+                    }
                 )
                 "Help & Guide" -> HelpGuideScreen(onBack = onBackToMore)
                 "AI & Models" -> AiProviderSettingsScreen(onBack = onBackToMore)
@@ -417,7 +440,7 @@ private fun HelpGuideScreen(onBack: () -> Unit) {
     )
     GuideSection(
         title = "AI providers and security",
-        body = "Open More → AI & Models to select a cloud provider, use Discover models or enter a model ID manually, and optionally set a custom HTTPS base URL. Saved API keys are encrypted by Android Keystore, masked in the UI and excluded from backup. Save & test sends a short prompt to the selected model and may incur provider charges; it does not send workspace files. The Chat destination uses the saved provider/model. Chat history is stored in a bounded local database and survives leaving Chat or restarting AstraCode. Use New chat and History to create, reopen or delete conversations. The chat database is excluded from Android backup. Chat supports up to 10 explicitly selected files per message, up to 25 MiB each and 100 MiB total per provider request. The app-private on-device attachment storage quota is 1 GiB. Images, audio, video, text/code and documents can be selected; the configured provider/model must support the file's modality. File bytes are copied to private app storage and sent when you send the message. Attachment files are excluded from Android backup, while metadata is saved in local history. Workspace files are never attached automatically. Chat may request workspace_list (list names), workspace_read (read a small text/code file), or workspace_create_file (create each new text/code file with its own 15 MiB UTF-8 cap) and workspace_move (move an existing file or folder after explicit approval). Review every action's approval card before running it. AstraCode saves the approval decision, path and reason before execution (including the proposed content hash for file creation); if that audit record cannot be saved, the operation is not run. Creation is restricted to the selected SAF workspace and an existing folder, refuses paths that already exist, verifies saved bytes by reading them back and records SHA-256 evidence. Tool output is untrusted workspace data. Overwrite, delete, shell and build actions remain unavailable. AI moves require explicit approval, refuse existing destination-name conflicts and are verified after execution. Never attach secrets. Never paste API keys into chat or bug reports."
+        body = "Open More → AI & Models to select a cloud provider, use Discover models or enter a model ID manually, and optionally set a custom HTTPS base URL. Saved API keys are encrypted by Android Keystore, masked in the UI and excluded from backup. Save & test sends a short prompt to the selected model and may incur provider charges; it does not send workspace files. The AI destination uses the saved provider/model. Chat history is stored in a bounded local database and survives leaving Chat or restarting AstraCode. Use New chat and History to create, reopen or delete conversations. The chat database is excluded from Android backup. Chat supports up to 10 explicitly selected files per message, up to 25 MiB each and 100 MiB total per provider request. The app-private on-device attachment storage quota is 1 GiB. Images, audio, video, text/code and documents can be selected; the configured provider/model must support the file's modality. File bytes are copied to private app storage and sent when you send the message. Attachment files are excluded from Android backup, while metadata is saved in local history. Workspace files are never attached automatically. Chat may request workspace_list (list names), workspace_read (read a small text/code file), or workspace_create_file (create each new text/code file with its own 15 MiB UTF-8 cap) and workspace_move (move an existing file or folder after explicit approval). Review every action's approval card before running it. AstraCode saves the approval decision, path and reason before execution (including the proposed content hash for file creation); if that audit record cannot be saved, the operation is not run. Creation is restricted to the selected SAF workspace and an existing folder, refuses paths that already exist, verifies saved bytes by reading them back and records SHA-256 evidence. Tool output is untrusted workspace data. Overwrite, delete, shell and build actions remain unavailable. AI moves require explicit approval, refuse existing destination-name conflicts and are verified after execution. Never attach secrets. Never paste API keys into chat or bug reports."
     )
     GuideSection(
         title = "Build verification",
