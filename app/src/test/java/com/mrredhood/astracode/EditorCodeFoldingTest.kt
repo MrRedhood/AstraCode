@@ -8,8 +8,9 @@ import org.junit.Test
 class EditorCodeFoldingTest {
     @Test
     fun reportsUtf8BytesLineCountAndLongestLine() {
-        val result = EditorCodeFolding.analyze("Main.kt", "fun x() {\n  println(\"🛰️\")\n}\n")
-        assertEquals("fun x() {\n  println(\"🛰️\")\n}\n".toByteArray(Charsets.UTF_8).size, result.metrics.utf8Bytes)
+        val source = "fun x() {\n  println(\"🛰️\")\n}\n"
+        val result = EditorCodeFolding.analyze("Main.kt", source)
+        assertEquals(source.toByteArray(Charsets.UTF_8).size, result.metrics.utf8Bytes)
         assertEquals(4, result.metrics.lineCount)
         assertEquals("  println(\"🛰️\")".length, result.metrics.longestLine)
     }
@@ -31,7 +32,7 @@ class EditorCodeFoldingTest {
         assertFalse(result.regions.isEmpty())
         assertEquals(0, result.regions.first().startLine)
         assertEquals(source.lines().lastIndex, result.regions.first().endLine)
-        assertTrue(result.regions.any { it.startLine == 3 && it.endLine == 5 })
+        assertTrue(result.regions.any { it.startLine == 4 && it.endLine == 6 })
     }
 
     @Test

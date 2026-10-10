@@ -75,7 +75,7 @@ internal object EditorCodeFolding {
             if (region != null && line in foldedStarts && region.endLine > line + 1) {
                 output += EditorFoldDisplayLine(
                     lineNumber = line,
-                    text = "… ${region.endLine - line - 1} lines folded …",
+                    text = "… " + (region.endLine - line - 1) + " lines folded …",
                     foldStartLine = line,
                     placeholder = true,
                 )
@@ -104,9 +104,12 @@ internal object EditorCodeFolding {
                     char == '/' && next == '/' -> { state = 5; index++ }
                     char == '/' && next == '*' -> { state = 6; index++ }
                     char == '\'' -> state = 1
-                    char == '"' && text.startsWith("\\""" , index) -> { state = 3; index += 2 }
+                    char == '"' && next == '"' && text.getOrNull(index + 2) == '"' -> {
+                        state = 3
+                        index += 2
+                    }
                     char == '"' -> state = 2
-                    char == '`' -> state = 4
+                    char.code == 96 -> state = 4
                     char == '{' -> stack += line
                     char == '}' && stack.isNotEmpty() -> {
                         val start = stack.removeAt(stack.lastIndex)
@@ -115,12 +118,15 @@ internal object EditorCodeFolding {
                 }
                 1, 2, 4 -> {
                     if (escaped) escaped = false
-                    else if (char == '\\\\') escaped = true
+                    else if (char.code == 92) escaped = true
                     else if ((state == 1 && char == '\'') ||
                         (state == 2 && char == '"') ||
-                        (state == 4 && char == '`')) state = 0
+                        (state == 4 && char.code == 96)) state = 0
                 }
-                3 -> if (text.startsWith("\\\""" , index)) { state = 0; index += 2 }
+                3 -> if (char == '"' && next == '"' && text.getOrNull(index + 2) == '"') {
+                    state = 0
+                    index += 2
+                }
                 5 -> if (char == '\n') state = 0
                 6 -> if (char == '*' && next == '/') { state = 0; index++ }
             }
