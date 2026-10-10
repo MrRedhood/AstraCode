@@ -24,13 +24,27 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+private enum class AiModelPriceFilter(val label: String) {
+    ALL("All prices"), FREE("Free"), PAID("Paid"), UNKNOWN("Unknown price")
+}
+
+private enum class AiModelContextFilter(val label: String) {
+    ALL("Any context size"),
+    HIGH("High · 128K+ tokens"),
+    STANDARD("Standard · 32K–128K"),
+    LOW("Low · under 32K"),
+    UNKNOWN("Unknown context")
+}
 
 @Composable
 fun AiProviderSettingsScreen(onBack: () -> Unit) {
@@ -41,18 +55,77 @@ fun AiProviderSettingsScreen(onBack: () -> Unit) {
     val selectedProvider = CloudAiProviderId.values().firstOrNull { it.name == selectedProviderName }
         ?: CloudAiProviderId.OPENROUTER
     val definition = requireNotNull(CloudAiProviderCatalog.find(selectedProvider))
-    // Keep an existing user's custom HTTPS override for compatibility; new setups use standard defaults.
+    // Preserve custom endpoints saved by older versions; new setup uses standard provider defaults.
     val savedConfig = remember(selectedProvider) { repository.loadConfiguration(selectedProvider) }
-    // API key input is intentionally not saveable, so it is never placed in saved-instance Bundle state.
+    // The key draft is deliberately not saveable, keeping secrets out of the saved-instance Bundle.
     var apiKeyDraft by remember(selectedProvider) { mutableStateOf("") }
     var hasSavedKey by remember(selectedProvider) {
         mutableStateOf(runCatching { repository.hasApiKey(selectedProvider) }.getOrDefault(false))
     }
-    var expanded by remember { mutableStateOf(false) }
+    var selectedModelId by remember(selectedProvider) { mutableStateOf(savedConfig.modelId) }
+    var discoveredModels by remember(selectedProvider) { mutableStateOf<List<AiDiscoveredModel>>(emptyList()) }
+    var modelSearchQuery by remember(selectedProvider) { mutableStateOf("") }
+    var priceFilter by remember(selectedProvider) { mutableStateOf(AiModelPriceFilter.ALL) }
+    var contextFilter by remember(selectedProvider) { mutableStateOf(AiModelContextFilter.ALL) }
+    var providerMenuExpanded by remember { mutableStateOf(false) }
+    var priceMenuExpanded by remember { mutableStateOf(false) }
+    var contextMenuExpanded by remember { mutableStateOf(false) }
     var isBusy by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var isStatusError by remember { mutableStateOf(false) }
     var confirmRemoveKey by remember { mutableStateOf(false) }
+
+    fun discoverModels() {
+        val keyDraft = apiKeyDraft
+        scope.launch {
+            isBusy = true
+            statusMessage = null
+            isStatusError = false
+            try {
+                if (keyDraft.isNotBlank()) {
+                    withContext(Dispatchers.IO) { repository.saveApiKey(selectedProvider, keyDraft) }
+                }
+                hasSavedKey = withContext(Dispatchers.IO) { repository.hasApiKey(selectedProvider) }
+                apiKeyDraft = ""
+                if (!hasSavedKey) {
+                    statusMessage = "Enter an API key before discovering models."
+                    isStatusError = true
+                    return@launch
+                }
+                statusMessage = "Discovering available models…"
+                when (val result = withContext(Dispatchers.IO) {
+                    CloudAiModelDiscoveryService(repository).discover(
+                        selectedProvider,
+                        savedConfig.baseUrlOverride.trim().takeIf { it.isNotEmpty() }
+                    )
+                }) {
+                    is AiModelDiscoveryResult.Success -> {
+                        discoveredModels = result.models
+                        val savedChoice = result.models.firstOrNull { it.id == selectedModelId }
+                        val suggested = savedChoice ?: AiDefaultModelSelector.select(selectedProvider, result.models)
+                        selectedModelId = suggested?.id.orEmpty()
+                        statusMessage = when {
+                            result.models.isEmpty() -> "The provider returned no models. Check API access and try again."
+                            suggested == null -> "Found ${result.models.size} models, but none looks like a supported chat model."
+                            else -> "Found ${result.models.size} models. A suggestion is selected; tap any other model to choose it manually."
+                        }
+                        isStatusError = result.models.isEmpty() || suggested == null
+                    }
+                    is AiModelDiscoveryResult.Failure -> {
+                        statusMessage = result.failure.detail
+                        isStatusError = true
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                statusMessage = "Model discovery failed. Check the API key and provider access."
+                isStatusError = true
+            } finally {
+                isBusy = false
+            }
+        }
+    }
 
     fun saveAndConnect() {
         val keyDraft = apiKeyDraft
@@ -71,41 +144,49 @@ fun AiProviderSettingsScreen(onBack: () -> Unit) {
                     isStatusError = true
                     return@launch
                 }
-                statusMessage = "Finding an available chat model…"
-                val discovery = withContext(Dispatchers.IO) {
-                    CloudAiModelDiscoveryService(repository).discover(
-                        selectedProvider,
-                        savedConfig.baseUrlOverride.trim().takeIf { it.isNotEmpty() }
-                    )
-                }
-                val models = when (discovery) {
-                    is AiModelDiscoveryResult.Success -> discovery.models
-                    is AiModelDiscoveryResult.Failure -> {
-                        statusMessage = "Could not find a chat model: " + discovery.failure.detail
-                        isStatusError = true
-                        return@launch
+
+                var candidateModels = discoveredModels
+                if (candidateModels.isEmpty()) {
+                    statusMessage = "Finding an available chat model…"
+                    candidateModels = when (val result = withContext(Dispatchers.IO) {
+                        CloudAiModelDiscoveryService(repository).discover(
+                            selectedProvider,
+                            savedConfig.baseUrlOverride.trim().takeIf { it.isNotEmpty() }
+                        )
+                    }) {
+                        is AiModelDiscoveryResult.Success -> result.models
+                        is AiModelDiscoveryResult.Failure -> {
+                            statusMessage = result.failure.detail
+                            isStatusError = true
+                            return@launch
+                        }
                     }
+                    discoveredModels = candidateModels
                 }
-                val selectedModel = AiDefaultModelSelector.select(selectedProvider, models)
-                if (selectedModel == null) {
-                    statusMessage = "The provider returned no suitable chat model. Check that this API key can access text-generation models."
+                val chosenModel = candidateModels.firstOrNull { it.id == selectedModelId }
+                    ?: selectedModelId.takeIf { it.isNotBlank() }?.let { AiDiscoveredModel(it, it) }
+                    ?: AiDefaultModelSelector.select(selectedProvider, candidateModels)
+                if (chosenModel == null) {
+                    statusMessage = "No suitable chat model was found. Discover models and select one manually."
                     isStatusError = true
                     return@launch
                 }
+                selectedModelId = chosenModel.id
                 val config = AiProviderConfiguration(
                     providerId = selectedProvider,
-                    modelId = selectedModel.id,
+                    modelId = chosenModel.id,
                     baseUrlOverride = savedConfig.baseUrlOverride.trim()
                 )
                 withContext(Dispatchers.IO) { repository.saveConfiguration(config) }
-                statusMessage = "Testing the connection…"
+
+                statusMessage = "Testing the selected model…"
                 when (val result = performProviderConnectionTest(repository, config)) {
                     is AiProviderResult.Success -> {
-                        statusMessage = "Connected successfully. AstraCode selected ${selectedModel.displayName} automatically."
+                        statusMessage = "Connected. Selected model: ${chosenModel.displayName}."
                         isStatusError = false
                     }
                     is AiProviderResult.Failure -> {
-                        statusMessage = "Model selected automatically, but the connection test failed: " + result.failure.detail
+                        statusMessage = "Model selected, but connection test failed: " + result.failure.detail
                         isStatusError = true
                     }
                 }
@@ -120,28 +201,51 @@ fun AiProviderSettingsScreen(onBack: () -> Unit) {
         }
     }
 
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
+    val filteredModels = discoveredModels.filter { model ->
+        val query = modelSearchQuery.trim()
+        val matchesSearch = query.isEmpty() ||
+            model.id.contains(query, ignoreCase = true) ||
+            model.displayName.contains(query, ignoreCase = true)
+        val matchesPrice = when (priceFilter) {
+            AiModelPriceFilter.ALL -> true
+            AiModelPriceFilter.FREE -> model.pricingTier == AiModelPricingTier.FREE
+            AiModelPriceFilter.PAID -> model.pricingTier == AiModelPricingTier.PAID
+            AiModelPriceFilter.UNKNOWN -> model.pricingTier == AiModelPricingTier.UNKNOWN
+        }
+        val matchesContext = when (contextFilter) {
+            AiModelContextFilter.ALL -> true
+            AiModelContextFilter.HIGH -> (model.contextWindowTokens ?: 0) >= HIGH_CONTEXT_TOKEN_THRESHOLD
+            AiModelContextFilter.STANDARD -> model.contextWindowTokens?.let { it in STANDARD_CONTEXT_TOKEN_RANGE } == true
+            AiModelContextFilter.LOW -> model.contextWindowTokens != null &&
+                model.contextWindowTokens < LOW_CONTEXT_TOKEN_THRESHOLD
+            AiModelContextFilter.UNKNOWN -> model.contextWindowTokens == null
+        }
+        matchesSearch && matchesPrice && matchesContext
+    }.sortedWith(
+        compareByDescending<AiDiscoveredModel> { it.contextWindowTokens ?: -1 }
+            .thenBy { it.displayName.lowercase(Locale.ROOT) }
+    )
+
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         OutlinedButton(onClick = onBack) { Text("Back to More") }
         Text("AI provider settings", style = MaterialTheme.typography.titleLarge)
         Text(
-            "Choose a cloud provider and enter its API key. AstraCode uses the provider's standard HTTPS endpoint and automatically selects an available chat model.",
+            "Choose a provider and enter its API key. AstraCode can select a model automatically, or you can discover models and choose one using search and filters.",
             style = MaterialTheme.typography.bodyMedium
         )
+
         Text("Provider", style = MaterialTheme.typography.labelLarge)
         Box {
-            OutlinedButton(onClick = { expanded = true }, enabled = !isBusy) {
+            OutlinedButton(onClick = { providerMenuExpanded = true }, enabled = !isBusy) {
                 Text(selectedProvider.displayName)
             }
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenu(expanded = providerMenuExpanded, onDismissRequest = { providerMenuExpanded = false }) {
                 CloudAiProviderCatalog.all.forEach { provider ->
                     DropdownMenuItem(
                         text = { Text(provider.id.displayName) },
                         onClick = {
                             selectedProviderName = provider.id.name
-                            expanded = false
+                            providerMenuExpanded = false
                             statusMessage = null
                             isStatusError = false
                         },
@@ -151,7 +255,7 @@ fun AiProviderSettingsScreen(onBack: () -> Unit) {
             }
         }
         Text(definition.description, style = MaterialTheme.typography.bodySmall)
-        Text("API protocol: ${definition.apiProtocol.displayName}", style = MaterialTheme.typography.bodySmall)
+
         OutlinedTextField(
             value = apiKeyDraft,
             onValueChange = { apiKeyDraft = it },
@@ -168,11 +272,102 @@ fun AiProviderSettingsScreen(onBack: () -> Unit) {
             singleLine = true,
             enabled = !isBusy
         )
-        Button(
-            onClick = { saveAndConnect() },
-            enabled = !isBusy,
-            modifier = Modifier.fillMaxWidth()
-        ) {
+
+        Button(onClick = { discoverModels() }, enabled = !isBusy, modifier = Modifier.fillMaxWidth()) {
+            Text(if (isBusy) "Discovering…" else "Discover models")
+        }
+
+        if (discoveredModels.isNotEmpty()) {
+            Text("Choose a model", style = MaterialTheme.typography.titleMedium)
+            OutlinedTextField(
+                value = modelSearchQuery,
+                onValueChange = { modelSearchQuery = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Search models") },
+                placeholder = { Text("Search name or model ID") },
+                singleLine = true,
+                enabled = !isBusy
+            )
+            Box {
+                OutlinedButton(onClick = { priceMenuExpanded = true }, enabled = !isBusy, modifier = Modifier.fillMaxWidth()) {
+                    Text("Price filter: ${priceFilter.label}")
+                }
+                DropdownMenu(expanded = priceMenuExpanded, onDismissRequest = { priceMenuExpanded = false }) {
+                    AiModelPriceFilter.values().forEach { filter ->
+                        DropdownMenuItem(
+                            text = { Text(filter.label) },
+                            onClick = { priceFilter = filter; priceMenuExpanded = false },
+                            enabled = !isBusy
+                        )
+                    }
+                }
+            }
+            Box {
+                OutlinedButton(onClick = { contextMenuExpanded = true }, enabled = !isBusy, modifier = Modifier.fillMaxWidth()) {
+                    Text("Token filter: ${contextFilter.label}")
+                }
+                DropdownMenu(expanded = contextMenuExpanded, onDismissRequest = { contextMenuExpanded = false }) {
+                    AiModelContextFilter.values().forEach { filter ->
+                        DropdownMenuItem(
+                            text = { Text(filter.label) },
+                            onClick = { contextFilter = filter; contextMenuExpanded = false },
+                            enabled = !isBusy
+                        )
+                    }
+                }
+            }
+            Text(
+                "Price and context filters use provider metadata when available. Unknown means the provider did not supply that information.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                "${filteredModels.size} matching models" + if (filteredModels.size > MAX_VISIBLE_MODELS) " · showing first $MAX_VISIBLE_MODELS" else "",
+                style = MaterialTheme.typography.labelMedium
+            )
+            if (filteredModels.isEmpty()) {
+                Text("No models match these filters. Change a filter or search term.", style = MaterialTheme.typography.bodySmall)
+            } else {
+                filteredModels.take(MAX_VISIBLE_MODELS).forEach { model ->
+                    OutlinedButton(
+                        onClick = {
+                            selectedModelId = model.id
+                            statusMessage = "Selected ${model.displayName}. Save & connect to use this model."
+                            isStatusError = false
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isBusy
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text(
+                                (if (selectedModelId == model.id) "✓  " else "") + model.displayName,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (selectedModelId == model.id) FontWeight.SemiBold else FontWeight.Normal
+                            )
+                            Text(model.id, style = MaterialTheme.typography.labelSmall)
+                            Text(
+                                "Context: ${model.contextWindowTokens?.let(::formatTokenCount) ?: "not supplied"} · Price: ${model.pricingTier.label()}",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            if (model.inputPriceUsdPerMillionTokens != null && model.outputPriceUsdPerMillionTokens != null) {
+                                Text(
+                                    String.format(
+                                        Locale.US,
+                                        "Approx. USD %.4f input / USD %.4f output per 1M tokens",
+                                        model.inputPriceUsdPerMillionTokens,
+                                        model.outputPriceUsdPerMillionTokens
+                                    ),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Button(onClick = { saveAndConnect() }, enabled = !isBusy, modifier = Modifier.fillMaxWidth()) {
             Text(if (isBusy) "Connecting…" else "Save & connect")
         }
         if (hasSavedKey) {
@@ -180,25 +375,18 @@ fun AiProviderSettingsScreen(onBack: () -> Unit) {
                 Text("Remove saved API key")
             }
         }
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.surfaceVariant
-        ) {
+        Surface(modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant) {
             Text(
-                "AstraCode discovers a compatible chat model for you. Connecting sends a short test prompt and may incur provider charges; workspace files are not included. Saved API keys are encrypted with Android Keystore and excluded from backup. Never share API keys in chat or bug reports.",
+                "AstraCode keeps API keys encrypted with Android Keystore and excludes them from backup. Save & connect sends a short test prompt and may incur provider charges; workspace files are not included. Price and context filters depend on provider metadata, so some entries may show Unknown.",
                 modifier = Modifier.padding(16.dp),
                 style = MaterialTheme.typography.bodySmall
             )
         }
         statusMessage?.let { message ->
-            Text(
-                message,
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (isStatusError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-            )
+            Text(message, style = MaterialTheme.typography.bodyMedium, color = if (isStatusError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
         }
     }
+
     if (confirmRemoveKey) {
         AlertDialog(
             onDismissRequest = { confirmRemoveKey = false },
@@ -228,11 +416,26 @@ fun AiProviderSettingsScreen(onBack: () -> Unit) {
                     }
                 ) { Text("Remove") }
             },
-            dismissButton = {
-                TextButton(onClick = { confirmRemoveKey = false }) { Text("Cancel") }
-            }
+            dismissButton = { TextButton(onClick = { confirmRemoveKey = false }) { Text("Cancel") } }
         )
     }
+}
+
+private const val MAX_VISIBLE_MODELS = 30
+private const val HIGH_CONTEXT_TOKEN_THRESHOLD = 128_000
+private const val LOW_CONTEXT_TOKEN_THRESHOLD = 32_000
+private val STANDARD_CONTEXT_TOKEN_RANGE = 32_000 until 128_000
+
+private fun AiModelPricingTier.label(): String = when (this) {
+    AiModelPricingTier.FREE -> "Free"
+    AiModelPricingTier.PAID -> "Paid"
+    AiModelPricingTier.UNKNOWN -> "Unknown"
+}
+
+private fun formatTokenCount(tokens: Int): String = when {
+    tokens >= 1_000_000 -> String.format(Locale.US, "%.1fM", tokens / 1_000_000.0)
+    tokens >= 1_000 -> String.format(Locale.US, "%.0fK", tokens / 1_000.0)
+    else -> tokens.toString()
 }
 
 private suspend fun performProviderConnectionTest(

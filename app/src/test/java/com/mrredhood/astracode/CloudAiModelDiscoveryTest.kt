@@ -26,8 +26,8 @@ class CloudAiModelDiscoveryTest {
     fun discoversOpenRouterModelsWithGetAndBearerAuth() = runBlocking {
         val transport = FakeTransport(AiHttpResponse(200, """
             {"data":[
-              {"id":"openai/gpt-test","name":"GPT Test","context_length":32768},
-              {"id":"anthropic/claude-test","name":"Claude Test"},
+              {"id":"openai/gpt-test","name":"GPT Test","context_length":32768,"pricing":{"prompt":"0.0000002","completion":"0.0000006"}},
+              {"id":"anthropic/claude-test","name":"Claude Test","pricing":{"prompt":"0","completion":"0"}},
               {"id":"bad model","name":"Invalid"}
             ]}
         """.trimIndent()))
@@ -38,6 +38,11 @@ class CloudAiModelDiscoveryTest {
         val models = (result as AiModelDiscoveryResult.Success).models
         assertEquals(listOf("openai/gpt-test", "anthropic/claude-test"), models.map { it.id })
         assertEquals(32768, models.first().contextWindowTokens)
+        assertEquals(0.2, models.first().inputPriceUsdPerMillionTokens!!, 0.000001)
+        assertEquals(0.6, models.first().outputPriceUsdPerMillionTokens!!, 0.000001)
+        assertEquals(AiModelPricingTier.PAID, models.first().pricingTier)
+        assertEquals(AiModelPricingTier.FREE, models[1].pricingTier)
+        assertEquals(AiModelPricingTier.UNKNOWN, AiDiscoveredModel("vendor/model", "Vendor model").pricingTier)
         assertEquals("GET", transport.request?.method)
         assertEquals("Bearer test-key", transport.request?.headers?.get("Authorization"))
         assertEquals("https://openrouter.ai/api/v1/models", transport.request?.url)

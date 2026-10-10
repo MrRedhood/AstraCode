@@ -10,11 +10,29 @@ import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 
+enum class AiModelPricingTier { FREE, PAID, UNKNOWN }
+
 data class AiDiscoveredModel(
     val id: String,
     val displayName: String,
-    val contextWindowTokens: Int? = null
-)
+    val contextWindowTokens: Int? = null,
+    /** Estimated USD per million input tokens, when the provider publishes pricing metadata. */
+    val inputPriceUsdPerMillionTokens: Double? = null,
+    /** Estimated USD per million output tokens, when the provider publishes pricing metadata. */
+    val outputPriceUsdPerMillionTokens: Double? = null
+) {
+    val pricingTier: AiModelPricingTier
+        get() = when {
+            inputPriceUsdPerMillionTokens != null && outputPriceUsdPerMillionTokens != null ->
+                if (inputPriceUsdPerMillionTokens <= 0.0 && outputPriceUsdPerMillionTokens <= 0.0) {
+                    AiModelPricingTier.FREE
+                } else {
+                    AiModelPricingTier.PAID
+                }
+            id.endsWith(":free", ignoreCase = true) -> AiModelPricingTier.FREE
+            else -> AiModelPricingTier.UNKNOWN
+        }
+}
 
 sealed class AiModelDiscoveryResult {
     data class Success(val models: List<AiDiscoveredModel>) : AiModelDiscoveryResult()
@@ -146,10 +164,18 @@ class CloudAiModelDiscoveryService(
             val context = item.optIntOrNull("context_length")
                 ?: item.optIntOrNull("context_window")
                 ?: item.optIntOrNull("inputTokenLimit")
+            // OpenRouter publishes per-token prompt/completion prices. Other providers may omit them.
+            val pricing = item.optJSONObject("pricing")
+            val inputPrice = (pricing?.optDoubleOrNull("prompt") ?: pricing?.optDoubleOrNull("input"))
+                ?.times(1_000_000.0)?.takeIf { it.isFinite() && it >= 0.0 }
+            val outputPrice = (pricing?.optDoubleOrNull("completion") ?: pricing?.optDoubleOrNull("output"))
+                ?.times(1_000_000.0)?.takeIf { it.isFinite() && it >= 0.0 }
             output += AiDiscoveredModel(
                 id = id,
                 displayName = displayName.take(MAX_DISPLAY_NAME_CHARS),
-                contextWindowTokens = context?.takeIf { it > 0 }
+                contextWindowTokens = context?.takeIf { it > 0 },
+                inputPriceUsdPerMillionTokens = inputPrice,
+                outputPriceUsdPerMillionTokens = outputPrice
             )
         }
         return output
@@ -233,4 +259,11 @@ object AiDefaultModelSelector {
         }
         return candidates.first()
     }
+}
+
+
+private fun JSONObject.optDoubleOrNull(name: String): Double? {
+    if (!has(name) || isNull(name)) return null
+    val value = optDouble(name, Double.NaN)
+    return value.takeIf { it.isFinite() && it >= 0.0 }
 }

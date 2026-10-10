@@ -332,3 +332,12 @@
 - Updated Help & Guide and architecture/roadmap documentation. Added model selection and API-key-only validation tests and updated UI smoke assertions.
 - Repaired three known UI Smoke failures from run [38064335972](https://github.com/MrRedhood/AstraCode/actions/runs/38064335972): Create Project return navigation and ambiguous Settings / AI & Models selectors.
 - Validation: changes are prepared for direct commit to `main`; no post-change test/workflow result is claimed.
+
+
+## 2026-10-10 — Manual model selection and discovery filters
+
+- Added manual selection alongside automatic selection. Users can discover available models, search by display name or model ID, and tap a model to select it before connecting.
+- Added pricing filters for Free, Paid, Unknown and All. OpenRouter prompt/completion pricing is normalized to approximate USD per million tokens; price is marked unknown rather than guessed when providers omit it.
+- Added context filters for high (128K+), standard (32K–128K), low (under 32K) and unknown token windows. Model entries show reported context and price details where available, with the visible list capped for mobile responsiveness.
+- Updated discovery unit tests and More → Help & Guide. API keys remain encrypted, and previously saved custom endpoint overrides remain supported.
+- Validation caveat: changes are prepared for direct commit to `main`; no post-change CI/UI result is claimed.
