@@ -28,6 +28,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -91,6 +93,7 @@ private fun AstraCodeApp() {
     var moreSearchQuery by rememberSaveable { mutableStateOf("") }
     var themeMode by rememberSaveable { mutableStateOf(uiPreferences.themeMode()) }
     var accentName by rememberSaveable { mutableStateOf(uiPreferences.accent()) }
+    var codeFontSize by rememberSaveable { mutableIntStateOf(uiPreferences.codeFontSize()) }
     val selected = PrimaryDestination.values().firstOrNull { it.name == selectedName } ?: PrimaryDestination.Home
 
     BackHandler(enabled = selected == PrimaryDestination.More && selectedMoreEntry != null) {
@@ -140,6 +143,8 @@ private fun AstraCodeApp() {
                             onThemeModeChange = { themeMode = it; uiPreferences.saveThemeMode(it) },
                             accentName = accentName,
                             onAccentChange = { accentName = it; uiPreferences.saveAccent(it) },
+                            codeFontSize = codeFontSize,
+                            onCodeFontSizeChange = { codeFontSize = it; uiPreferences.saveCodeFontSize(it) },
                             modifier = Modifier.padding(innerPadding)
                         )
                     }
@@ -175,6 +180,8 @@ private fun AstraCodeApp() {
                                 onThemeModeChange = { themeMode = it; uiPreferences.saveThemeMode(it) },
                                 accentName = accentName,
                                 onAccentChange = { accentName = it; uiPreferences.saveAccent(it) },
+                            codeFontSize = codeFontSize,
+                            onCodeFontSizeChange = { codeFontSize = it; uiPreferences.saveCodeFontSize(it) },
                                 modifier = Modifier.padding(innerPadding)
                             )
                         }
@@ -199,6 +206,8 @@ private fun DestinationScreen(
     onThemeModeChange: (String) -> Unit,
     accentName: String,
     onAccentChange: (String) -> Unit,
+    codeFontSize: Int,
+    onCodeFontSizeChange: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -261,6 +270,8 @@ private fun DestinationScreen(
                     onThemeModeChange = onThemeModeChange,
                     accent = accentName,
                     onAccentChange = onAccentChange,
+                    codeFontSize = codeFontSize,
+                    onCodeFontSizeChange = onCodeFontSizeChange,
                     onOpenAiSettings = { onOpenMoreEntry("AI & Models") },
                     onOpenProjects = { onSelectDestination(PrimaryDestination.Projects) },
                     onOpenTerminal = { onSelectDestination(PrimaryDestination.Terminal) },
@@ -281,7 +292,7 @@ private fun DestinationScreen(
                 onOpenExecution = { onSelectDestination(PrimaryDestination.More); onOpenMoreEntry("AI Execution") }
             )
         } else if (destination == PrimaryDestination.Projects) {
-            WorkspaceScreen()
+            WorkspaceScreen(codeFontSize = codeFontSize)
         } else if (destination == PrimaryDestination.AI) {
             AiChatScreen(
                 onOpenAiSettings = {
