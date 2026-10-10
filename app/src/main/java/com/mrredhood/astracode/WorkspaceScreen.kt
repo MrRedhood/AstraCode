@@ -36,11 +36,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
@@ -55,7 +55,7 @@ import java.text.SimpleDateFormat
 private data class WorkspaceBreadcrumb(val documentId:String,val name:String)
 
 @Composable
-internal fun WorkspaceScreen(){
+internal fun WorkspaceScreen(codeFontSize: Int = 13){
     val context=LocalContext.current
     val repository=remember(context){WorkspaceRepository(context.applicationContext)}
     val draftStore=remember(context){EditorDraftStore(context.applicationContext)}
@@ -636,14 +636,14 @@ internal fun WorkspaceScreen(){
                                         val collapsed=row.foldStartLine!=null&&row.foldStartLine in foldedStarts
                                         Text(if(row.placeholder||collapsed)"+" else if(row.foldStartLine!=null)"−" else " ")
                                     }
-                                    Text(row.text.ifEmpty{" "},modifier=Modifier.weight(1f),maxLines=1,overflow=TextOverflow.Ellipsis,fontFamily=FontFamily.Monospace,style=MaterialTheme.typography.bodySmall)
+                                    Text(row.text.ifEmpty{" "},modifier=Modifier.weight(1f),maxLines=1,overflow=TextOverflow.Ellipsis,fontFamily=AstraCodeTypography.CodeFont,fontSize=codeFontSize.sp,style=MaterialTheme.typography.bodySmall)
                                 }
                             }
                         }
                     }
                     OutlinedButton(onClick={foldViewVisible=false},modifier=Modifier.fillMaxWidth()){Text("Edit source")}
                 }else{
-                    TextField(value=TextFieldValue(text=draft,selection=selection),onValueChange={value->updateDraft(value.text,value.selection);notice=null;searchMessage=null;recoveryStatus=null},modifier=Modifier.fillMaxWidth().heightIn(min=260.dp),readOnly=!editable,label={Text("File contents")},textStyle=MaterialTheme.typography.bodyMedium.copy(fontFamily=FontFamily.Monospace))
+                    TextField(value=TextFieldValue(text=draft,selection=selection),onValueChange={value->updateDraft(value.text,value.selection);notice=null;searchMessage=null;recoveryStatus=null},modifier=Modifier.fillMaxWidth().heightIn(min=260.dp),readOnly=!editable,label={Text("File contents")},textStyle=MaterialTheme.typography.bodyMedium.copy(fontFamily=AstraCodeTypography.CodeFont,fontSize=codeFontSize.sp,lineHeight=(codeFontSize*1.45f).sp))
                 }
                 if(!webPreviewVisible){
                     OutlinedButton(onClick={if(foldViewVisible)foldViewVisible=false else openFoldView()},enabled=draftReady&&!previewLoading&&!foldLoading&&!truncated&&previewError==null,modifier=Modifier.fillMaxWidth()){
@@ -916,7 +916,7 @@ internal fun WorkspaceScreen(){
                 Text("${diff.leftLabel}  →  ${diff.rightLabel}",style=MaterialTheme.typography.labelMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
                 if(diff.result.approximate)Text("Large diff shown as a bounded summary.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)
                 diff.result.lines.forEach{line->
-                    Text(line,fontFamily=FontFamily.Monospace,style=MaterialTheme.typography.bodySmall,color=when{
+                    Text(line,fontFamily=AstraCodeTypography.CodeFont,fontSize=codeFontSize.sp,lineHeight=(codeFontSize*1.45f).sp,style=MaterialTheme.typography.bodySmall,color=when{
                         line.startsWith("+ ") -> MaterialTheme.colorScheme.primary
                         line.startsWith("- ") -> MaterialTheme.colorScheme.error
                         line.startsWith("…") -> MaterialTheme.colorScheme.tertiary
