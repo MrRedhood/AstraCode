@@ -315,9 +315,10 @@
 - Static source review confirmed balanced delimiters across the changed Kotlin screens, theme, preferences, workspace/editor, icon and UI test files. This is a syntax-structure check only, not a substitute for Gradle compilation or emulator tests.
 
 
-## 2026-10-10 — Repair Android CI compilation and toolchain setup
+## 2026-10-10 — Repair Android CI compilation and SDK setup
 
-- Fixed the exact Kotlin compilation failures from Android CI run [38063717672](https://github.com/MrRedhood/AstraCode/actions/runs/38063717672): imported Material 3 `Surface`, the text-family and `sp` types used by Terminal, and the Compose `Modifier.size` extension used for the brand logo. Terminal output now uses the shared AstraCode monospace typography role.
-- Made Android SDK provisioning explicit in `.github/workflows/android.yml` for compile SDK 36 and build-tools 36.0.0 instead of relying on whatever SDK packages happen to be preinstalled on the hosted runner.
-- Added toolchain diagnostics. The debug APK is now uploaded only after a successful build and missing APK output fails the artifact step; build/test reports are uploaded when CI fails.
-- Validation caveat: the fix is committed directly to `main`; the new workflow run must be inspected for the exact resulting commit. The previous run failed at `:app:compileDebugKotlin` due to the import errors above, before unit tests could finish.
+- Fixed the Kotlin compilation failures reported by Android CI run [38063717672](https://github.com/MrRedhood/AstraCode/actions/runs/38063717672): imported Material 3 `Surface`, the text-family and `sp` types used by Terminal, and the Compose `Modifier.size` extension used for the brand logo. Terminal output uses the shared AstraCode monospace typography role.
+- Pinned installation of Android platform 36 and build-tools 36.0.0, and retained toolchain diagnostics.
+- The follow-up CI run [38064098366](https://github.com/MrRedhood/AstraCode/actions/runs/38064098366) failed before Gradle started because `android-actions/setup-android@v3` invoked `sdkmanager tools`, a package no longer available from the configured SDK repository. Removed that incompatible action and now configure the hosted runner's preinstalled SDK command-line tools directly before installing only the required SDK packages.
+- The debug APK is uploaded only after a successful build, with missing APK output treated as an error; build/test reports are uploaded on failure.
+- Validation caveat: this fix is committed directly to `main`; the workflow triggered by the resulting exact HEAD is the source of truth. A triggered run is not reported as passed before its conclusion is available.
