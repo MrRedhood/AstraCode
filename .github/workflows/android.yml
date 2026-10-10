@@ -20,18 +20,40 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
+      - name: Verify toolchain
+        run: |
+          java -version
+          gradle --version
+          sdkmanager --list_installed
       - name: Unit tests
         run: gradle testDebugUnitTest --stacktrace
       - name: Debug APK
         run: gradle assembleDebug --stacktrace
       - name: Upload debug APK
-        if: always()
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: astracode-debug-apk
           path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload build and test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: astracode-ci-failure-reports
+          path: |
+            app/build/reports/
+            app/build/test-results/
+            build/reports/
           if-no-files-found: ignore
           retention-days: 7

@@ -313,3 +313,11 @@
 - Adjusted the Home dashboard UI smoke test to scroll the execution action into view before clicking, reducing viewport-dependent emulator failures.
 - Made Light theme accent colors use deeper contrast-safe shades, so changing the saved accent visibly affects both dark and light appearances while maintaining text contrast.
 - Static source review confirmed balanced delimiters across the changed Kotlin screens, theme, preferences, workspace/editor, icon and UI test files. This is a syntax-structure check only, not a substitute for Gradle compilation or emulator tests.
+
+
+## 2026-10-10 — Repair Android CI compilation and toolchain setup
+
+- Fixed the exact Kotlin compilation failures from Android CI run [38063717672](https://github.com/MrRedhood/AstraCode/actions/runs/38063717672): imported Material 3 `Surface`, the text-family and `sp` types used by Terminal, and the Compose `Modifier.size` extension used for the brand logo. Terminal output now uses the shared AstraCode monospace typography role.
+- Made Android SDK provisioning explicit in `.github/workflows/android.yml` for compile SDK 36 and build-tools 36.0.0 instead of relying on whatever SDK packages happen to be preinstalled on the hosted runner.
+- Added toolchain diagnostics. The debug APK is now uploaded only after a successful build and missing APK output fails the artifact step; build/test reports are uploaded when CI fails.
+- Validation caveat: the fix is committed directly to `main`; the new workflow run must be inspected for the exact resulting commit. The previous run failed at `:app:compileDebugKotlin` due to the import errors above, before unit tests could finish.
