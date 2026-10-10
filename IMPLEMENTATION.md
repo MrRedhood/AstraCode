@@ -267,3 +267,11 @@
 - Expanded More and the in-app Help & Guide, updated user documentation, architecture and roadmap, and added UI smoke coverage for new navigation, safe terminal rejection, and build-runner status.
 - Typography follows the uploaded pack's scale and family roles, using Android system sans-serif/monospace fallbacks because the supplied ZIP contains no font binaries. Existing locally drawn Compose icons remain in use; no remote font or icon dependency was added.
 - Validation: GitHub connector writes were accepted on `main`. The initial handoff Android CI run was green; the handoff Android UI Smoke run was still in progress when last inspected. New commits trigger fresh workflows; latest-head results must be checked separately. No local Gradle run was available in this environment.
+
+
+## 2026-10-10 — UI integration and theme refinements
+
+- Follow-up UI fixes make contextual More-screen titles and a Back to More action visible, route the Workspace and Editor shortcuts to the existing SAF workspace instead of generic placeholders, and add an AstraCode emblem-style icon to the section header.
+- Updated the Help & Guide's workspace path and AI destination names to match the new navigation.
+- Fixed hero/panel contrast for Light mode and switched custom Compose icon palette selection to the app's chosen theme rather than only Android's system theme.
+- Validation remains pending for this new HEAD: no local Gradle build was available, and earlier CI/UI runs target earlier commits. Do not treat those historical runs as evidence for the current HEAD.
