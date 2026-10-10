@@ -15,7 +15,7 @@ internal data class EditorDraftSnapshot(
 
 /** Bounded, versioned draft format shared by local recovery storage and its JVM tests. */
 internal object EditorDraftRecordCodec {
-    const val MAX_DRAFT_BYTES = 256 * 1024
+    const val MAX_DRAFT_BYTES = 2 * 1024 * 1024
     private const val MAGIC = 0x41534452 // ASDR
     private const val VERSION = 1
     private val fingerprintPattern = Regex("[0-9a-f]{64}")

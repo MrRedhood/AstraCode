@@ -7,7 +7,7 @@ import java.util.Locale
  * are intentionally disallowed by both the document CSP and the WebView client.
  */
 internal object WebPreviewPolicy {
-    const val MAX_PREVIEW_BYTES = 256 * 1024
+    const val MAX_PREVIEW_BYTES = 2 * 1024 * 1024
 
     private val previewExtensions = setOf("html", "htm", "css", "js", "mjs")
     private val headPattern = Regex("(?i)<head\\b[^>]*>")

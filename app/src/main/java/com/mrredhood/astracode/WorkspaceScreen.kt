@@ -214,7 +214,7 @@ internal fun WorkspaceScreen(){
             snapshotBusy=false
             when(result){
                 EditorSnapshotCreateResult.Created->{snapshotNotice="Snapshot saved locally.";snapshotError=null}
-                EditorSnapshotCreateResult.TooLarge->{snapshotNotice=null;snapshotError="Snapshot exceeds the 256 KiB limit."}
+                EditorSnapshotCreateResult.TooLarge->{snapshotNotice=null;snapshotError="Snapshot exceeds the 2 MiB limit."}
                 EditorSnapshotCreateResult.Failed->{snapshotNotice=null;snapshotError="Could not save the snapshot on this device."}
             }
             if(snapshotDialog)loadSnapshots()
@@ -374,7 +374,7 @@ internal fun WorkspaceScreen(){
         val result=withContext(Dispatchers.IO){draftStore.save(treeKey,id,original,draft)}
         recoveryStatus=when(result){
             EditorDraftWriteResult.Saved->"Recovery copy saved on this device."
-            EditorDraftWriteResult.TooLarge->"Local recovery is unavailable for drafts above 256 KiB."
+            EditorDraftWriteResult.TooLarge->"Local recovery is unavailable for drafts above 2 MiB."
             EditorDraftWriteResult.Failed->"Could not save a local recovery copy; use Save file."
         }
     }
@@ -405,7 +405,7 @@ internal fun WorkspaceScreen(){
             Text(openedName.orEmpty(),style=MaterialTheme.typography.titleLarge)
             Text(when{
                 !isText->"Unsupported file type."
-                truncated->"Read-only: file exceeds the 256 KiB editor limit."
+                truncated->"Read-only: file exceeds the 2 MiB editor limit."
                 !openedWritable->"Read-only: storage provider did not grant write support."
                 else->"Edit text and use Save file to write changes."
             },style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -417,18 +417,18 @@ internal fun WorkspaceScreen(){
                     Text("Read-only folding view · switch back to Edit source to change text.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("${analysis.metrics.lineCount} lines · ${formatSize(analysis.metrics.utf8Bytes.toLong())} · longest line ${analysis.metrics.longestLine} characters",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     if(analysis.metrics.lineCount>EditorCodeFolding.MAX_FOLD_LINES || analysis.metrics.utf8Bytes>EditorCodeFolding.MAX_ANALYSIS_BYTES){
-                        Text("Folding view is capped at ${EditorCodeFolding.MAX_FOLD_LINES} lines and 256 KiB to keep analysis bounded.",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
+                        Text("Folding view is capped at ${EditorCodeFolding.MAX_FOLD_LINES} lines and 2 MiB to keep analysis bounded.",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
                     }else{
-                        val sourceLines=remember(draft){draft.split('\n')}
-                        val rows=remember(sourceLines,analysis,foldedStarts){EditorCodeFolding.visibleLines(sourceLines,analysis,foldedStarts)}
+                        val rows=remember(analysis,foldedStarts){EditorCodeFolding.createRows(analysis,foldedStarts)}
                         if(!analysis.syntaxSupported)Text("Brace folding is not enabled for this file type; this view can still inspect its lines.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        else if(analysis.regionsTruncated)Text("Fold analysis reached its 50,000-region or 20,000-level nesting safety limit; remaining lines stay available.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.tertiary)
                         else if(analysis.regions.isEmpty())Text("No multi-line brace-delimited blocks were detected.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                         if(analysis.metrics.lineCount>EditorCodeFolding.PERFORMANCE_NOTICE_LINES || analysis.metrics.longestLine>EditorCodeFolding.PERFORMANCE_NOTICE_LINE_LENGTH){
                             Text("Dense text can take longer to edit on mobile. The folding view is read-only and uses bounded line analysis.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.tertiary)
                         }
                         LazyColumn(modifier=Modifier.fillMaxWidth().heightIn(max=400.dp),verticalArrangement=Arrangement.spacedBy(2.dp)){
-                            items(rows.size){rowIndex->
-                                val row=rows[rowIndex]
+                            items(count=rows.rowCount){rowIndex->
+                                val row=rows.rowAt(rowIndex,analysis,draft)
                                 Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(4.dp),modifier=Modifier.fillMaxWidth()){
                                     Text(if(row.placeholder) "…" else (row.lineNumber+1).toString(),modifier=Modifier.width(40.dp),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                                     TextButton(onClick={
@@ -646,7 +646,7 @@ internal fun WorkspaceScreen(){
                         closeTabInUi(id,discardRecovery=false);closeTabTarget=null;closeTabError=null
                         notice="Kept a local recovery draft and closed the tab."
                     }else{
-                        closeTabError=if(result==EditorDraftWriteResult.TooLarge)"This draft exceeds the 256 KiB recovery limit. Save the file or discard the draft."else"Could not write a recovery copy. Save the file or discard the draft."
+                        closeTabError=if(result==EditorDraftWriteResult.TooLarge)"This draft exceeds the 2 MiB recovery limit. Save the file or discard the draft."else"Could not write a recovery copy. Save the file or discard the draft."
                     }
                 }
             }

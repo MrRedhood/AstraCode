@@ -70,10 +70,10 @@ internal class WorkspaceRepository(context:Context) {
     }
     fun writeText(tree:Uri,id:String,text:String){
         val bytes=text.toByteArray(StandardCharsets.UTF_8)
-        if(bytes.size>MAX_BYTES)throw IOException("The editor can save files up to 256 KiB.")
+        if(bytes.size>MAX_BYTES)throw IOException("The editor can save files up to 2 MiB.")
         val uri=DocumentsContract.buildDocumentUriUsingTree(tree,id)
         val out=resolver.openOutputStream(uri,"wt")?:throw IOException("The provider did not open this file for writing.")
         out.use{it.write(bytes);it.flush()}
     }
-    companion object{private const val MAX_BYTES=256*1024}
+    companion object{private const val MAX_BYTES=2*1024*1024}
 }

@@ -44,10 +44,11 @@ class EditorCodeFoldingTest {
 
     @Test
     fun boundsAnalysisAndVisibleFoldRows() {
-        val tooManyLines = (1..EditorCodeFolding.MAX_FOLD_LINES + 1).joinToString("\n") { "x" }
+        val tooManyLines = "\n".repeat(EditorCodeFolding.MAX_FOLD_LINES)
         val limited = EditorCodeFolding.analyze("Large.kt", tooManyLines)
         assertTrue(limited.limitExceeded)
         assertTrue(limited.regions.isEmpty())
+        assertEquals(EditorCodeFolding.MAX_FOLD_LINES + 1, limited.metrics.lineCount)
 
         val source = "fun run() {\n  first()\n  second()\n}\nafter()"
         val analysis = EditorCodeFolding.analyze("Main.kt", source)

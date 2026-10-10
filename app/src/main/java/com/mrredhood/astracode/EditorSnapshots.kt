@@ -29,7 +29,7 @@ internal data class EditorSnapshotRecord(
 internal enum class EditorSnapshotCreateResult { Created, TooLarge, Failed }
 
 internal object EditorSnapshotCodec {
-    const val MAX_CONTENT_BYTES = 256 * 1024
+    const val MAX_CONTENT_BYTES = 2 * 1024 * 1024
     private const val MAGIC = 0x4153534E // ASSN
     private const val VERSION = 1
     private val idPattern = Regex("[0-9]{1,20}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
