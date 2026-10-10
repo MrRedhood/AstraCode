@@ -23,11 +23,24 @@ internal class AstraUiPreferences(context: Context) {
         if (value in ACCENTS) preferences.edit().putString(KEY_ACCENT, value).apply()
     }
 
+    fun codeFontSize(): Int = preferences.getInt(KEY_CODE_FONT_SIZE, DEFAULT_CODE_FONT_SIZE)
+        .coerceIn(MIN_CODE_FONT_SIZE, MAX_CODE_FONT_SIZE)
+
+    fun saveCodeFontSize(value: Int) {
+        if (value in MIN_CODE_FONT_SIZE..MAX_CODE_FONT_SIZE) {
+            preferences.edit().putInt(KEY_CODE_FONT_SIZE, value).apply()
+        }
+    }
+
     private companion object {
         const val KEY_THEME = "theme_mode"
         const val KEY_ACCENT = "accent"
+        const val KEY_CODE_FONT_SIZE = "code_font_size"
         const val DEFAULT_THEME = "Dark"
         const val DEFAULT_ACCENT = "Blue"
+        const val DEFAULT_CODE_FONT_SIZE = 13
+        const val MIN_CODE_FONT_SIZE = 11
+        const val MAX_CODE_FONT_SIZE = 22
         val THEME_MODES = setOf("Dark", "Light", "System")
         val ACCENTS = setOf("Cyan", "Blue", "Purple", "Pink", "Gold", "Green")
     }
