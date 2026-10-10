@@ -1,5 +1,8 @@
 package com.mrredhood.astracode
 
+import android.app.Activity
+import android.view.View
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -34,6 +37,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,8 +47,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
@@ -80,6 +84,7 @@ internal fun AstraCodeTheme(
     accent: String,
     content: @Composable () -> Unit
 ) {
+    val hostActivity = LocalContext.current as? Activity
     val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
     val dark = when (mode) {
         "Light" -> false
@@ -115,6 +120,20 @@ internal fun AstraCodeTheme(
             onSurfaceVariant = Color(0xFF52627F),
             outline = Color(0xFFB9C7DE)
         )
+    }
+    SideEffect {
+        hostActivity?.window?.let { window ->
+            val barColor = if (dark) Color(0xFF050B18) else Color(0xFFF4F7FF)
+            window.statusBarColor = barColor.toArgb()
+            window.navigationBarColor = barColor.toArgb()
+            val lightBarFlags = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+            val currentFlags = window.decorView.systemUiVisibility
+            window.decorView.systemUiVisibility = if (dark) {
+                currentFlags and lightBarFlags.inv()
+            } else {
+                currentFlags or lightBarFlags
+            }
+        }
     }
     MaterialTheme(colorScheme = scheme, typography = AstraCodeTypography.Scale, content = content)
 }
@@ -499,7 +518,7 @@ internal fun TerminalScreen() {
         AstraPageHero("Terminal", "A scoped workspace console with safe built-in commands.", "terminal")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
             listOf("help", "pwd", "ls", "clear", "flutter run").forEach { command ->
-                FilterChip(selected = false, onClick = { prompt = command }, label = { Text(command, fontFamily = FontFamily.Monospace) })
+                FilterChip(selected = false, onClick = { prompt = command }, label = { Text(command, fontFamily = AstraCodeTypography.CodeFont) })
             }
         }
         AstraPanel(modifier = Modifier.fillMaxWidth()) {
