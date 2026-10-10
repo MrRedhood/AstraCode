@@ -282,3 +282,9 @@
 - Added dedicated locally drawn Compose glyphs for Home, approval, execution, artifact and storage so the new destination/status names no longer render as the generic fallback icon. Icons adapt to the selected AstraCode theme.
 - Kept the local Canvas icon system to avoid introducing SVG runtime dependencies; the uploaded pack’s palette and icon semantics inform these additions. The pack does not change the existing app launcher asset.
 - Validation for the latest UI commits remains unverified pending current-head CI/UI results; no local Android SDK/Gradle run was available in this execution environment.
+
+
+## 2026-10-10 — Polish dashboard navigation semantics
+
+- Renamed the dashboard shortcut cards to `Terminal tools` and `Project files` so their text does not duplicate the persistent Terminal and Projects navigation labels. This keeps Compose UI test selection deterministic and makes the shortcut intent clearer.
+- No changes to workspace scope or command capabilities; all existing approval and SAF boundaries are retained.
