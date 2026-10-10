@@ -99,3 +99,12 @@
 - Changed preview-size checking to count UTF-8 bytes without first allocating a second encoded copy of the full draft.
 
 - Follow-up: added Web Live Preview and folding instructions to the runtime More → Help & Guide screen, not only the Markdown documentation.
+
+
+## 2026-10-10 — Raise editor content caps and line indexing
+- Expanded workspace text reads/writes, local recovery drafts, per-file snapshots and Web Live Preview from 256 KiB to 2 MiB.
+- Expanded folding inspection to 1,500,000 lines with a 2 MiB analysis bound. Replaced full line splitting and row materialization with an IntArray line index and virtualized Compose rows.
+- Bounded folding metadata to 50,000 regions and 20,000 nesting levels; clipped individual display rows at 4,000 characters to limit rendering work.
+- Reworked oversized diff generation to compare lines with forward/backward streaming cursors and emit only a bounded prefix/suffix sample instead of million-entry split lists.
+- Updated current docs, UI messaging, runtime Help & Guide and tests for the new content limits.
+- Validation: Android CI and Android UI Smoke are triggered on the latest commit; only the exact run results determine success.
