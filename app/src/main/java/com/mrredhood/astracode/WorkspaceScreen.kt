@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -76,7 +78,10 @@ internal fun WorkspaceScreen(){
     var targetName by rememberSaveable{mutableStateOf("")}
     var nameInput by rememberSaveable{mutableStateOf("")}
     var dialogError by rememberSaveable{mutableStateOf<String?>(null)}
-    var discardDialog by rememberSaveable{mutableStateOf(false)}
+    var closeTabTarget by rememberSaveable{mutableStateOf<String?>(null)}
+    var closeTabError by rememberSaveable{mutableStateOf<String?>(null)}
+    val editorTabs=remember(treeUriString){mutableStateListOf<WorkspaceEditorTab>()}
+    val editorBuffers=remember(treeUriString){mutableStateMapOf<String,WorkspaceEditorBuffer>()}
     var moveId by rememberSaveable{mutableStateOf<String?>(null)}
     var moveName by rememberSaveable{mutableStateOf<String?>(null)}
     var moveParent by rememberSaveable{mutableStateOf<String?>(null)}
@@ -88,12 +93,80 @@ internal fun WorkspaceScreen(){
     val dirty=isText&&draft!=original
     val editable=isText&&openedWritable&&!truncated&&previewError==null
 
-    fun clearFile(discardRecovery:Boolean=false){
-        val previousTree=treeUriString;val previousId=openedId
-        if(discardRecovery&&previousTree!=null&&previousId!=null)scope.launch(Dispatchers.IO){draftStore.delete(previousTree,previousId)}
-        openedId=null;openedName=null;openedMime=null;openedWritable=false;previewError=null;truncated=false;draft="";original="";draftReady=false;recoveryStatus=null;selection=TextRange.Zero;searchVisible=false;searchQuery="";replacementText="";searchMessage=null
+    fun cacheActiveBuffer(){
+        val id=openedId?:return
+        if(!draftReady)return
+        editorBuffers[id]=WorkspaceEditorBuffer(draft,original,selection.start,selection.end,truncated,previewError)
     }
-    fun closeFile(){if(dirty)discardDialog=true else clearFile(discardRecovery=true)}
+    fun updateDraft(text:String,range:TextRange){
+        draft=text;selection=range
+        val id=openedId
+        if(id!=null&&draftReady)editorBuffers[id]=WorkspaceEditorBuffer(text,original,range.start,range.end,truncated,previewError)
+    }
+    fun updateSelection(range:TextRange){
+        selection=range
+        val id=openedId
+        if(id!=null&&draftReady)editorBuffers[id]=WorkspaceEditorBuffer(draft,original,range.start,range.end,truncated,previewError)
+    }
+    fun clearActiveEditor(){
+        openedId=null;openedName=null;openedMime=null;openedWritable=false;previewError=null;truncated=false;draft="";original="";draftReady=false;previewLoading=false;recoveryStatus=null;selection=TextRange.Zero;searchVisible=false;searchQuery="";replacementText="";searchMessage=null
+    }
+    fun persistActiveDraft(){
+        cacheActiveBuffer()
+        val id=openedId?:return
+        val treeKey=treeUriString?:return
+        val baseline=original;val contents=draft
+        if(!draftReady||!openedWritable||truncated||previewError!=null||contents==baseline)return
+        scope.launch(Dispatchers.IO){draftStore.save(treeKey,id,baseline,contents)}
+    }
+    fun backToFiles(){
+        persistActiveDraft()
+        clearActiveEditor()
+    }
+    fun closeTabInUi(id:String,discardRecovery:Boolean){
+        if(discardRecovery){
+            val treeKey=treeUriString
+            if(treeKey!=null)scope.launch(Dispatchers.IO){draftStore.delete(treeKey,id)}
+        }
+        val remaining=WorkspaceTabActions.close(editorTabs.toList(),id)
+        editorTabs.clear();editorTabs.addAll(remaining)
+        editorBuffers.remove(id)
+        if(openedId==id)clearActiveEditor()
+    }
+    fun activateTab(tab:WorkspaceEditorTab){
+        if(openedId==tab.documentId){
+            openedName=tab.displayName;openedMime=tab.mimeType;openedWritable=tab.writable
+            return
+        }
+        persistActiveDraft()
+        val buffer=editorBuffers[tab.documentId]
+        openedId=tab.documentId;openedName=tab.displayName;openedMime=tab.mimeType;openedWritable=tab.writable
+        previewError=buffer?.previewError;truncated=buffer?.truncated?:false
+        if(buffer!=null){
+            draft=buffer.draft;original=buffer.original
+            selection=TextRange(buffer.selectionStart.coerceIn(0,buffer.draft.length),buffer.selectionEnd.coerceIn(0,buffer.draft.length))
+            draftReady=true;previewLoading=false
+            recoveryStatus=if(buffer.draft!=buffer.original)"Draft retained in this session." else null
+        }else{
+            draft="";original="";selection=TextRange.Zero;draftReady=false;previewLoading=true;recoveryStatus=null
+        }
+        searchVisible=false;searchQuery="";replacementText="";searchMessage=null;notice=null
+    }
+    fun openDocument(entry:WorkspaceEntry){
+        val requested=WorkspaceEditorTab(entry.documentId,entry.displayName,entry.mimeType,entry.canWrite)
+        val next=WorkspaceTabActions.open(editorTabs.toList(),requested)
+        if(next==null){notice="Close a tab before opening another. AstraCode keeps up to ${WorkspaceTabActions.MAX_OPEN_TABS} editor tabs.";return}
+        editorTabs.clear();editorTabs.addAll(next)
+        activateTab(next.first{it.documentId==entry.documentId})
+    }
+    fun requestCloseActiveTab(){
+        val id=openedId?:return
+        if(previewLoading){notice="Wait for the file to finish opening before closing its tab.";return}
+        cacheActiveBuffer()
+        if(draftReady&&isText&&draft!=original){
+            closeTabError=null;closeTabTarget=id
+        }else closeTabInUi(id,discardRecovery=true)
+    }
     fun showAction(mode:String,entry:WorkspaceEntry?=null){dialogMode=mode;targetId=entry?.documentId;targetName=entry?.displayName.orEmpty();nameInput=if(mode=="rename")entry?.displayName.orEmpty()else"";dialogError=null;notice=null}
     fun mutate(action:()->Unit,onSuccess:()->Unit={}){
         if(loading)return
@@ -112,13 +185,13 @@ internal fun WorkspaceScreen(){
             catch(_:SecurityException){error="Android could not preserve access. Choose the folder again and grant access."}
             if(readGranted){
                 runCatching{context.contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_WRITE_URI_PERMISSION)}
-                repository.saveTreeUri(uri);treeUriString=uri.toString();clearFile()
+                repository.saveTreeUri(uri);treeUriString=uri.toString();clearActiveEditor()
                 moveId=null;moveName=null;moveParent=null;moveDirectory=false;error=null;notice="Workspace selected.";refreshKey++
             }
         }
     }
     LaunchedEffect(treeUriString){
-        stack.clear();clearFile()
+        stack.clear();clearActiveEditor()
         if(tree!=null)try{stack.add(WorkspaceBreadcrumb(repository.rootDocumentId(tree),"Workspace"))}
         catch(_:Exception){error="The saved workspace URI is invalid. Choose the folder again."}
     }
@@ -134,11 +207,18 @@ internal fun WorkspaceScreen(){
     LaunchedEffect(treeUriString,openedId,openedName,openedMime,openedWritable){
         val uri=tree;val id=openedId;val treeKey=treeUriString
         if(uri==null||id==null||treeKey==null){previewError=null;previewLoading=false;truncated=false;draftReady=false;return@LaunchedEffect}
+        val cached=editorBuffers[id]
+        if(cached!=null){
+            draft=cached.draft;original=cached.original
+            selection=TextRange(cached.selectionStart.coerceIn(0,cached.draft.length),cached.selectionEnd.coerceIn(0,cached.draft.length))
+            truncated=cached.truncated;previewError=cached.previewError;draftReady=true;previewLoading=false
+            return@LaunchedEffect
+        }
         if(!WorkspaceFilePolicy.supportsTextPreview(openedName.orEmpty(),openedMime.orEmpty())){previewError="This file type is not available in the text editor; the file is unchanged.";previewLoading=false;draftReady=false;return@LaunchedEffect}
         previewLoading=true;previewError=null;draftReady=false;recoveryStatus=null
         try{
             val result=withContext(Dispatchers.IO){repository.readTextPreview(uri,id)}
-            draft=result.text;original=result.text;truncated=result.truncated
+            draft=result.text;original=result.text;truncated=result.truncated;selection=TextRange.Zero
             if(!result.truncated){
                 val recovered=withContext(Dispatchers.IO){draftStore.read(treeKey,id)}
                 if(recovered!=null){
@@ -157,6 +237,7 @@ internal fun WorkspaceScreen(){
                 }
             }
             draftReady=true
+            editorBuffers[id]=WorkspaceEditorBuffer(draft,original,selection.start,selection.end,truncated,previewError)
         }
         catch(_:SecurityException){previewError="Access denied. Choose the workspace again if permission expired.";draftReady=false}
         catch(e:Exception){previewError="Could not open file. ${e.message?: "The file may no longer be available."}";draftReady=false}
@@ -178,18 +259,30 @@ internal fun WorkspaceScreen(){
             EditorDraftWriteResult.Failed->"Could not save a local recovery copy; use Save file."
         }
     }
-    BackHandler(enabled=openedId!=null||stack.size>1){if(openedId!=null)closeFile()else if(stack.size>1)stack.removeAt(stack.lastIndex)}
+    BackHandler(enabled=openedId!=null||stack.size>1){if(openedId!=null)backToFiles()else if(stack.size>1)stack.removeAt(stack.lastIndex)}
 
     Column(verticalArrangement=Arrangement.spacedBy(12.dp)){
+        if(tree!=null&&editorTabs.isNotEmpty()){
+            Row(modifier=Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){
+                editorTabs.forEach{tab->
+                    val buffer=editorBuffers[tab.documentId]
+                    val tabDirty=if(tab.documentId==openedId)dirty else buffer!=null&&buffer.draft!=buffer.original
+                    val label=tab.displayName+if(tabDirty)" *"else""
+                    if(tab.documentId==openedId)Button(onClick={activateTab(tab)},enabled=!loading){Text(label)}
+                    else OutlinedButton(onClick={activateTab(tab)},enabled=!loading&&closeTabTarget==null){Text(label)}
+                }
+            }
+        }
         if(tree==null){
             Text("No workspace selected",style=MaterialTheme.typography.titleMedium)
             Text("Choose a folder with Android's system picker. AstraCode saves its granted URI so you can reopen the workspace later.")
             Button(onClick={picker.launch(null)},modifier=Modifier.fillMaxWidth()){Text("Choose project folder")}
         }else if(openedId!=null){
-            Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
-                OutlinedButton(onClick={closeFile()}){Text("Back to files")}
-                if(dirty){Text("Unsaved changes",color=MaterialTheme.colorScheme.error);Text(recoveryStatus?:"Recovery copy saves locally after a short pause.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
+            Row(horizontalArrangement=Arrangement.spacedBy(8.dp),modifier=Modifier.fillMaxWidth()){
+                OutlinedButton(onClick={backToFiles()},modifier=Modifier.weight(1f)){Text("Back to files")}
+                OutlinedButton(onClick={requestCloseActiveTab},enabled=!loading&&!previewLoading,modifier=Modifier.weight(1f)){Text("Close tab")}
             }
+            if(dirty){Text("Unsaved changes",color=MaterialTheme.colorScheme.error);Text(recoveryStatus?:"Recovery copy saves locally after a short pause.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
             Text(openedName.orEmpty(),style=MaterialTheme.typography.titleLarge)
             Text(when{
                 !isText->"Unsupported file type."
@@ -200,7 +293,7 @@ internal fun WorkspaceScreen(){
             if(previewLoading)CircularProgressIndicator()
             else if(previewError!=null)WorkspaceMessage(previewError.orEmpty(),null){}
             else if(isText){
-                TextField(value=TextFieldValue(text=draft,selection=selection),onValueChange={value->draft=value.text;selection=value.selection;notice=null;searchMessage=null;recoveryStatus=null},modifier=Modifier.fillMaxWidth().heightIn(min=260.dp),readOnly=!editable,label={Text("File contents")},textStyle=MaterialTheme.typography.bodyMedium.copy(fontFamily=FontFamily.Monospace))
+                TextField(value=TextFieldValue(text=draft,selection=selection),onValueChange={value->updateDraft(value.text,value.selection);notice=null;searchMessage=null;recoveryStatus=null},modifier=Modifier.fillMaxWidth().heightIn(min=260.dp),readOnly=!editable,label={Text("File contents")},textStyle=MaterialTheme.typography.bodyMedium.copy(fontFamily=FontFamily.Monospace))
                 OutlinedButton(onClick={searchVisible=!searchVisible;searchMessage=null},modifier=Modifier.fillMaxWidth()){Text(if(searchVisible)"Hide find / replace" else "Find / replace")}
                 if(searchVisible){
                     OutlinedTextField(value=searchQuery,onValueChange={searchQuery=it;searchMessage=null},modifier=Modifier.fillMaxWidth(),label={Text("Find (case-insensitive)")},singleLine=true)
@@ -211,8 +304,8 @@ internal fun WorkspaceScreen(){
                             else{
                                 val from=if(selection.start==selection.end)selection.end else maxOf(selection.start,selection.end)
                                 val found=EditorTextActions.findNext(draft,searchQuery,from)
-                                if(found==null){selection=TextRange.Zero;searchMessage="No matches found."}
-                                else{selection=TextRange(found,found+searchQuery.length);searchMessage=null}
+                                if(found==null){updateSelection(TextRange.Zero);searchMessage="No matches found."}
+                                else{updateSelection(TextRange(found,found+searchQuery.length));searchMessage=null}
                             }
                         },modifier=Modifier.weight(1f)){Text("Find next")}
                         OutlinedButton(onClick={
@@ -222,7 +315,7 @@ internal fun WorkspaceScreen(){
                                 val from=if(selectedIsMatch)selection.start else maxOf(selection.start,selection.end)
                                 val result=EditorTextActions.replaceNext(draft,searchQuery,replacementText,from)
                                 if(result==null)searchMessage="No matches found."
-                                else{draft=result.text;selection=TextRange(result.selectionStart,result.selectionEnd);notice=null;recoveryStatus=null;searchMessage="Replaced one match."}
+                                else{updateDraft(result.text,TextRange(result.selectionStart,result.selectionEnd));notice=null;recoveryStatus=null;searchMessage="Replaced one match."}
                             }
                         },modifier=Modifier.weight(1f)){Text("Replace match")}
                     }
@@ -230,7 +323,7 @@ internal fun WorkspaceScreen(){
                         if(searchQuery.isEmpty())searchMessage="Enter text to find."
                         else{
                             val result=EditorTextActions.replaceAll(draft,searchQuery,replacementText)
-                            draft=result.text;selection=TextRange(result.selectionStart,result.selectionEnd);notice=null;recoveryStatus=null
+                            updateDraft(result.text,TextRange(result.selectionStart,result.selectionEnd));notice=null;recoveryStatus=null
                             searchMessage=if(result.replacements==0)"No matches found." else "Replaced ${result.replacements} match(es)."
                         }
                     },modifier=Modifier.fillMaxWidth()){Text("Replace all")}
@@ -242,7 +335,7 @@ internal fun WorkspaceScreen(){
                 if(openedWritable&&!truncated){
                     Button(onClick={
                         val uri=tree;val id=openedId;val text=draft
-                        if(uri!=null&&id!=null)mutate({repository.writeText(uri,id,text)},{original=text;recoveryStatus=null;notice="Saved ${openedName.orEmpty()}."})
+                        if(uri!=null&&id!=null)mutate({repository.writeText(uri,id,text)},{original=text;recoveryStatus=null;editorBuffers[id]=WorkspaceEditorBuffer(text,text,selection.start,selection.end,truncated,previewError);notice="Saved ${openedName.orEmpty()}."})
                     },enabled=dirty&&!loading,modifier=Modifier.fillMaxWidth()){Text(if(loading)"Saving…" else "Save file")}
                 }
             }
@@ -285,7 +378,7 @@ internal fun WorkspaceScreen(){
                         var menu by remember(entry.documentId){mutableStateOf(false)}
                         Card(onClick={
                             if(entry.isDirectory){stack.add(WorkspaceBreadcrumb(entry.documentId,entry.displayName));query=""}
-                            else{openedId=entry.documentId;openedName=entry.displayName;openedMime=entry.mimeType;openedWritable=entry.canWrite;previewError=null;truncated=false;draft="";original="";selection=TextRange.Zero;searchMessage=null;notice=null}
+                            else{openDocument(entry)}
                         },modifier=Modifier.fillMaxWidth(),shape=MaterialTheme.shapes.large){
                             Row(modifier=Modifier.fillMaxWidth().padding(12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){
                                 AstraIcon(if(entry.isDirectory)"more"else"code",size=24.dp,description=if(entry.isDirectory)"Folder"else"File")
@@ -309,7 +402,7 @@ internal fun WorkspaceScreen(){
             }
             if(notice!=null)Text(notice.orEmpty(),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.primary)
             if(error!=null&&!loading)Text(error.orEmpty(),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)
-            OutlinedButton(onClick={repository.clearTreeUri();treeUriString=null;entries=emptyList();clearFile();moveId=null;moveName=null;moveParent=null;moveDirectory=false}){Text("Forget workspace")}
+            OutlinedButton(onClick={repository.clearTreeUri();treeUriString=null;entries=emptyList();clearActiveEditor();moveId=null;moveName=null;moveParent=null;moveDirectory=false}){Text("Forget workspace")}
         }
     }
 
@@ -326,7 +419,13 @@ internal fun WorkspaceScreen(){
             confirmButton={TextButton(onClick={
                 val uri=tree;val parent=current?.documentId;val target=targetId
                 if(uri==null)dialogError="Choose a workspace first."
-                else if(deleting&&target!=null)mutate({repository.deleteDocument(uri,target)},{notice="Deleted $targetName.";dialogMode=null;dialogError=null})
+                else if(deleting&&target!=null)mutate({repository.deleteDocument(uri,target)}){
+                    val treeKey=treeUriString
+                    if(treeKey!=null)scope.launch(Dispatchers.IO){draftStore.delete(treeKey,target)}
+                    editorTabs.removeAll{it.documentId==target};editorBuffers.remove(target)
+                    if(openedId==target)clearActiveEditor()
+                    notice="Deleted $targetName.";dialogMode=null;dialogError=null
+                }
                 else{
                     val validation=WorkspaceFilePolicy.validateName(nameInput)
                     if(validation!=null)dialogError=validation
@@ -337,7 +436,12 @@ internal fun WorkspaceScreen(){
                                 val mime=if(mode=="create-folder")"vnd.android.document/directory"else WorkspaceFilePolicy.mimeTypeForNewFile(name)
                                 mutate({repository.createDocument(uri,parent,mime,name)},{notice="Created $name.";dialogMode=null;dialogError=null;query=""})
                             }
-                            "rename"->if(target==null)dialogError="The selected item is no longer available." else mutate({repository.renameDocument(uri,target,name)},{notice="Renamed to $name.";dialogMode=null;dialogError=null})
+                            "rename"->if(target==null)dialogError="The selected item is no longer available." else mutate({repository.renameDocument(uri,target,name)}){
+                                val index=editorTabs.indexOfFirst{it.documentId==target}
+                                if(index>=0)editorTabs[index]=editorTabs[index].copy(displayName=name)
+                                if(openedId==target)openedName=name
+                                notice="Renamed to $name.";dialogMode=null;dialogError=null
+                            }
                         }
                     }
                 }
@@ -345,12 +449,34 @@ internal fun WorkspaceScreen(){
             dismissButton={TextButton(onClick={dialogMode=null;dialogError=null}){Text("Cancel")}}
         )
     }
-    if(discardDialog)AlertDialog(
-        onDismissRequest={discardDialog=false},
-        title={Text("Discard unsaved changes?")},
-        text={Text("Your changes to ${openedName.orEmpty()} have not been saved.")},
-        confirmButton={TextButton(onClick={discardDialog=false;clearFile(discardRecovery=true)}){Text("Discard")}},
-        dismissButton={TextButton(onClick={discardDialog=false}){Text("Keep editing")}}
+    val closingTab=editorTabs.firstOrNull{it.documentId==closeTabTarget}
+    if(closingTab!=null)AlertDialog(
+        onDismissRequest={closeTabTarget=null;closeTabError=null},
+        title={Text("Close tab with unsaved changes?")},
+        text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
+            Text("Keep a local recovery copy for ${closingTab.displayName}, or discard these edits. The workspace file is not changed until Save file is used.")
+            if(closeTabError!=null)Text(closeTabError.orEmpty(),color=MaterialTheme.colorScheme.error)
+        }},
+        confirmButton={TextButton(onClick={
+            val id=closeTabTarget
+            val treeKey=treeUriString
+            if(id!=null&&treeKey!=null&&openedId==id){
+                val baseline=original;val contents=draft
+                scope.launch{
+                    val result=withContext(Dispatchers.IO){draftStore.save(treeKey,id,baseline,contents)}
+                    if(result==EditorDraftWriteResult.Saved){
+                        closeTabInUi(id,discardRecovery=false);closeTabTarget=null;closeTabError=null
+                        notice="Kept a local recovery draft and closed the tab."
+                    }else{
+                        closeTabError=if(result==EditorDraftWriteResult.TooLarge)"This draft exceeds the 256 KiB recovery limit. Save the file or discard the draft."else"Could not write a recovery copy. Save the file or discard the draft."
+                    }
+                }
+            }
+        }){Text("Keep draft and close")},
+        dismissButton={Row{
+            TextButton(onClick={val id=closeTabTarget;closeTabTarget=null;closeTabError=null;if(id!=null)closeTabInUi(id,discardRecovery=true)}){Text("Discard draft")}
+            TextButton(onClick={closeTabTarget=null;closeTabError=null}){Text("Cancel")}
+        }}
     )
 }
 

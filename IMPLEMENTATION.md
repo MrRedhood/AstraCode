@@ -46,3 +46,13 @@
 - Updated the roadmap, architecture, in-app Help & Guide, and this implementation log.
 - Validation: Android CI and Android UI Smoke were triggered on the resulting main commit. Results must be checked for that exact commit before claiming success.
 - CI follow-up on 2026-10-10: corrected a syntax error in the replace-all status conditional found by the first Android CI run. Re-running Android CI and UI Smoke on the corrected main head.
+
+
+## 2026-10-10 — Bounded multi-file editor tabs
+- Added a horizontal tab strip with an eight-tab cap for mobile memory safety, with per-tab unsaved-change markers.
+- Switched between files while retaining each tab's current draft and selection in memory; “Back to files” leaves tabs open.
+- Closing a dirty tab explicitly offers to keep a validated local recovery copy or discard the draft; file writes remain manual through Save file.
+- Renamed/deleted files update or remove matching tabs and recovery records.
+- Added JVM tests for tab deduplication, metadata refresh, capacity limits and safe close ordering.
+- Updated the roadmap, architecture, in-app Help & Guide and this implementation log.
+- Validation: Android CI and UI Smoke are triggered for this commit; only exact workflow results determine success.
