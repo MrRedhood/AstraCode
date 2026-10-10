@@ -97,3 +97,5 @@
 - Kept the editor visible above the live preview so typing can update the rendered result without losing source access.
 - Preview refresh uses a 300 ms debounce; added a Hide live preview control and allowed inline data/blob assets while intercepting other resource requests.
 - Changed preview-size checking to count UTF-8 bytes without first allocating a second encoded copy of the full draft.
+
+- Follow-up: added Web Live Preview and folding instructions to the runtime More → Help & Guide screen, not only the Markdown documentation.

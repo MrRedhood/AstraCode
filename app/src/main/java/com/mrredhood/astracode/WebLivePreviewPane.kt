@@ -22,7 +22,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.Dispatchers
@@ -32,7 +31,6 @@ import java.io.ByteArrayInputStream
 
 @Composable
 internal fun WebLivePreviewPane(fileName: String, source: String) {
-    val context = LocalContext.current
     var webView by remember { mutableStateOf<WebView?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
 
