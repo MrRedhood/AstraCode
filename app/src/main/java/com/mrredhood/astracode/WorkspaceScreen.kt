@@ -151,6 +151,44 @@ internal fun WorkspaceScreen(){
         if(!draftReady||!openedWritable||truncated||previewError!=null||contents==baseline)return
         scope.launch(Dispatchers.IO){draftStore.save(treeKey,id,baseline,contents)}
     }
+    fun saveTabDraft(id:String,baseline:String,text:String){
+        val uri=tree?:return
+        val treeKey=treeUriString?:return
+        if(text==baseline||autosaveConflicts[id]==true)return
+        scope.launch{
+            val result=withContext(NonCancellable){
+                workspaceWriteMutex.withLock{
+                    withContext(Dispatchers.IO){repository.writeTextIfUnchanged(uri,id,baseline,text)}
+                }
+            }
+            if(treeUriString!=treeKey)return@launch
+            val active=openedId==id
+            val buffer=editorBuffers[id]
+            val latestDraft=if(active)draft else buffer?.draft?:text
+            if(result==WorkspaceWriteResult.Saved){
+                if(editorTabs.any{it.documentId==id}){
+                    val start=if(active)selection.start else buffer?.selectionStart?:0
+                    val end=if(active)selection.end else buffer?.selectionEnd?:0
+                    editorBuffers[id]=WorkspaceEditorBuffer(latestDraft,text,start.coerceIn(0,latestDraft.length),end.coerceIn(0,latestDraft.length),buffer?.truncated?:false,buffer?.previewError)
+                }
+                if(active){
+                    original=text
+                    autosaveMessage=if(latestDraft==text)"Saved automatically to workspace." else "Newer edits remain pending; saving them next."
+                    if(latestDraft==text){
+                        recoveryStatus=null
+                        scope.launch(Dispatchers.IO){draftStore.delete(treeKey,id)}
+                    }
+                }else if(latestDraft!=text&&editorTabs.any{it.documentId==id}){
+                    saveTabDraft(id,text,latestDraft)
+                }
+            }else if(result==WorkspaceWriteResult.Conflict){
+                autosaveConflicts[id]=true
+                if(active)autosaveMessage="File changed on storage. Autosave paused to prevent overwriting external edits."
+            }else if(active){
+                autosaveMessage=if(result==WorkspaceWriteResult.TooLarge)"Autosave stopped: the draft exceeds the 2 MiB limit." else "Autosave failed. Check access and use Save now to retry."
+            }
+        }
+    }
     fun backToFiles(){
         persistActiveDraft()
         val id=openedId
@@ -171,6 +209,10 @@ internal fun WorkspaceScreen(){
         if(openedId==id)clearActiveEditor()
     }
     fun activateTab(tab:WorkspaceEditorTab){
+        val previousId=openedId
+        if(previousId!=null&&previousId!=tab.documentId&&dirty&&editable&&autosaveConflicts[previousId]!=true){
+            saveTabDraft(previousId,original,draft)
+        }
         if(openedId==tab.documentId){
             openedName=tab.displayName;openedMime=tab.mimeType;openedWritable=tab.writable
             return
@@ -798,6 +840,7 @@ internal fun WorkspaceScreen(){
             val treeKey=treeUriString
             if(id!=null&&treeKey!=null&&openedId==id){
                 val baseline=original;val contents=draft
+                saveTabDraft(id,baseline,contents)
                 scope.launch{
                     val result=withContext(Dispatchers.IO){draftStore.save(treeKey,id,baseline,contents)}
                     if(result==EditorDraftWriteResult.Saved){

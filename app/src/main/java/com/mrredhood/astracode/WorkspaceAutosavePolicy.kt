@@ -14,11 +14,13 @@ internal object WorkspaceAutosavePolicy {
         storedTruncated: Boolean,
         draft: String,
     ): WorkspaceAutosaveDecision {
-        if (draft == expectedBaseline) return WorkspaceAutosaveDecision.Unchanged
         if (draft.toByteArray(StandardCharsets.UTF_8).size > MAX_DRAFT_BYTES) {
             return WorkspaceAutosaveDecision.TooLarge
         }
-        if (storedTruncated || storedText != expectedBaseline) return WorkspaceAutosaveDecision.Conflict
+        if (storedTruncated) return if (storedText == draft) WorkspaceAutosaveDecision.Unchanged else WorkspaceAutosaveDecision.Conflict
+        if (storedText == draft) return WorkspaceAutosaveDecision.Unchanged
+        if (storedText != expectedBaseline) return WorkspaceAutosaveDecision.Conflict
+        if (draft == expectedBaseline) return WorkspaceAutosaveDecision.Unchanged
         return WorkspaceAutosaveDecision.Save
     }
 }

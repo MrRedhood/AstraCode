@@ -31,7 +31,7 @@ Primary destinations: Chat · Code · Git · Build · More. Phones use bottom na
 - [x] SAF folder picker and persistent URI read permission; scoped directory browse/filter/refresh.
 - [x] Bounded text/code preview (2 MiB).
 - [x] Create file/folder, rename/delete and move via `DocumentsContract`.
-- [x] Explicit-save text editor for supported files, unsaved-state warning and a 2 MiB read/write cap.
+- [x] Debounced workspace autosave for supported writable text files, conflict handling and a 2 MiB read/write cap.
 - [x] Add case-insensitive find-next, replace-match and replace-all for the in-memory editor draft.
 - [x] Add debounced app-private draft recovery, validated against the saved file baseline and excluded from Android backup.
 - [x] Add an eight-tab limit, switchable editor tabs, per-tab dirty markers and draft/selection retention.

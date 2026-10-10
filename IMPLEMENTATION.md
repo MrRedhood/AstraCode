@@ -126,3 +126,6 @@
 
 
 - Source-review follow-up: corrected the conflict-dialog callbacks to invoke the overwrite/reload actions before checking the new commit's workflows.
+
+
+- Autosave follow-up: flush pending writable drafts when switching tabs or closing a tab after choosing to keep its recovery draft. Treat a write that already placed the identical draft on storage as successful, avoiding a false external-conflict warning from duplicate serialized save requests. Updated the roadmap and architecture wording to remove the obsolete explicit-save description.

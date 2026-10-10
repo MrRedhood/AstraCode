@@ -21,6 +21,14 @@ class WorkspaceAutosavePolicyTest {
     }
 
     @Test
+    fun treatsACompletedIdenticalWriteAsAlreadySaved() {
+        assertEquals(
+            WorkspaceAutosaveDecision.Unchanged,
+            WorkspaceAutosavePolicy.evaluate("before", "after", false, "after"),
+        )
+    }
+
+    @Test
     fun skipsUnchangedDraftsAndRejectsOversizeUtf8Content() {
         assertEquals(
             WorkspaceAutosaveDecision.Unchanged,
