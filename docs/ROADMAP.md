@@ -49,7 +49,8 @@ Primary destinations: Chat · Code · Git · Build · More. Phones use bottom na
 - [x] Add bounded local SQLite chat sessions with restore/new/delete controls, schema tests and Android-backup exclusion.
 - [x] Add any-MIME chat attachments up to 25 MiB per file (25 MiB combined per provider request), app-private streamed storage, SQLite metadata persistence/restore, backup exclusion and provider-native multimodal payloads for supported image/audio/video/document types.
 - [x] Add approval-gated read-only AI workspace tools for directory listing and small text/code reads, scoped to the selected SAF tree and returning direct execution evidence.
-- [ ] Add controlled write/move/delete/build tools, audited capability approvals and end-to-end task verification.
+- [x] Add approval-gated creation of new text/code files beneath an existing selected-workspace directory, with a 16 KiB UTF-8 cap, existing-path refusal, read-back byte verification and SHA-256 evidence.
+- [ ] Add controlled overwrite/move/delete/build tools, audited capability approvals and end-to-end task verification.
 - [ ] Observable plans/tool activity, approval gates, cancellation and verified completion.
 - [ ] Consolidated settings source of truth and help topics.
 

@@ -19,16 +19,16 @@ import java.util.Locale
 import java.util.UUID
 
 /** Metadata is persisted with chat messages; raw bytes are kept in bounded app-private files. */
-internal data class AiChatAttachment(
-    val id: String,
-    val name: String,
-    val mimeType: String,
-    val byteCount: Int,
-    val sourceUri: String = "",
+data class AiChatAttachment internal constructor(
+    internal val id: String,
+    internal val name: String,
+    internal val mimeType: String,
+    internal val byteCount: Int,
+    internal val sourceUri: String = "",
     /** Populated only for the duration of a provider request; never persisted in SQLite. */
-    val data: ByteArray? = null
+    internal val data: ByteArray? = null
 ) {
-    val storageName: String get() = id + ".blob"
+    internal val storageName: String get() = id + ".blob"
 }
 
 internal data class AiChatAttachmentReadResult(val attachments: List<AiChatAttachment>, val warnings: List<String>)

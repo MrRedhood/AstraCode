@@ -9,6 +9,14 @@ internal object WorkspaceFilePolicy {
         if(mime in setOf("application/json","application/xml","application/javascript","application/x-yaml"))return true
         return name.substringAfterLast('.', "").lowercase(Locale.ROOT) in textExtensions
     }
+    /** AI creation is restricted to recognized text/code names, even when a provider labels files text/plain. */
+    fun supportsAiTextCreate(name: String): Boolean {
+        val normalized = name.lowercase(Locale.ROOT)
+        if (normalized in setOf(".env", ".gitignore", ".editorconfig", "dockerfile", "makefile", "readme", "license", "notice")) {
+            return true
+        }
+        return name.substringAfterLast('.', "").lowercase(Locale.ROOT) in textExtensions
+    }
     fun validateName(raw:String):String?{
         val name=raw.trim()
         if(name.isEmpty())return "Enter a name."

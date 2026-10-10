@@ -24,6 +24,16 @@ class WorkspaceFilePolicyTest {
         assertTrue(WorkspaceFilePolicy.validateName("../outside.txt").orEmpty().isNotEmpty())
         assertTrue(WorkspaceFilePolicy.validateName("bad\\name").orEmpty().isNotEmpty())
     }
+
+    @Test fun AIOnlyAllowsKnownTextAndCodeNamesForNewFiles() {
+        assertTrue(WorkspaceFilePolicy.supportsAiTextCreate("Main.kt"))
+        assertTrue(WorkspaceFilePolicy.supportsAiTextCreate("README.md"))
+        assertTrue(WorkspaceFilePolicy.supportsAiTextCreate(".gitignore"))
+        assertTrue(WorkspaceFilePolicy.supportsAiTextCreate("config.json"))
+        assertFalse(WorkspaceFilePolicy.supportsAiTextCreate("picture.png"))
+        assertFalse(WorkspaceFilePolicy.supportsAiTextCreate("archive.zip"))
+        assertFalse(WorkspaceFilePolicy.supportsAiTextCreate("secret"))
+    }
     @Test fun mapsNewFileExtensionsToMimeTypes(){
         assertEquals("application/json",WorkspaceFilePolicy.mimeTypeForNewFile("config.json"))
         assertEquals("text/html",WorkspaceFilePolicy.mimeTypeForNewFile("index.html"))

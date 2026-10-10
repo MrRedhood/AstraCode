@@ -2,6 +2,7 @@ package com.mrredhood.astracode
 
 import org.json.JSONException
 import org.json.JSONObject
+import java.security.MessageDigest
 
 internal enum class AiWorkspaceToolName(
     val wireName: String,
@@ -9,7 +10,8 @@ internal enum class AiWorkspaceToolName(
     val description: String
 ) {
     LIST_DIRECTORY("workspace_list", "List workspace folder", "Read the names and metadata of items in a folder."),
-    READ_TEXT_FILE("workspace_read", "Read text/code file", "Read a small text or code file.");
+    READ_TEXT_FILE("workspace_read", "Read text/code file", "Read a small text or code file."),
+    CREATE_TEXT_FILE("workspace_create_file", "Create new text/code file", "Create and verify a new text/code file without overwriting existing files.");
 
     companion object {
         fun fromWireName(value: String): AiWorkspaceToolName? =
@@ -20,11 +22,45 @@ internal enum class AiWorkspaceToolName(
 internal data class AiWorkspaceToolProposal(
     val name: AiWorkspaceToolName,
     val path: String,
-    val reason: String
+    val reason: String,
+    val content: String? = null
 )
 
+/** Durable audit records bind each decision to its exact proposed path and, for writes, content hash. */
+internal object AiWorkspaceToolAudit {
+    fun approvalMessage(proposal: AiWorkspaceToolProposal): AiChatMessage {
+        val content = proposal.content
+        val record = buildString {
+            append("AstraCode workspace tool approval\n")
+            append("Decision: approved by the user before execution\n")
+            append("Tool: ").append(proposal.name.wireName).append('\n')
+            append("Path: ").append(proposal.path).append('\n')
+            append("Reason: ").append(proposal.reason)
+            if (content != null) {
+                val bytes = content.toByteArray(Charsets.UTF_8)
+                val digest = MessageDigest.getInstance("SHA-256")
+                    .digest(bytes)
+                    .joinToString("") { byte -> "%02x".format(byte) }
+                append("\nProposed content bytes: ").append(bytes.size)
+                append("\nProposed content SHA-256: ").append(digest)
+            }
+        }
+        return AiChatMessage(AiMessageRole.ASSISTANT, record)
+    }
+
+    fun declineMessage(proposal: AiWorkspaceToolProposal): AiChatMessage =
+        AiChatMessage(
+            AiMessageRole.ASSISTANT,
+            "AstraCode workspace tool approval\nDecision: declined by the user; no workspace operation was run.\n" +
+                "Tool: " + proposal.name.wireName + "\n" +
+                "Path: " + proposal.path + "\n" +
+                "Reason: " + proposal.reason
+        )
+}
+
 internal enum class AiWorkspaceToolParseFailure {
-    MALFORMED_ENVELOPE, MALFORMED_JSON, UNKNOWN_FIELDS, UNSUPPORTED_TOOL, INVALID_PATH, INVALID_REASON
+    MALFORMED_ENVELOPE, MALFORMED_JSON, UNKNOWN_FIELDS, UNSUPPORTED_TOOL, INVALID_PATH, INVALID_REASON,
+    INVALID_CONTENT, UNSUPPORTED_FILE
 }
 
 internal sealed class AiWorkspaceToolParseResult {
@@ -36,7 +72,7 @@ internal sealed class AiWorkspaceToolParseResult {
 internal object AiWorkspaceToolProtocol {
     const val START_MARKER = "<ASTRACODE_TOOL_CALL>"
     const val END_MARKER = "</ASTRACODE_TOOL_CALL>"
-    const val MAX_ENVELOPE_CHARS = 4_096
+    const val MAX_ENVELOPE_CHARS = 40_000
     const val MAX_PATH_CHARS = 240
     const val MAX_PATH_DEPTH = 8
     const val MAX_REASON_CHARS = 240
@@ -67,25 +103,56 @@ internal object AiWorkspaceToolProtocol {
         if (!fieldNames.containsAll(setOf("name", "path", "reason"))) {
             return AiWorkspaceToolParseResult.Invalid(AiWorkspaceToolParseFailure.MALFORMED_JSON)
         }
-        if (fieldNames.size != 3) {
-            return AiWorkspaceToolParseResult.Invalid(AiWorkspaceToolParseFailure.UNKNOWN_FIELDS)
-        }
         if (json.opt("name") !is String || json.opt("path") !is String || json.opt("reason") !is String) {
             return AiWorkspaceToolParseResult.Invalid(AiWorkspaceToolParseFailure.MALFORMED_JSON)
         }
 
         val name = AiWorkspaceToolName.fromWireName(json.getString("name"))
             ?: return AiWorkspaceToolParseResult.Invalid(AiWorkspaceToolParseFailure.UNSUPPORTED_TOOL)
+        val expectedFields = if (name == AiWorkspaceToolName.CREATE_TEXT_FILE) {
+            setOf("name", "path", "reason", "content")
+        } else {
+            setOf("name", "path", "reason")
+        }
+        if (!fieldNames.containsAll(expectedFields)) {
+            return AiWorkspaceToolParseResult.Invalid(AiWorkspaceToolParseFailure.MALFORMED_JSON)
+        }
+        if (fieldNames != expectedFields) {
+            return AiWorkspaceToolParseResult.Invalid(AiWorkspaceToolParseFailure.UNKNOWN_FIELDS)
+        }
+        if (name == AiWorkspaceToolName.CREATE_TEXT_FILE && json.opt("content") !is String) {
+            return AiWorkspaceToolParseResult.Invalid(AiWorkspaceToolParseFailure.MALFORMED_JSON)
+        }
+
         val path = json.getString("path")
         if (!isValidRelativePath(path, allowRoot = name == AiWorkspaceToolName.LIST_DIRECTORY)) {
             return AiWorkspaceToolParseResult.Invalid(AiWorkspaceToolParseFailure.INVALID_PATH)
+        }
+        if (name == AiWorkspaceToolName.CREATE_TEXT_FILE && path.substringAfterLast('/').let {
+                WorkspaceFilePolicy.validateName(it) != null || !WorkspaceFilePolicy.supportsAiTextCreate(it)
+            }) {
+            return AiWorkspaceToolParseResult.Invalid(AiWorkspaceToolParseFailure.UNSUPPORTED_FILE)
         }
         val reason = json.getString("reason").trim()
         if (reason.isEmpty() || reason.length > MAX_REASON_CHARS || reason.any { it.isISOControl() }) {
             return AiWorkspaceToolParseResult.Invalid(AiWorkspaceToolParseFailure.INVALID_REASON)
         }
-        return AiWorkspaceToolParseResult.Proposed(AiWorkspaceToolProposal(name, path, reason))
+        val content = if (name == AiWorkspaceToolName.CREATE_TEXT_FILE) json.getString("content") else null
+        if (content != null && !isValidCreateContent(content)) {
+            return AiWorkspaceToolParseResult.Invalid(AiWorkspaceToolParseFailure.INVALID_CONTENT)
+        }
+        return AiWorkspaceToolParseResult.Proposed(AiWorkspaceToolProposal(name, path, reason, content))
     }
+
+    fun isValidCreateContent(content: String): Boolean {
+        val bytes = content.toByteArray(Charsets.UTF_8)
+        if (bytes.size > MAX_CREATE_BYTES || AiChatAttachmentPolicy.decodeUtf8(bytes) != content) return false
+        return content.none { char ->
+            char == '\u0000' || (char.isISOControl() && char != '\n' && char != '\r' && char != '\t')
+        }
+    }
+
+    const val MAX_CREATE_BYTES = 16 * 1024
 
     fun isValidRelativePath(path: String, allowRoot: Boolean): Boolean {
         if (path.isEmpty()) return allowRoot
@@ -102,7 +169,8 @@ internal object AiWorkspaceToolProtocol {
 }
 
 internal enum class AiWorkspaceToolStatus {
-    SUCCESS, NO_WORKSPACE, NOT_FOUND, UNSUPPORTED_FILE, TOO_LARGE, INVALID_TEXT, FAILED
+    SUCCESS, NO_WORKSPACE, NOT_FOUND, UNSUPPORTED_FILE, TOO_LARGE, INVALID_TEXT,
+    ALREADY_EXISTS, INVALID_CONTENT, VERIFICATION_FAILED, FAILED
 }
 
 internal data class AiWorkspaceToolResult(

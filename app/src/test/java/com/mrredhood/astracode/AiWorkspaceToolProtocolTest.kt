@@ -1,6 +1,7 @@
 package com.mrredhood.astracode
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -26,6 +27,89 @@ class AiWorkspaceToolProtocolTest {
         ) as AiWorkspaceToolParseResult.Proposed
         assertEquals(AiWorkspaceToolName.READ_TEXT_FILE, read.proposal.name)
         assertEquals("app/src/MainActivity.kt", read.proposal.path)
+    }
+
+
+    @Test
+    fun parsesCreateFileProposalWithExactContentField() {
+        val content = "package demo\n\nfun answer() = 42\n"
+        val envelope = org.json.JSONObject()
+            .put("name", "workspace_create_file")
+            .put("path", "src/Answer.kt")
+            .put("reason", "Add a small helper")
+            .put("content", content)
+        val proposal = AiWorkspaceToolProtocol.parse(marker(envelope.toString()))
+            as AiWorkspaceToolParseResult.Proposed
+        assertEquals(AiWorkspaceToolName.CREATE_TEXT_FILE, proposal.proposal.name)
+        assertEquals("src/Answer.kt", proposal.proposal.path)
+        assertEquals(content, proposal.proposal.content)
+    }
+
+    @Test
+    fun createFileProtocolRejectsUnsafePathsBinaryNamesAndOversizedContent() {
+        fun parse(path: String, content: String) = AiWorkspaceToolProtocol.parse(
+            marker(
+                org.json.JSONObject()
+                    .put("name", "workspace_create_file")
+                    .put("path", path)
+                    .put("reason", "Create a file")
+                    .put("content", content)
+                    .toString()
+            )
+        ) as AiWorkspaceToolParseResult.Invalid
+
+        assertEquals(AiWorkspaceToolParseFailure.INVALID_PATH, parse("../secret.kt", "").failure)
+        assertEquals(AiWorkspaceToolParseFailure.UNSUPPORTED_FILE, parse("image.png", "").failure)
+        assertEquals(
+            AiWorkspaceToolParseFailure.INVALID_CONTENT,
+            parse("src/Large.kt", "x".repeat(AiWorkspaceToolProtocol.MAX_CREATE_BYTES + 1)).failure
+        )
+        assertEquals(
+            AiWorkspaceToolParseFailure.INVALID_CONTENT,
+            parse("src/Unsafe.kt", "fun x() = 1\u0000").failure
+        )
+    }
+
+
+    @Test
+    fun approvalAndDeclineAuditRecordsBindToolPathReasonAndFileHash() {
+        val content = "package demo\nfun answer() = 42\n"
+        val proposal = AiWorkspaceToolProposal(
+            AiWorkspaceToolName.CREATE_TEXT_FILE,
+            "src/Answer.kt",
+            "Add a small helper",
+            content
+        )
+        val approved = AiWorkspaceToolAudit.approvalMessage(proposal).content
+        val expectedHash = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(content.toByteArray(Charsets.UTF_8))
+            .joinToString("") { byte -> "%02x".format(byte) }
+
+        assertTrue(approved.contains("Decision: approved by the user before execution"))
+        assertTrue(approved.contains("Tool: workspace_create_file"))
+        assertTrue(approved.contains("Path: src/Answer.kt"))
+        assertTrue(approved.contains("Reason: Add a small helper"))
+        assertTrue(approved.contains("Proposed content SHA-256: " + expectedHash))
+        assertFalse(approved.contains(content))
+
+        val declined = AiWorkspaceToolAudit.declineMessage(proposal).content
+        assertTrue(declined.contains("Decision: declined by the user"))
+        assertTrue(declined.contains("Path: src/Answer.kt"))
+        assertTrue(declined.contains("Reason: Add a small helper"))
+        assertTrue(declined.contains("no workspace operation was run"))
+    }
+
+    @Test
+    fun createFileProposalRejectsUnexpectedFields() {
+        val envelope = org.json.JSONObject()
+            .put("name", "workspace_create_file")
+            .put("path", "src/New.kt")
+            .put("reason", "Create a file")
+            .put("content", "fun newFile() = true")
+            .put("overwrite", true)
+        val invalid = AiWorkspaceToolProtocol.parse(marker(envelope.toString()))
+            as AiWorkspaceToolParseResult.Invalid
+        assertEquals(AiWorkspaceToolParseFailure.UNKNOWN_FIELDS, invalid.failure)
     }
 
     @Test

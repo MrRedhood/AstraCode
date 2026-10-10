@@ -227,3 +227,14 @@
 - Added policy, metadata-persistence and provider payload tests. Fixed the previous workspace-tool protocol test by classifying missing required fields as malformed JSON rather than unknown fields.
 - Updated Help & Guide, architecture, roadmap and this implementation log.
 - Validation: committed directly to main using expected-head protection. Exact-head workflow results are authoritative; pending workflows were not waited on.
+
+
+## 2026-10-10 — Approval-gated create-only workspace file tool
+- Added the workspace_create_file request to the strict AI tool protocol. Proposals require an exact four-field schema with bounded UTF-8 text content; path traversal, unsupported file names, control characters, malformed Unicode and payloads over 16 KiB are rejected.
+- Added an explicit approval card that identifies file creation, shows the destination and a bounded content preview, and clearly states that existing files cannot be overwritten.
+- Restricted creation to recognized text/code filenames beneath existing directories inside the selected persisted SAF tree. Existing exact paths are refused before creation; the storage provider's returned name is checked before writing.
+- The explicit approval audit record is persisted before the executor is called; create-file approval also records the proposed content size and SHA-256. If approval persistence fails, no operation runs. The executor reads the created file back and compares bytes exactly, then records the relative path, byte count and SHA-256. If verification fails, it attempts to remove the partial file and reports when cleanup cannot be confirmed.
+- Declines are persisted with the proposed action, path and reason. Existing list/read capabilities continue unchanged; overwrite, move, delete, shell and build tools remain unavailable.
+- Added protocol, filename policy and approval-audit tests, including a check that audit history binds to the proposed file's SHA-256 without storing its source content. Updated in-app Help & Guide, architecture, roadmap and this implementation log.
+- Corrected the previous exact-head CI compile failure: the public provider-neutral chat message exposed an internal attachment type. The attachment metadata type is now public only as a container; its constructor and file metadata/bytes remain internal to the app module. The old workflow log identified this compile error, while UI Smoke also failed on that revision.
+- Validation: committed directly to main with expected-head protection. Exact-head Android CI/UI Smoke status is authoritative; no pending workflow was waited on.
