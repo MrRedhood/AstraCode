@@ -255,3 +255,15 @@
 
 ## 2026-10-10 — Align runtime tool help with workspace move capability
 - Corrected the in-app More → Help & Guide text so it no longer says AI moves are unavailable after the audited `workspace_move` tool shipped. Overwrite, delete, shell and build remain unavailable; AI moves require explicit approval and post-move verification.
+
+
+## 2026-10-10 — Implement AstraCode's ten-screen UI direction
+
+- Replaced the foundation-only primary navigation with Home, Projects, AI, Terminal and More while preserving the existing SAF workspace/editor and cloud AI Chat destinations.
+- Added a dark-first Compose color/typography system with accent selection and saveable Dark/Light/System appearance mode. Added a dark Android launch theme and an Android 12+ branded splash icon/background.
+- Added a responsive Home dashboard with workspace status and links into AI Chat, Projects, safe Terminal, Build & Run, Create Project and AI Execution.
+- Added focused Create Project, Build & Run, AI Execution and Settings screens. Project generation, build execution and autonomous multi-step task execution remain unavailable and are labelled honestly in their UI.
+- Added a scoped, non-shell Terminal. Only `help`, `pwd`, `ls`, and `clear` execute; `pwd` reports selected-workspace state and `ls` lists children of the granted SAF root. Other commands are rejected without starting a process.
+- Expanded More and the in-app Help & Guide, updated user documentation, architecture and roadmap, and added UI smoke coverage for new navigation, safe terminal rejection, and build-runner status.
+- Typography follows the uploaded pack's scale and family roles, using Android system sans-serif/monospace fallbacks because the supplied ZIP contains no font binaries. Existing locally drawn Compose icons remain in use; no remote font or icon dependency was added.
+- Validation: GitHub connector writes were accepted on `main`. The initial handoff Android CI run was green; the handoff Android UI Smoke run was still in progress when last inspected. New commits trigger fresh workflows; latest-head results must be checked separately. No local Gradle run was available in this environment.
