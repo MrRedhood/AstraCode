@@ -43,7 +43,9 @@ Primary destinations: Chat · Code · Git · Build · More. Phones use bottom na
 ### P4 — Settings and cloud AI
 - [x] Add provider-neutral cloud request/result/capability contracts and explicit provider/model routing, with bounded request validation and no implicit provider fallback.
 - [x] Catalog 16 cloud providers with protocol, default endpoint, credential label and official documentation metadata, including a custom OpenAI-compatible endpoint.
-- [x] Implement injected-credential HTTPS adapters for OpenAI-compatible Chat Completions, OpenAI Responses, Gemini generateContent, Anthropic Messages and Cohere Chat v2, with typed failures and bounded I/O.\n- [ ] Add encrypted credential storage and user-facing provider/model settings, connection tests, model discovery and attachments.
+- [x] Implement injected-credential HTTPS adapters for OpenAI-compatible Chat Completions, OpenAI Responses, Gemini generateContent, Anthropic Messages and Cohere Chat v2, with typed failures and bounded I/O.
+- [x] Add Android Keystore AES-GCM API-key vault, backup exclusion, provider/model/endpoint settings and user-triggered connection test UI.
+- [ ] Add model discovery and attachments; wire configured provider into AI chat and verify end-to-end execution.
 - [ ] Observable plans/tool activity, approval gates, cancellation and verified completion.
 - [ ] Consolidated settings source of truth and help topics.
 

@@ -165,3 +165,11 @@
 - Added test-only JSON runtime dependency and adapter tests for request encoding, response parsing, provider-specific headers, missing credentials, safe error mapping, output limits and factory selection. Added Android INTERNET permission.
 - Updated roadmap, architecture, Help & Guide and this implementation log. The adapter layer is not yet wired to encrypted credential storage, model discovery, provider UI or chat execution.
 - Validation: changes committed directly to main with expected-head protection. Exact-head Android CI/UI Smoke workflows are authoritative; no unverified test result is claimed.
+
+## 2026-10-10 — Encrypted credentials and provider settings
+- Added an Android Keystore AES-256-GCM API-key vault. Per-provider keys are authenticated with provider-specific additional data; secrets are never stored as plaintext preferences or included in UI status messages.
+- Excluded the AI secret preferences file from cloud backup and device transfer so ciphertext is not restored without its device-local Keystore key.
+- Added provider/model/optional HTTPS endpoint settings under More → AI & Models, masked API key entry, save/replace/remove actions and an explicit test that sends a short provider prompt without workspace content.
+- Added validation for manual model IDs and secure endpoint URLs, plus JVM validation tests and an instrumentation test for encrypted-at-rest round trips, deletion and plaintext absence.
+- Updated in-app Help & Guide, architecture, roadmap and this implementation log; fixed the prior literal backslash-n separator in the P4 roadmap.
+- Validation: committed directly to main with expected-head protection. Exact-head Android CI and UI Smoke results are authoritative; no local Gradle or API-provider result is claimed.

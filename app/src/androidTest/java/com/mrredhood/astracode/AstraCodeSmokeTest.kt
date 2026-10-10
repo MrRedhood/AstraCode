@@ -47,6 +47,17 @@ class AstraCodeSmokeTest {
     }
 
     @Test
+    fun aiProviderSettingsExposeProviderModelAndSecureKeyControls() {
+        composeRule.onNodeWithText("More").performClick()
+        composeRule.onNodeWithText("Search tools and settings").performTextInput("AI & Models")
+        composeRule.onNodeWithText("AI & Models").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("AI provider settings").assertIsDisplayed()
+        composeRule.onNodeWithText("Model ID").assertIsDisplayed()
+        composeRule.onNodeWithText("API key (optional when already saved)").assertIsDisplayed()
+        composeRule.onNodeWithText("Save & test").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
     fun workspaceOffersFolderPickerWhenNoFolderIsSaved() {
         composeRule.onNodeWithText("Code").performClick()
         composeRule.onNodeWithText("No workspace selected").assertIsDisplayed()

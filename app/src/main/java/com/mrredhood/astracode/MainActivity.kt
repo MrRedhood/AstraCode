@@ -200,6 +200,7 @@ private fun DestinationScreen(
                     onOpenEntry = onOpenMoreEntry
                 )
                 "Help & Guide" -> HelpGuideScreen(onBack = onBackToMore)
+                "AI & Models" -> AiProviderSettingsScreen(onBack = onBackToMore)
                 else -> MoreEntryDetailScreen(
                     entry = moreEntries.firstOrNull { it.title == selectedMoreEntry },
                     onBack = onBackToMore
@@ -367,8 +368,8 @@ private fun HelpGuideScreen(onBack: () -> Unit) {
         body = "In a supported text/code file, open Find / replace. Search is case-insensitive. Find next selects each match and wraps to the start; Replace match replaces the selection or next match; Replace all applies to non-overlapping matches in the current draft. Find/replace changes auto-save to storage after a short pause; use Save now to request an immediate save."
     )
     GuideSection(
-        title = "AI and security",
-        body = "AI features are intended to use cloud providers. Review requested permissions before allowing protected actions. Never paste API keys or credentials into bug reports or shared chat."
+        title = "AI providers and security",
+        body = "Open More → AI & Models to select a cloud provider, enter its exact model ID and optionally set a custom HTTPS base URL. Saved API keys are encrypted by Android Keystore, masked in the UI and excluded from backup. Save & test sends a short prompt to the selected model and may incur provider charges; it does not send workspace files. A successful connection test does not yet connect the provider to the Chat screen. Never paste API keys into chat or bug reports."
     )
     GuideSection(
         title = "Build verification",
