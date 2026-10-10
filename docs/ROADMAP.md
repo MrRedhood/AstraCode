@@ -46,7 +46,8 @@ Primary destinations: Chat · Code · Git · Build · More. Phones use bottom na
 - [x] Implement injected-credential HTTPS adapters for OpenAI-compatible Chat Completions, OpenAI Responses, Gemini generateContent, Anthropic Messages and Cohere Chat v2, with typed failures and bounded I/O.
 - [x] Add Android Keystore AES-GCM API-key vault, backup exclusion, provider/model/endpoint settings and user-triggered connection test UI.
 - [x] Discover available models for the documented provider APIs and connect configured provider/model settings to a cancellable Chat flow with bounded in-memory history and typed errors.
-- [ ] Add attachments, durable chat sessions, tool execution and end-to-end task verification.
+- [x] Add bounded local SQLite chat sessions with restore/new/delete controls, schema tests and Android-backup exclusion.
+- [ ] Add attachments, controlled tool execution and end-to-end task verification.
 - [ ] Observable plans/tool activity, approval gates, cancellation and verified completion.
 - [ ] Consolidated settings source of truth and help topics.
 

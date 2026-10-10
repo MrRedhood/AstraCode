@@ -6,9 +6,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
@@ -16,6 +18,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -36,6 +39,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.DateFormat
+import java.util.Date
 
 @Composable
 fun AiChatScreen(
@@ -44,6 +49,7 @@ fun AiChatScreen(
 ) {
     val context = LocalContext.current.applicationContext
     val repository = remember(context) { AiProviderSettingsRepository(context) }
+    val sessionStore = remember(context) { AiChatSessionStore(context) }
     val configuredProvider = remember(repository) { repository.selectedProviderId() }
     val configuration = remember(configuredProvider) { repository.loadConfiguration(configuredProvider) }
     val hasKey = remember(configuredProvider) {
@@ -51,6 +57,11 @@ fun AiChatScreen(
     }
     val isConfigured = configuration.modelId.isNotBlank() && hasKey
     val messages = remember { mutableStateListOf<AiChatMessage>() }
+    val sessions = remember { mutableStateListOf<AiChatSessionSummary>() }
+    var activeSessionId by remember { mutableStateOf<Long?>(null) }
+    var isSessionReady by remember { mutableStateOf(false) }
+    var showHistory by remember { mutableStateOf(false) }
+    var sessionToDelete by remember { mutableStateOf<AiChatSessionSummary?>(null) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     var prompt by remember { mutableStateOf("") }
@@ -59,13 +70,37 @@ fun AiChatScreen(
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var statusIsError by remember { mutableStateOf(false) }
 
+    LaunchedEffect(sessionStore) {
+        try {
+            val restored = withContext(Dispatchers.IO) {
+                val recent = sessionStore.listSessions()
+                val id = recent.firstOrNull()?.id ?: sessionStore.createSession()
+                Triple(id, sessionStore.loadMessages(id), sessionStore.listSessions())
+            }
+            activeSessionId = restored.first
+            messages.clear()
+            messages.addAll(restored.second)
+            sessions.clear()
+            sessions.addAll(restored.third)
+        } catch (_: Exception) {
+            statusMessage = "Local chat history could not be opened. Start a new chat or restart AstraCode."
+            statusIsError = true
+        } finally { isSessionReady = true }
+    }
+
+    LaunchedEffect(showHistory) {
+        if (showHistory) listState.scrollToItem(0)
+        else if (messages.isNotEmpty()) listState.scrollToItem(messages.lastIndex)
+    }
+
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
     }
 
     fun sendMessage() {
         val userText = prompt.trim()
-        if (userText.isEmpty() || isSending) return
+        if (userText.isEmpty() || isSending || !isSessionReady) return
+        val sessionId = activeSessionId ?: return
         if (!isConfigured) {
             statusMessage = "Set a provider, model ID and API key in AI & Models before chatting."
             statusIsError = true
@@ -75,7 +110,8 @@ fun AiChatScreen(
 
         // Bound retained history for lower-memory Android devices and provider context limits.
         while (messages.size >= MAX_HISTORY_MESSAGES - 1) messages.removeAt(0)
-        messages.add(AiChatMessage(AiMessageRole.USER, userText))
+        val userMessage = AiChatMessage(AiMessageRole.USER, userText)
+        messages.add(userMessage)
         prompt = ""
         statusMessage = "Sending to ${configuration.providerId.displayName}…"
         statusIsError = false
@@ -92,6 +128,12 @@ fun AiChatScreen(
         val job = scope.launch(start = CoroutineStart.LAZY) {
             isSending = true
             try {
+                val latestSessions = withContext(Dispatchers.IO) {
+                    sessionStore.appendMessage(sessionId, userMessage)
+                    sessionStore.listSessions()
+                }
+                sessions.clear()
+                sessions.addAll(latestSessions)
                 val result = withContext(Dispatchers.IO) {
                     val capabilities = mapOf(
                         configuration.modelId to AiModelCapabilities(
@@ -120,9 +162,21 @@ fun AiChatScreen(
                         } else {
                             answer
                         }
-                        messages.add(AiChatMessage(AiMessageRole.ASSISTANT, visibleAnswer))
+                        val assistantMessage = AiChatMessage(AiMessageRole.ASSISTANT, visibleAnswer)
+                        messages.add(assistantMessage)
                         statusMessage = "Answered by ${configuration.providerId.displayName} · ${result.response.modelId}"
                         statusIsError = false
+                        try {
+                            val latestSessions = withContext(Dispatchers.IO) {
+                                sessionStore.appendMessage(sessionId, assistantMessage)
+                                sessionStore.listSessions()
+                            }
+                            sessions.clear()
+                            sessions.addAll(latestSessions)
+                        } catch (_: Exception) {
+                            statusMessage = "Answer received, but local chat history could not be saved."
+                            statusIsError = true
+                        }
                     }
                     is AiProviderResult.Failure -> {
                         statusMessage = result.failure.detail
@@ -134,7 +188,7 @@ fun AiChatScreen(
                 statusIsError = false
                 throw cancelled
             } catch (error: Exception) {
-                statusMessage = "The request could not be completed. Check AI & Models and try again."
+                statusMessage = "The request or local save failed. Check storage and AI & Models, then try again."
                 statusIsError = true
             } finally {
                 isSending = false
@@ -165,16 +219,43 @@ fun AiChatScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Text(
+                    "Conversation: " + (sessions.firstOrNull { it.id == activeSessionId }?.title ?: "Loading history…"),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
             OutlinedButton(onClick = onOpenAiSettings, enabled = !isSending) {
                 Text("AI settings")
             }
-            if (messages.isNotEmpty() && !isSending) {
-                OutlinedButton(onClick = {
-                    messages.clear()
-                    statusMessage = null
-                }) { Text("Clear") }
-            }
+            OutlinedButton(
+                onClick = {
+                    if (!isSending && isSessionReady) {
+                        isSessionReady = false
+                        scope.launch {
+                            try {
+                                val newId = withContext(Dispatchers.IO) { sessionStore.createSession() }
+                                activeSessionId = newId
+                                messages.clear()
+                                statusMessage = null
+                                statusIsError = false
+                                showHistory = false
+                                val latestSessions = withContext(Dispatchers.IO) { sessionStore.listSessions() }
+                                sessions.clear()
+                                sessions.addAll(latestSessions)
+                            } catch (_: Exception) {
+                                statusMessage = "Could not create a new local conversation."
+                                statusIsError = true
+                            } finally { isSessionReady = true }
+                        }
+                    }
+                },
+                enabled = !isSending && isSessionReady
+            ) { Text("New chat") }
+            OutlinedButton(
+                onClick = { showHistory = !showHistory },
+                enabled = !isSending && isSessionReady
+            ) { Text(if (showHistory) "Back to chat" else "History") }
         }
 
         if (!isConfigured) {
@@ -197,23 +278,115 @@ fun AiChatScreen(
             }
         }
 
+        if (showHistory) {
+            Text("Recent conversations", style = MaterialTheme.typography.titleSmall)
+        }
         LazyColumn(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             state = listState,
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            if (messages.isEmpty()) {
+            if (showHistory) {
+                if (sessions.isEmpty()) item { Text("No saved conversations yet.") }
+                items(sessions, key = { it.id }) { session ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Card(
+                            onClick = {
+                                if (!isSending && isSessionReady) {
+                                    isSessionReady = false
+                                    scope.launch {
+                                        try {
+                                            val restored = withContext(Dispatchers.IO) { sessionStore.loadMessages(session.id) }
+                                            activeSessionId = session.id
+                                            messages.clear()
+                                            messages.addAll(restored)
+                                            statusMessage = null
+                                            statusIsError = false
+                                            showHistory = false
+                                            val latestSessions = withContext(Dispatchers.IO) { sessionStore.listSessions() }
+                                            sessions.clear()
+                                            sessions.addAll(latestSessions)
+                                        } catch (_: Exception) {
+                                            statusMessage = "Could not open that saved conversation."
+                                            statusIsError = true
+                                        } finally { isSessionReady = true }
+                                    }
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text(session.title, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
+                                        .format(Date(session.updatedAtMillis)),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        TextButton(onClick = { sessionToDelete = session }, enabled = !isSending && isSessionReady) {
+                            Text("Delete")
+                        }
+                    }
+                }
+            } else if (messages.isEmpty()) {
                 item {
                     Text(
-                        "Ask a coding question to begin. Requests go to the provider and model configured in More → AI & Models.",
+                        if (isSessionReady) "Ask a coding question to begin. This conversation is saved on this device; workspace files are not attached automatically."
+                        else "Loading local chat history…",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            } else {
+                itemsIndexed(messages.toList(), key = { index, message -> "$index-${message.role}" }) { _, message ->
+                    ChatMessageBubble(message)
+                }
             }
-            itemsIndexed(messages.toList(), key = { index, message -> "$index-${message.role}" }) { _, message ->
-                ChatMessageBubble(message)
-            }
+        }
+
+        sessionToDelete?.let { candidate ->
+            AlertDialog(
+                onDismissRequest = { sessionToDelete = null },
+                title = { Text("Delete conversation?") },
+                text = { Text("This permanently deletes the saved messages for '" + candidate.title + "' from this device.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        sessionToDelete = null
+                        val wasActive = activeSessionId == candidate.id
+                        val currentActiveId = activeSessionId
+                        isSessionReady = false
+                        scope.launch {
+                            try {
+                                val restored = withContext(Dispatchers.IO) {
+                                    sessionStore.deleteSession(candidate.id)
+                                    val recent = sessionStore.listSessions()
+                                    val id = if (wasActive) recent.firstOrNull()?.id ?: sessionStore.createSession() else currentActiveId
+                                    Triple(id, sessionStore.listSessions(), id?.let { sessionStore.loadMessages(it) } ?: emptyList())
+                                }
+                                activeSessionId = restored.first
+                                sessions.clear()
+                                sessions.addAll(restored.second)
+                                if (wasActive) {
+                                    messages.clear()
+                                    messages.addAll(restored.third)
+                                    statusMessage = null
+                                }
+                                showHistory = false
+                            } catch (_: Exception) {
+                                statusMessage = "Could not delete that conversation."
+                                statusIsError = true
+                            } finally { isSessionReady = true }
+                        }
+                    }) { Text("Delete") }
+                },
+                dismissButton = { TextButton(onClick = { sessionToDelete = null }) { Text("Cancel") } }
+            )
         }
 
         statusMessage?.let { status ->
@@ -245,7 +418,10 @@ fun AiChatScreen(
                     Text("Cancel")
                 }
             } else {
-                Button(onClick = ::sendMessage, enabled = isConfigured && prompt.isNotBlank()) {
+                Button(
+                    onClick = ::sendMessage,
+                    enabled = isConfigured && isSessionReady && activeSessionId != null && prompt.isNotBlank()
+                ) {
                     Text("Send")
                 }
             }

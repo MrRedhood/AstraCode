@@ -182,3 +182,13 @@
 - Added unit tests for each native model-list route, filtering and auth headers, invalid IDs, missing credentials and sanitized API failures; extended the UI smoke coverage for model discovery and Chat setup navigation.
 - Updated architecture, roadmap, Help & Guide and this implementation log.
 - Validation: commit directly to main with expected-head protection; exact-head Android CI/UI Smoke states determine verification. No provider network request was made during tests or implementation.
+
+
+## 2026-10-10 — Durable local AI chat sessions
+- Added an app-private SQLite store for separate chat sessions and ordered messages, with foreign-key cleanup and explicit schema versioning.
+- Chat history can now be created, reopened and deleted from Chat. User messages are written locally before a provider request; returned assistant text is saved, while cancellation and typed provider errors remain visible.
+- Bounded local storage to 25 sessions and 60 messages per session, with a 44-character normalized title and 60,000-character message cap to protect lower-memory devices.
+- Excluded the chat database from Android cloud backup and device transfer because conversations can contain private prompts or source text.
+- Added instrumentation coverage for persistence across store recreation, title generation, session/message retention bounds, system-message rejection and cascading deletion.
+- Updated the in-app Help & Guide, architecture and roadmap.
+- Validation: committed directly to main with expected-head protection. Android CI and UI Smoke statuses are tied to this exact commit and reported separately; no pending workflow was waited on.

@@ -372,7 +372,7 @@ private fun HelpGuideScreen(onBack: () -> Unit) {
     )
     GuideSection(
         title = "AI providers and security",
-        body = "Open More → AI & Models to select a cloud provider, use Discover models or enter a model ID manually, and optionally set a custom HTTPS base URL. Saved API keys are encrypted by Android Keystore, masked in the UI and excluded from backup. Save & test sends a short prompt to the selected model and may incur provider charges; it does not send workspace files. The Chat destination uses the saved provider/model. Chat history is in memory only and is cleared when you leave the Chat screen; workspace files are not attached automatically. Never paste API keys into chat or bug reports."
+        body = "Open More → AI & Models to select a cloud provider, use Discover models or enter a model ID manually, and optionally set a custom HTTPS base URL. Saved API keys are encrypted by Android Keystore, masked in the UI and excluded from backup. Save & test sends a short prompt to the selected model and may incur provider charges; it does not send workspace files. The Chat destination uses the saved provider/model. Chat history is stored in a bounded local database and survives leaving Chat or restarting AstraCode. Use New chat and History to create, reopen or delete conversations. The chat database is excluded from Android backup; workspace files are not attached automatically. Never paste API keys into chat or bug reports."
     )
     GuideSection(
         title = "Build verification",

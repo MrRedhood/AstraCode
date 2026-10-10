@@ -2,8 +2,10 @@
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="astracode_ai_secrets.xml" />
+        <exclude domain="database" path="astracode_chat.db" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="astracode_ai_secrets.xml" />
+        <exclude domain="database" path="astracode_chat.db" />
     </device-transfer>
 </data-extraction-rules>
