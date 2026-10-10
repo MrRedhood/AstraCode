@@ -412,10 +412,7 @@ internal fun WorkspaceScreen(){
             if(previewLoading)CircularProgressIndicator()
             else if(previewError!=null)WorkspaceMessage(previewError.orEmpty(),null){}
             else if(isText){
-                if(webPreviewVisible){
-                    WebLivePreviewPane(fileName=openedName.orEmpty(),source=draft)
-                }else{
-                if(foldViewVisible && foldAnalysis!=null){
+                if(foldViewVisible && foldAnalysis!=null && !webPreviewVisible){
                     val analysis=foldAnalysis!!
                     Text("Read-only folding view · switch back to Edit source to change text.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("${analysis.metrics.lineCount} lines · ${formatSize(analysis.metrics.utf8Bytes.toLong())} · longest line ${analysis.metrics.longestLine} characters",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -450,9 +447,10 @@ internal fun WorkspaceScreen(){
                 }else{
                     TextField(value=TextFieldValue(text=draft,selection=selection),onValueChange={value->updateDraft(value.text,value.selection);notice=null;searchMessage=null;recoveryStatus=null},modifier=Modifier.fillMaxWidth().heightIn(min=260.dp),readOnly=!editable,label={Text("File contents")},textStyle=MaterialTheme.typography.bodyMedium.copy(fontFamily=FontFamily.Monospace))
                 }
-                OutlinedButton(onClick={if(foldViewVisible)foldViewVisible=false else openFoldView()},enabled=draftReady&&!previewLoading&&!foldLoading&&!truncated&&previewError==null,modifier=Modifier.fillMaxWidth()){
-                    Text(when{foldLoading->"Analyzing…";foldViewVisible->"Close folding view";else->"Fold / inspect code"})
-                }
+                if(!webPreviewVisible){
+                    OutlinedButton(onClick={if(foldViewVisible)foldViewVisible=false else openFoldView()},enabled=draftReady&&!previewLoading&&!foldLoading&&!truncated&&previewError==null,modifier=Modifier.fillMaxWidth()){
+                        Text(when{foldLoading->"Analyzing…";foldViewVisible->"Close folding view";else->"Fold / inspect code"})
+                    }
                 }
                 if(WebPreviewPolicy.supports(openedName.orEmpty())){
                     OutlinedButton(
@@ -462,8 +460,9 @@ internal fun WorkspaceScreen(){
                         },
                         enabled=draftReady&&!previewLoading&&!truncated&&previewError==null,
                         modifier=Modifier.fillMaxWidth()
-                    ){Text(if(webPreviewVisible)"Edit source" else "Show live preview")}
+                    ){Text(if(webPreviewVisible)"Hide live preview" else "Show live preview")}
                 }
+                if(webPreviewVisible)WebLivePreviewPane(fileName=openedName.orEmpty(),source=draft)
                 OutlinedButton(onClick={searchVisible=!searchVisible;searchMessage=null},enabled=!foldViewVisible&&!webPreviewVisible,modifier=Modifier.fillMaxWidth()){Text(if(searchVisible)"Hide find / replace" else "Find / replace")}
                 if(searchVisible&&!foldViewVisible&&!webPreviewVisible){
                     OutlinedTextField(value=searchQuery,onValueChange={searchQuery=it;searchMessage=null},modifier=Modifier.fillMaxWidth(),label={Text("Find (case-insensitive)")},singleLine=true)

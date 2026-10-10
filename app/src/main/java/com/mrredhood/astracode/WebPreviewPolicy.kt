@@ -1,6 +1,5 @@
 package com.mrredhood.astracode
 
-import java.nio.charset.StandardCharsets
 import java.util.Locale
 
 /**
@@ -21,7 +20,7 @@ internal object WebPreviewPolicy {
 
     fun buildDocument(fileName: String, source: String): String? {
         if (!supports(fileName)) return null
-        if (source.toByteArray(StandardCharsets.UTF_8).size > MAX_PREVIEW_BYTES) return null
+        if (!fitsPreviewLimit(source)) return null
         return when (fileName.substringAfterLast('.', "").lowercase(Locale.ROOT)) {
             "html", "htm" -> secureHtml(source)
             "css" -> buildString {
@@ -54,5 +53,25 @@ internal object WebPreviewPolicy {
             return source.substring(0, insertion) + "<head><meta charset=\"utf-8\">$CSP</head>" + source.substring(insertion)
         }
         return "<!doctype html><html><head><meta charset=\"utf-8\">$CSP</head><body>$source</body></html>"
+    }
+
+    private fun fitsPreviewLimit(source: String): Boolean {
+        var bytes = 0
+        var index = 0
+        while (index < source.length) {
+            val char = source[index]
+            val pairedSurrogate = Character.isHighSurrogate(char) &&
+                source.getOrNull(index + 1)?.let { Character.isLowSurrogate(it) } == true
+            bytes += when {
+                pairedSurrogate -> 4
+                char.code <= 0x7F -> 1
+                char.code <= 0x7FF -> 2
+                Character.isSurrogate(char) -> 1
+                else -> 3
+            }
+            if (bytes > MAX_PREVIEW_BYTES) return false
+            index += if (pairedSurrogate) 2 else 1
+        }
+        return true
     }
 }

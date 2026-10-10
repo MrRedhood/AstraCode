@@ -113,7 +113,9 @@ internal fun WebLivePreviewPane(fileName: String, source: String) {
                         override fun shouldInterceptRequest(
                             view: WebView?,
                             request: WebResourceRequest?,
-                        ): WebResourceResponse {
+                        ): WebResourceResponse? {
+                            val scheme = request?.url?.scheme
+                            if (scheme == "data" || scheme == "blob") return null
                             return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream(ByteArray(0)))
                         }
 
