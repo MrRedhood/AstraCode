@@ -34,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 
 private enum class PrimaryDestination(
     val label: String,
@@ -81,11 +82,13 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun AstraCodeApp() {
+    val context = LocalContext.current.applicationContext
+    val uiPreferences = remember(context) { AstraUiPreferences(context) }
     var selectedName by rememberSaveable { mutableStateOf(PrimaryDestination.Home.name) }
     var selectedMoreEntry by rememberSaveable { mutableStateOf<String?>(null) }
     var moreSearchQuery by rememberSaveable { mutableStateOf("") }
-    var themeMode by rememberSaveable { mutableStateOf("Dark") }
-    var accentName by rememberSaveable { mutableStateOf("Blue") }
+    var themeMode by rememberSaveable { mutableStateOf(uiPreferences.themeMode()) }
+    var accentName by rememberSaveable { mutableStateOf(uiPreferences.accent()) }
     val selected = PrimaryDestination.values().firstOrNull { it.name == selectedName } ?: PrimaryDestination.Home
 
     BackHandler(enabled = selected == PrimaryDestination.More && selectedMoreEntry != null) {
@@ -132,9 +135,9 @@ private fun AstraCodeApp() {
                             onSelectDestination = ::selectDestination,
                             compact = true,
                             themeMode = themeMode,
-                            onThemeModeChange = { themeMode = it },
+                            onThemeModeChange = { themeMode = it; uiPreferences.saveThemeMode(it) },
                             accentName = accentName,
-                            onAccentChange = { accentName = it },
+                            onAccentChange = { accentName = it; uiPreferences.saveAccent(it) },
                             modifier = Modifier.padding(innerPadding)
                         )
                     }
@@ -167,9 +170,9 @@ private fun AstraCodeApp() {
                                 onSelectDestination = ::selectDestination,
                                 compact = false,
                                 themeMode = themeMode,
-                                onThemeModeChange = { themeMode = it },
+                                onThemeModeChange = { themeMode = it; uiPreferences.saveThemeMode(it) },
                                 accentName = accentName,
-                                onAccentChange = { accentName = it },
+                                onAccentChange = { accentName = it; uiPreferences.saveAccent(it) },
                                 modifier = Modifier.padding(innerPadding)
                             )
                         }
