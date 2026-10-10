@@ -148,3 +148,11 @@
 - Added unit tests for explicit routing, no-fallback behavior, capability limits, duplicate provider registration, request validation and typed provider outcomes.
 - Updated architecture, roadmap and Help & Guide to distinguish this internal foundation from live adapters, credential storage and user-facing AI execution, which remain planned.
 - Validation: source and test changes committed directly to main. Android CI and UI smoke for the new exact HEAD are authoritative; no local Gradle result is claimed.
+
+## 2026-10-10 — Expand cloud AI provider catalog
+- Expanded provider identifiers to include OpenRouter, OpenAI, OpenAI-compatible custom endpoints, Gemini, Anthropic, xAI, DeepSeek, Mistral AI, Groq, Together AI, Fireworks AI, Perplexity, Cerebras, SambaNova, NVIDIA NIM and Cohere.
+- Added per-provider catalog metadata for API protocol, HTTPS default endpoint where known, official documentation URL, credential label and endpoint customization support.
+- Distinguished OpenAI Responses, OpenAI-compatible Chat Completions, Gemini generateContent, Anthropic Messages and Cohere Chat v2 protocols rather than assuming all providers share one wire format.
+- Added catalog tests for completeness, unique IDs, expected provider coverage, custom endpoint behavior, protocol distinctions and HTTPS metadata.
+- Updated roadmap, architecture, Help & Guide and this implementation log. The catalog is groundwork; live API adapters, secure credential persistence and UI selection/connection tests remain planned.
+- Validation: committed directly to main with expected-head protection. Exact-head Android CI and UI Smoke statuses are reported separately; no unverified test result is claimed.

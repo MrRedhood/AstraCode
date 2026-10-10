@@ -19,7 +19,7 @@ Use **Find / replace** in the editor to search case-insensitively. **Find next**
 
 ## AI providers and execution
 
-A provider-neutral cloud AI contract and explicit provider/model router are now in the internal foundation. This does not yet connect a live provider or expose AI generation in the UI. Provider adapters, encrypted credential storage, connection tests, attachments, observable task plans and execution verification remain planned. AstraCode will not silently switch providers when the selected provider/model is unavailable, and provider failures must not expose credentials or raw response bodies. Model output alone is not proof a task succeeded.
+A provider-neutral cloud AI contract, explicit provider/model router and metadata catalog are now in the internal foundation. The catalog covers OpenRouter, OpenAI, custom OpenAI-compatible endpoints, Gemini, Anthropic, xAI, DeepSeek, Mistral AI, Groq, Together AI, Fireworks AI, Perplexity, Cerebras, SambaNova, NVIDIA NIM and Cohere. It identifies each provider's expected API protocol and documented default endpoint where available. **These entries are not connected providers yet:** the current build does not send generation requests or offer credential entry/provider selection in the UI. Live adapters, encrypted credential storage, connection tests, attachments, observable task plans and execution verification remain planned. AstraCode will not silently switch providers when the selected provider/model is unavailable, and provider failures must not expose credentials or raw response bodies. Model output alone is not proof a task succeeded.
 
 ## Approvals and security
 **Planned.** Protected actions will explain capability, scope and risk. Never put credentials in chat or logs.

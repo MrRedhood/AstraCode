@@ -4,9 +4,22 @@ package com.mrredhood.astracode
  * Cloud services supported by the provider boundary. Local model execution is intentionally absent.
  */
 enum class CloudAiProviderId(val displayName: String) {
-    GEMINI("Gemini"),
+    OPENROUTER("OpenRouter"),
+    OPENAI("OpenAI"),
     OPENAI_COMPATIBLE("OpenAI-compatible"),
-    ANTHROPIC("Anthropic")
+    GEMINI("Gemini"),
+    ANTHROPIC("Anthropic"),
+    XAI("xAI"),
+    DEEPSEEK("DeepSeek"),
+    MISTRAL("Mistral AI"),
+    GROQ("Groq"),
+    TOGETHER_AI("Together AI"),
+    FIREWORKS_AI("Fireworks AI"),
+    PERPLEXITY("Perplexity"),
+    CEREBRAS("Cerebras"),
+    SAMBANOVA("SambaNova"),
+    NVIDIA_NIM("NVIDIA NIM"),
+    COHERE("Cohere")
 }
 
 /** An explicit provider/model pair. Routing never infers a different provider from a model name. */

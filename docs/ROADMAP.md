@@ -42,7 +42,8 @@ Primary destinations: Chat · Code · Git · Build · More. Phones use bottom na
 
 ### P4 — Settings and cloud AI
 - [x] Add provider-neutral cloud request/result/capability contracts and explicit provider/model routing, with bounded request validation and no implicit provider fallback.
-- [ ] Implement provider adapters, encrypted credential storage, connection tests and attachments.
+- [x] Catalog 16 cloud providers with protocol, default endpoint, credential label and official documentation metadata, including a custom OpenAI-compatible endpoint.
+- [ ] Implement live provider adapters, encrypted credential storage, connection tests and attachments.
 - [ ] Observable plans/tool activity, approval gates, cancellation and verified completion.
 - [ ] Consolidated settings source of truth and help topics.
 
