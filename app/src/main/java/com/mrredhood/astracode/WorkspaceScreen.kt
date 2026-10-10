@@ -636,7 +636,7 @@ internal fun WorkspaceScreen(codeFontSize: Int = 13){
                                         val collapsed=row.foldStartLine!=null&&row.foldStartLine in foldedStarts
                                         Text(if(row.placeholder||collapsed)"+" else if(row.foldStartLine!=null)"−" else " ")
                                     }
-                                    Text(row.text.ifEmpty{" "},modifier=Modifier.weight(1f),maxLines=1,overflow=TextOverflow.Ellipsis,fontFamily=AstraCodeTypography.CodeFont,fontSize=codeFontSize.sp,style=MaterialTheme.typography.bodySmall)
+                                    Text(row.text.ifEmpty{" "},modifier=Modifier.weight(1f),maxLines=1,overflow=TextOverflow.Ellipsis,fontFamily=AstraCodeTypography.CodeFont,fontSize=codeFontSize.sp,lineHeight=(codeFontSize*1.45f).sp,style=MaterialTheme.typography.bodySmall)
                                 }
                             }
                         }
