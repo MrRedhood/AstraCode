@@ -77,3 +77,8 @@
 - Added JVM coverage for metrics, brace detection, comments/strings, unsupported extensions, line caps and folded-row behavior.
 - Updated roadmap, architecture and Help & Guide. This is deliberately a read-only inspection view, not an editable syntax-aware fold map.
 - Validation: the commit triggers Android CI and UI Smoke. Their results must be checked on this exact commit before claiming success.
+
+
+## 2026-10-10 — Folding inspection robustness follow-up
+- Corrected the fold-view line delimiter and changed UTF-8 byte measurement to count bytes without allocating a second full copy of the draft.
+- This keeps the inspection path bounded on mobile even when the current in-memory draft exceeds the save limit.

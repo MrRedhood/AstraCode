@@ -418,7 +418,7 @@ internal fun WorkspaceScreen(){
                     if(analysis.metrics.lineCount>EditorCodeFolding.MAX_FOLD_LINES || analysis.metrics.utf8Bytes>EditorCodeFolding.MAX_ANALYSIS_BYTES){
                         Text("Folding view is capped at ${EditorCodeFolding.MAX_FOLD_LINES} lines and 256 KiB to keep analysis bounded.",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
                     }else{
-                        val sourceLines=remember(draft){draft.split('\\n')}
+                        val sourceLines=remember(draft){draft.split('\n')}
                         val rows=remember(sourceLines,analysis,foldedStarts){EditorCodeFolding.visibleLines(sourceLines,analysis,foldedStarts)}
                         if(!analysis.syntaxSupported)Text("Brace folding is not enabled for this file type; this view can still inspect its lines.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
                         else if(analysis.regions.isEmpty())Text("No multi-line brace-delimited blocks were detected.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)

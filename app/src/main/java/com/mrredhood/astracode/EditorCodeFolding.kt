@@ -40,7 +40,21 @@ internal object EditorCodeFolding {
         fileName.substringAfterLast('.', "").lowercase(Locale.ROOT) in braceLanguages
 
     fun analyze(fileName: String, text: String): EditorFoldingAnalysis {
-        val byteCount = text.toByteArray(StandardCharsets.UTF_8).size
+        // Count UTF-8 bytes without allocating a second copy of the full draft.
+        var byteCount = 0
+        for (index in text.indices) {
+            val char = text[index]
+            val next = text.getOrNull(index + 1)
+            val previous = text.getOrNull(index - 1)
+            byteCount += when {
+                Character.isHighSurrogate(char) && next != null && Character.isLowSurrogate(next) -> 4
+                Character.isLowSurrogate(char) && previous != null && Character.isHighSurrogate(previous) -> 0
+                char.code <= 0x7F -> 1
+                char.code <= 0x7FF -> 2
+                Character.isSurrogate(char) -> 1
+                else -> 3
+            }
+        }
         var lineCount = 1
         var currentLineLength = 0
         var longestLine = 0
