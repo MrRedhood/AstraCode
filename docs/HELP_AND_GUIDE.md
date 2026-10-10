@@ -3,10 +3,18 @@
 Keep this content aligned with actual behavior and mark unfinished areas as planned.
 
 ## Getting started
-AstraCode is an early Android coding-workflow foundation. Some destinations are placeholders while their features are implemented. On compact windows the five primary destinations use a labelled bottom bar; at 600 dp and wider they use a labelled navigation rail. Primary selection, More search and the selected More section use saveable Compose state and are restored when Android recreates the activity with saved instance state.
+AstraCode opens on the dark, branded Home dashboard. The five primary destinations are Home, Projects, AI, Terminal and More; compact windows use a labelled bottom bar, while windows at 600 dp and wider use a labelled navigation rail. The UI also includes Create Project, Build & Run, AI Execution and Settings screens. These screens distinguish controls that are ready from project-generation, build-runner and autonomous-task capabilities that are still planned. Primary selection, More search and the selected More section use saveable Compose state and are restored when Android recreates the activity with saved instance state.
 
 ## Accessibility and adaptive layout
 Use the visible navigation labels rather than relying on icon appearance alone. AstraCode switches from bottom navigation to a navigation rail at 600 dp available width. UI state that matters to navigation—selected destination, More search query and selected More subsection—is saveable across supported activity recreation. This is a restoration baseline, not a guarantee that every transient editor dialog or scroll position is retained.
+
+## Dashboard, terminal and execution screens
+
+Home provides shortcuts to Projects, AI Chat, Terminal, Build & Run, Create Project and AI Execution. Projects keeps the existing SAF-based file browser/editor and its autosave, recovery, snapshots, find/replace and live preview. Settings lets you change the theme between Dark, Light and System and choose the app accent color; those choices are saveable for activity recreation.
+
+The Terminal screen is intentionally scoped: the only executable built-ins are `help`, `pwd`, `ls` and `clear`. They do not invoke a shell. `ls` lists children of the explicitly selected SAF workspace root. Arbitrary shell, Flutter, Git, Python, package-manager and build commands are refused before a process is started.
+
+Build & Run currently provides target/configuration selection and honest status feedback; it does not start a build or claim to have produced artifacts. Create Project provides framework/template configuration and input validation, but does not create project files until a safe generator is implemented. AI Execution shows the planned lifecycle without pretending a task is running. Supported single-action AI workspace tools still run from AI Chat and require explicit approval plus direct verification evidence.
 
 ## Workspace and files
 Open **Code → Choose project folder** and select a folder in Android's system picker. AstraCode remembers the selected tree URI and persistent read permission where supported. Browse subfolders, filter and refresh the listing.
