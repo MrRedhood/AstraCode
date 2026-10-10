@@ -42,7 +42,7 @@ class UrlConnectionAiHttpTransport : AiHttpTransport {
     override suspend fun execute(request: AiHttpRequest): AiHttpResponse = withContext(Dispatchers.IO) {
         currentCoroutineContext().ensureActive()
         val uri = URI(request.url)
-        require(uri.scheme.equals("https", ignoreCase = true) && !uri.host.isNullOrBlank()) {
+        require("https".equals(uri.scheme, ignoreCase = true) && !uri.host.isNullOrBlank()) {
             "AI endpoint must use HTTPS"
         }
         require(uri.userInfo == null && uri.fragment == null) {
@@ -215,13 +215,6 @@ abstract class JsonCloudAiProvider(
 
         fun joinUrl(base: String, path: String): String = base.trimEnd('/') + "/" + path.trimStart('/')
 
-        fun textFromContentArray(array: JSONArray, textField: String = "text"): String =
-            buildString {
-                for (index in 0 until array.length()) {
-                    val item = array.optJSONObject(index) ?: continue
-                    if (item.optString("type") == "text") append(item.optString(textField))
-                }
-            }
     }
 }
 
@@ -453,6 +446,14 @@ class CohereChatV2Provider(
         )
     }
 }
+
+private fun textFromContentArray(array: JSONArray, textField: String = "text"): String =
+    buildString {
+        for (index in 0 until array.length()) {
+            val item = array.optJSONObject(index) ?: continue
+            if (item.optString("type") == "text") append(item.optString(textField))
+        }
+    }
 
 private fun JSONObject.nullableInt(name: String): Int? =
     if (!has(name) || isNull(name)) null else optInt(name).takeIf { it >= 0 }
