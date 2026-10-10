@@ -17,7 +17,7 @@ The Terminal screen is intentionally scoped: the only executable built-ins are `
 Build & Run currently provides target/configuration selection and honest status feedback; it does not start a build or claim to have produced artifacts. Create Project provides framework/template configuration and input validation, but does not create project files until a safe generator is implemented. AI Execution shows the planned lifecycle without pretending a task is running. Supported single-action AI workspace tools still run from AI Chat and require explicit approval plus direct verification evidence.
 
 ## Workspace and files
-Open **Code → Choose project folder** and select a folder in Android's system picker. AstraCode remembers the selected tree URI and persistent read permission where supported. Browse subfolders, filter and refresh the listing.
+Open **Projects → Choose project folder** and select a folder in Android's system picker. AstraCode remembers the selected tree URI and persistent read permission where supported. Browse subfolders, filter and refresh the listing.
 
 Use **New file** or **New folder** to create items. Each row's **Actions** menu offers Rename, Move and Delete. To move an item, select Move, navigate into its destination and tap **Move here**. Moving into the current parent or moving a folder into itself/its descendants is blocked. Providers may not support every mutation; check errors rather than assuming success.
 
