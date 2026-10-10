@@ -18,6 +18,10 @@ class WorkspaceAutosavePolicyTest {
             WorkspaceAutosaveDecision.Conflict,
             WorkspaceAutosavePolicy.evaluate("before", "before", true, "after"),
         )
+        assertEquals(
+            WorkspaceAutosaveDecision.Conflict,
+            WorkspaceAutosavePolicy.evaluate("before", "before", true, "before"),
+        )
     }
 
     @Test

@@ -17,7 +17,7 @@ internal object WorkspaceAutosavePolicy {
         if (draft.toByteArray(StandardCharsets.UTF_8).size > MAX_DRAFT_BYTES) {
             return WorkspaceAutosaveDecision.TooLarge
         }
-        if (storedTruncated) return if (storedText == draft) WorkspaceAutosaveDecision.Unchanged else WorkspaceAutosaveDecision.Conflict
+        if (storedTruncated) return WorkspaceAutosaveDecision.Conflict
         if (storedText == draft) return WorkspaceAutosaveDecision.Unchanged
         if (storedText != expectedBaseline) return WorkspaceAutosaveDecision.Conflict
         if (draft == expectedBaseline) return WorkspaceAutosaveDecision.Unchanged
