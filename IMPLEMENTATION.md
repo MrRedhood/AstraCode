@@ -56,3 +56,4 @@
 - Added JVM tests for tab deduplication, metadata refresh, capacity limits and safe close ordering.
 - Updated the roadmap, architecture, in-app Help & Guide and this implementation log.
 - Validation: Android CI and UI Smoke are triggered for this commit; only exact workflow results determine success.
+- Follow-up validation on 2026-10-10: fixed a missing brace in the tab-close dialog caught by Android CI and preserved existing recovery copies when closing a tab whose supported text file could not be loaded.

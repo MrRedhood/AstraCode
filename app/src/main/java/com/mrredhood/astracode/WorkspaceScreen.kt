@@ -162,6 +162,11 @@ internal fun WorkspaceScreen(){
     fun requestCloseActiveTab(){
         val id=openedId?:return
         if(previewLoading){notice="Wait for the file to finish opening before closing its tab.";return}
+        if(!draftReady&&isText){
+            closeTabInUi(id,discardRecovery=false)
+            notice="Closed the tab; any existing local recovery copy was kept."
+            return
+        }
         cacheActiveBuffer()
         if(draftReady&&isText&&draft!=original){
             closeTabError=null;closeTabTarget=id
@@ -472,7 +477,7 @@ internal fun WorkspaceScreen(){
                     }
                 }
             }
-        }){Text("Keep draft and close")},
+        }){Text("Keep draft and close")}},
         dismissButton={Row{
             TextButton(onClick={val id=closeTabTarget;closeTabTarget=null;closeTabError=null;if(id!=null)closeTabInUi(id,discardRecovery=true)}){Text("Discard draft")}
             TextButton(onClick={closeTabTarget=null;closeTabError=null}){Text("Cancel")}
