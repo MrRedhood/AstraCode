@@ -11,6 +11,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -35,6 +38,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
@@ -78,6 +82,10 @@ internal fun WorkspaceScreen(){
     var snapshots by remember{mutableStateOf<List<EditorSnapshotSummary>>(emptyList())}
     var pendingDeleteSnapshot by remember{mutableStateOf<EditorSnapshotSummary?>(null)}
     var pendingRestoreSnapshot by remember{mutableStateOf<EditorSnapshotSummary?>(null)}
+    var foldViewVisible by rememberSaveable(openedId){mutableStateOf(false)}
+    var foldLoading by remember(openedId){mutableStateOf(false)}
+    var foldAnalysis by remember(openedId){mutableStateOf<EditorFoldingAnalysis?>(null)}
+    var foldedStarts by remember(openedId){mutableStateOf<Set<Int>>(emptySet())}
     var diffView by remember{mutableStateOf<EditorSnapshotDiffView?>(null)}
     var selection by remember{mutableStateOf(TextRange.Zero)}
     var searchVisible by rememberSaveable{mutableStateOf(false)}
@@ -261,6 +269,22 @@ internal fun WorkspaceScreen(){
             }else snapshotError="Could not delete this snapshot."
         }
     }
+    fun openFoldView(){
+        val id=openedId?:return
+        if(!draftReady||previewError!=null||truncated)return
+        val text=draft
+        val fileName=openedName.orEmpty()
+        foldLoading=true
+        scope.launch{
+            val analysis=withContext(Dispatchers.Default){EditorCodeFolding.analyze(fileName,text)}
+            if(openedId==id){
+                foldAnalysis=analysis
+                foldedStarts=emptySet()
+                foldViewVisible=true
+            }
+            foldLoading=false
+        }
+    }
     fun showAction(mode:String,entry:WorkspaceEntry?=null){dialogMode=mode;targetId=entry?.documentId;targetName=entry?.displayName.orEmpty();nameInput=if(mode=="rename")entry?.displayName.orEmpty()else"";dialogError=null;notice=null}
     fun mutate(action:()->Unit,onSuccess:()->Unit={}){
         if(loading)return
@@ -387,9 +411,46 @@ internal fun WorkspaceScreen(){
             if(previewLoading)CircularProgressIndicator()
             else if(previewError!=null)WorkspaceMessage(previewError.orEmpty(),null){}
             else if(isText){
-                TextField(value=TextFieldValue(text=draft,selection=selection),onValueChange={value->updateDraft(value.text,value.selection);notice=null;searchMessage=null;recoveryStatus=null},modifier=Modifier.fillMaxWidth().heightIn(min=260.dp),readOnly=!editable,label={Text("File contents")},textStyle=MaterialTheme.typography.bodyMedium.copy(fontFamily=FontFamily.Monospace))
-                OutlinedButton(onClick={searchVisible=!searchVisible;searchMessage=null},modifier=Modifier.fillMaxWidth()){Text(if(searchVisible)"Hide find / replace" else "Find / replace")}
-                if(searchVisible){
+                if(foldViewVisible && foldAnalysis!=null){
+                    val analysis=foldAnalysis!!
+                    Text("Read-only folding view · switch back to Edit source to change text.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("${analysis.metrics.lineCount} lines · ${formatSize(analysis.metrics.utf8Bytes.toLong())} · longest line ${analysis.metrics.longestLine} characters",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                    if(analysis.metrics.lineCount>EditorCodeFolding.MAX_FOLD_LINES || analysis.metrics.utf8Bytes>EditorCodeFolding.MAX_ANALYSIS_BYTES){
+                        Text("Folding view is capped at ${EditorCodeFolding.MAX_FOLD_LINES} lines and 256 KiB to keep analysis bounded.",color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall)
+                    }else{
+                        val sourceLines=remember(draft){draft.split('\\n')}
+                        val rows=remember(sourceLines,analysis,foldedStarts){EditorCodeFolding.visibleLines(sourceLines,analysis,foldedStarts)}
+                        if(!analysis.syntaxSupported)Text("Brace folding is not enabled for this file type; this view can still inspect its lines.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        else if(analysis.regions.isEmpty())Text("No multi-line brace-delimited blocks were detected.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                        if(analysis.metrics.lineCount>EditorCodeFolding.PERFORMANCE_NOTICE_LINES || analysis.metrics.longestLine>EditorCodeFolding.PERFORMANCE_NOTICE_LINE_LENGTH){
+                            Text("Dense text can take longer to edit on mobile. The folding view is read-only and uses bounded line analysis.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.tertiary)
+                        }
+                        LazyColumn(modifier=Modifier.fillMaxWidth().heightIn(max=400.dp),verticalArrangement=Arrangement.spacedBy(2.dp)){
+                            items(rows.size){rowIndex->
+                                val row=rows[rowIndex]
+                                Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(4.dp),modifier=Modifier.fillMaxWidth()){
+                                    Text(if(row.placeholder) "…" else (row.lineNumber+1).toString(),modifier=Modifier.width(40.dp),style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                                    TextButton(onClick={
+                                        val start=row.foldStartLine
+                                        if(start!=null)foldedStarts=if(start in foldedStarts)foldedStarts-start else foldedStarts+start
+                                    },enabled=row.foldStartLine!=null,modifier=Modifier.width(44.dp)){
+                                        val collapsed=row.foldStartLine!=null&&row.foldStartLine in foldedStarts
+                                        Text(if(row.placeholder||collapsed)"+" else if(row.foldStartLine!=null)"−" else " ")
+                                    }
+                                    Text(row.text.ifEmpty{" "},modifier=Modifier.weight(1f),maxLines=1,overflow=TextOverflow.Ellipsis,fontFamily=FontFamily.Monospace,style=MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        }
+                    }
+                    OutlinedButton(onClick={foldViewVisible=false},modifier=Modifier.fillMaxWidth()){Text("Edit source")}
+                }else{
+                    TextField(value=TextFieldValue(text=draft,selection=selection),onValueChange={value->updateDraft(value.text,value.selection);notice=null;searchMessage=null;recoveryStatus=null},modifier=Modifier.fillMaxWidth().heightIn(min=260.dp),readOnly=!editable,label={Text("File contents")},textStyle=MaterialTheme.typography.bodyMedium.copy(fontFamily=FontFamily.Monospace))
+                }
+                OutlinedButton(onClick={if(foldViewVisible)foldViewVisible=false else openFoldView()},enabled=draftReady&&!previewLoading&&!foldLoading&&!truncated&&previewError==null,modifier=Modifier.fillMaxWidth()){
+                    Text(when{foldLoading->"Analyzing…";foldViewVisible->"Close folding view";else->"Fold / inspect code"})
+                }
+                OutlinedButton(onClick={searchVisible=!searchVisible;searchMessage=null},enabled=!foldViewVisible,modifier=Modifier.fillMaxWidth()){Text(if(searchVisible)"Hide find / replace" else "Find / replace")}
+                if(searchVisible&&!foldViewVisible){
                     OutlinedTextField(value=searchQuery,onValueChange={searchQuery=it;searchMessage=null},modifier=Modifier.fillMaxWidth(),label={Text("Find (case-insensitive)")},singleLine=true)
                     OutlinedTextField(value=replacementText,onValueChange={replacementText=it},modifier=Modifier.fillMaxWidth(),label={Text("Replace with")},singleLine=true)
                     Row(horizontalArrangement=Arrangement.spacedBy(8.dp),modifier=Modifier.fillMaxWidth()){

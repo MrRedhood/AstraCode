@@ -67,3 +67,13 @@
 - Fixed the tab Close button callback invocation identified in the preceding CI result.
 - Updated roadmap, architecture, in-app Help & Guide and this implementation log.
 - Validation: Android CI and UI Smoke are triggered on the resulting main commit; only exact workflow results determine status.
+
+
+## 2026-10-10 — Bounded code folding and editor text metrics
+- Added an on-demand, read-only folding/inspection view for supported brace-based languages. The normal editor buffer remains untouched, so caret mapping and manual-save behavior are preserved.
+- Added UTF-8 byte count, logical line count and longest-line metrics, computed only when opening the inspection view rather than on each keystroke.
+- Added lexical handling for common single/double/triple-double quoted strings, template strings, line comments and block comments so their braces do not create false folding regions.
+- Capped fold analysis at 256 KiB and 12,000 lines; oversized/dense files report metrics and a bounded-view message instead of allocating a large line list.
+- Added JVM coverage for metrics, brace detection, comments/strings, unsupported extensions, line caps and folded-row behavior.
+- Updated roadmap, architecture and Help & Guide. This is deliberately a read-only inspection view, not an editable syntax-aware fold map.
+- Validation: the commit triggers Android CI and UI Smoke. Their results must be checked on this exact commit before claiming success.
