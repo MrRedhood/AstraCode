@@ -301,10 +301,10 @@ internal fun HomeDashboardScreen(
         )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             AstraFeatureCard("AI Chat", "Ask, explain, create", "chat", AstraPurple, Modifier.weight(1f), onOpenChat)
-            AstraFeatureCard("Terminal", "Safe workspace commands", "terminal", AstraCyan, Modifier.weight(1f), onOpenTerminal)
+            AstraFeatureCard("Terminal tools", "Safe workspace commands", "terminal", AstraCyan, Modifier.weight(1f), onOpenTerminal)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            AstraFeatureCard("Projects", "Browse files & edit", "files", AstraGreen, Modifier.weight(1f), onOpenProjects)
+            AstraFeatureCard("Project files", "Browse files & edit", "files", AstraGreen, Modifier.weight(1f), onOpenProjects)
             AstraFeatureCard("Build & Run", "Build status & targets", "build", AstraGold, Modifier.weight(1f), onOpenBuild)
         }
         AstraPanel(modifier = Modifier.fillMaxWidth()) {
