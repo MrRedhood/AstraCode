@@ -1,7 +1,7 @@
 package com.mrredhood.astracode
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -32,7 +32,7 @@ fun AstraIcon(
     size: Dp = 26.dp,
     description: String? = name.replace('-', ' ')
 ) {
-    val dark = isSystemInDarkTheme()
+    val dark = MaterialTheme.colorScheme.background == Color(0xFF050B18)
     val cyan = if (dark) Color(0xFF63D8F2) else Color(0xFF087FA8)
     val blue = if (dark) Color(0xFF64A8FF) else Color(0xFF245DDB)
     val gold = if (dark) Color(0xFFFFBE62) else Color(0xFFCA6A13)
