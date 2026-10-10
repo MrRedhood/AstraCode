@@ -36,3 +36,12 @@
 ## 2026-10-09 — Align in-app editor guide
 - Updated More → Help & Guide to describe the shipped SAF workspace operations and explicit-save editor limits.
 - Added practical find/replace instructions, including case-insensitive matching, wraparound, replace-all behavior and the manual-save boundary.
+
+
+## 2026-10-10 — Editor local draft recovery and UI Smoke repair
+- Added debounced recovery copies for dirty, writable editor drafts using app-private storage excluded from Android Auto Backup; workspace files remain explicit-save only.
+- Recovery records use bounded UTF-8 payloads, versioned validation, atomic writes and a SHA-256 baseline fingerprint. A changed on-disk baseline invalidates an old draft instead of silently applying it; saving or explicitly discarding removes the recovery copy.
+- Added JVM codec tests for Unicode round trips, stable/content-sensitive fingerprints, oversize rejection and corrupt/truncated/trailing records.
+- Fixed a stale UI Smoke assertion to match the current More screen description instead of removed copy.
+- Updated the roadmap, architecture, in-app Help & Guide, and this implementation log.
+- Validation: Android CI and Android UI Smoke were triggered on the resulting main commit. Results must be checked for that exact commit before claiming success.

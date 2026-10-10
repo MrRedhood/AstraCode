@@ -10,7 +10,7 @@ Open **Code → Choose project folder** and select a folder in Android's system 
 
 Use **New file** or **New folder** to create items. Each row's **Actions** menu offers Rename, Move and Delete. To move an item, select Move, navigate into its destination and tap **Move here**. Moving into the current parent or moving a folder into itself/its descendants is blocked. Providers may not support every mutation; check errors rather than assuming success.
 
-Open a recognized text/code file to edit it, then select **Save file** to write changes. You are warned before discarding unsaved edits. The current editor is limited to 256 KiB; larger files remain read-only, and binary/unsupported formats cannot be edited. Autosave, tabs, snapshots and recovery are not implemented yet.
+Open a recognized text/code file to edit it, then select **Save file** to write changes to the workspace. You are warned before discarding unsaved edits. A separate app-private recovery copy is saved on-device after a short pause and restored only if the file on storage still matches its saved baseline. Saving or explicitly discarding removes the recovery copy; drafts above 256 KiB are not recoverable. This does not auto-save to the workspace file. Tabs, snapshots, folding and shared diff are not implemented yet. Larger files remain read-only, and binary/unsupported formats cannot be edited.
 
 Use **Find / replace** in the editor to search case-insensitively. **Find next** selects the next match and wraps to the start. **Replace match** replaces the selected match, or the next match if none is selected. **Replace all** changes non-overlapping matches in the current draft only. Use **Save file** to write changes to storage.
 

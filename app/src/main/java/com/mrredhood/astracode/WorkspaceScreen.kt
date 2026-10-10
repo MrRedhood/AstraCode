@@ -35,6 +35,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
@@ -45,6 +46,7 @@ private data class WorkspaceBreadcrumb(val documentId:String,val name:String)
 internal fun WorkspaceScreen(){
     val context=LocalContext.current
     val repository=remember(context){WorkspaceRepository(context.applicationContext)}
+    val draftStore=remember(context){EditorDraftStore(context.applicationContext)}
     val scope=rememberCoroutineScope()
     var treeUriString by rememberSaveable{mutableStateOf(repository.savedTreeUri()?.toString())}
     var error by rememberSaveable{mutableStateOf<String?>(null)}
@@ -60,6 +62,8 @@ internal fun WorkspaceScreen(){
     var previewLoading by remember{mutableStateOf(false)}
     var draft by remember{mutableStateOf("")}
     var original by remember{mutableStateOf("")}
+    var draftReady by remember{mutableStateOf(false)}
+    var recoveryStatus by remember{mutableStateOf<String?>(null)}
     var selection by remember{mutableStateOf(TextRange.Zero)}
     var searchVisible by rememberSaveable{mutableStateOf(false)}
     var searchQuery by rememberSaveable{mutableStateOf("")}
@@ -84,8 +88,12 @@ internal fun WorkspaceScreen(){
     val dirty=isText&&draft!=original
     val editable=isText&&openedWritable&&!truncated&&previewError==null
 
-    fun clearFile(){openedId=null;openedName=null;openedMime=null;openedWritable=false;previewError=null;truncated=false;draft="";original="";selection=TextRange.Zero;searchVisible=false;searchQuery="";replacementText="";searchMessage=null}
-    fun closeFile(){if(dirty)discardDialog=true else clearFile()}
+    fun clearFile(discardRecovery:Boolean=false){
+        val previousTree=treeUriString;val previousId=openedId
+        if(discardRecovery&&previousTree!=null&&previousId!=null)scope.launch(Dispatchers.IO){draftStore.delete(previousTree,previousId)}
+        openedId=null;openedName=null;openedMime=null;openedWritable=false;previewError=null;truncated=false;draft="";original="";draftReady=false;recoveryStatus=null;selection=TextRange.Zero;searchVisible=false;searchQuery="";replacementText="";searchMessage=null
+    }
+    fun closeFile(){if(dirty)discardDialog=true else clearFile(discardRecovery=true)}
     fun showAction(mode:String,entry:WorkspaceEntry?=null){dialogMode=mode;targetId=entry?.documentId;targetName=entry?.displayName.orEmpty();nameInput=if(mode=="rename")entry?.displayName.orEmpty()else"";dialogError=null;notice=null}
     fun mutate(action:()->Unit,onSuccess:()->Unit={}){
         if(loading)return
@@ -123,15 +131,52 @@ internal fun WorkspaceScreen(){
         catch(e:Exception){entries=emptyList();error="Could not read this folder. ${e.message?: "Check access and retry."}"}
         finally{loading=false}
     }
-    LaunchedEffect(treeUriString,openedId,openedName,openedMime){
-        val uri=tree;val id=openedId
-        if(uri==null||id==null){previewError=null;previewLoading=false;truncated=false;return@LaunchedEffect}
-        if(!WorkspaceFilePolicy.supportsTextPreview(openedName.orEmpty(),openedMime.orEmpty())){previewError="This file type is not available in the text editor; the file is unchanged.";return@LaunchedEffect}
-        previewLoading=true;previewError=null
-        try{val result=withContext(Dispatchers.IO){repository.readTextPreview(uri,id)};draft=result.text;original=result.text;truncated=result.truncated}
-        catch(_:SecurityException){previewError="Access denied. Choose the workspace again if permission expired."}
-        catch(e:Exception){previewError="Could not open file. ${e.message?: "The file may no longer be available."}"}
+    LaunchedEffect(treeUriString,openedId,openedName,openedMime,openedWritable){
+        val uri=tree;val id=openedId;val treeKey=treeUriString
+        if(uri==null||id==null||treeKey==null){previewError=null;previewLoading=false;truncated=false;draftReady=false;return@LaunchedEffect}
+        if(!WorkspaceFilePolicy.supportsTextPreview(openedName.orEmpty(),openedMime.orEmpty())){previewError="This file type is not available in the text editor; the file is unchanged.";previewLoading=false;draftReady=false;return@LaunchedEffect}
+        previewLoading=true;previewError=null;draftReady=false;recoveryStatus=null
+        try{
+            val result=withContext(Dispatchers.IO){repository.readTextPreview(uri,id)}
+            draft=result.text;original=result.text;truncated=result.truncated
+            if(!result.truncated){
+                val recovered=withContext(Dispatchers.IO){draftStore.read(treeKey,id)}
+                if(recovered!=null){
+                    val currentFingerprint=EditorDraftRecordCodec.fingerprint(result.text)
+                    when{
+                        recovered.baselineFingerprint!=currentFingerprint->{
+                            withContext(Dispatchers.IO){draftStore.delete(treeKey,id)}
+                            if(openedWritable)recoveryStatus="An old recovery draft was discarded because the file changed on storage."
+                        }
+                        openedWritable&&recovered.text!=result.text->{
+                            draft=recovered.text
+                            recoveryStatus="Recovered an unsaved local draft."
+                        }
+                        recovered.text==result.text->withContext(Dispatchers.IO){draftStore.delete(treeKey,id)}
+                    }
+                }
+            }
+            draftReady=true
+        }
+        catch(_:SecurityException){previewError="Access denied. Choose the workspace again if permission expired.";draftReady=false}
+        catch(e:Exception){previewError="Could not open file. ${e.message?: "The file may no longer be available."}";draftReady=false}
         finally{previewLoading=false}
+    }
+    LaunchedEffect(treeUriString,openedId,draft,original,draftReady,openedWritable,truncated,previewError){
+        val treeKey=treeUriString;val id=openedId
+        if(treeKey==null||id==null||!draftReady||!openedWritable||truncated||previewError!=null)return@LaunchedEffect
+        if(draft==original){
+            withContext(Dispatchers.IO){draftStore.delete(treeKey,id)}
+            recoveryStatus=null
+            return@LaunchedEffect
+        }
+        delay(750)
+        val result=withContext(Dispatchers.IO){draftStore.save(treeKey,id,original,draft)}
+        recoveryStatus=when(result){
+            EditorDraftWriteResult.Saved->"Recovery copy saved on this device."
+            EditorDraftWriteResult.TooLarge->"Local recovery is unavailable for drafts above 256 KiB."
+            EditorDraftWriteResult.Failed->"Could not save a local recovery copy; use Save file."
+        }
     }
     BackHandler(enabled=openedId!=null||stack.size>1){if(openedId!=null)closeFile()else if(stack.size>1)stack.removeAt(stack.lastIndex)}
 
@@ -143,7 +188,7 @@ internal fun WorkspaceScreen(){
         }else if(openedId!=null){
             Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
                 OutlinedButton(onClick={closeFile()}){Text("Back to files")}
-                if(dirty)Text("Unsaved changes",color=MaterialTheme.colorScheme.error)
+                if(dirty){Text("Unsaved changes",color=MaterialTheme.colorScheme.error);Text(recoveryStatus?:"Recovery copy saves locally after a short pause.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
             }
             Text(openedName.orEmpty(),style=MaterialTheme.typography.titleLarge)
             Text(when{
@@ -155,7 +200,7 @@ internal fun WorkspaceScreen(){
             if(previewLoading)CircularProgressIndicator()
             else if(previewError!=null)WorkspaceMessage(previewError.orEmpty(),null){}
             else if(isText){
-                TextField(value=TextFieldValue(text=draft,selection=selection),onValueChange={value->draft=value.text;selection=value.selection;notice=null;searchMessage=null},modifier=Modifier.fillMaxWidth().heightIn(min=260.dp),readOnly=!editable,label={Text("File contents")},textStyle=MaterialTheme.typography.bodyMedium.copy(fontFamily=FontFamily.Monospace))
+                TextField(value=TextFieldValue(text=draft,selection=selection),onValueChange={value->draft=value.text;selection=value.selection;notice=null;searchMessage=null;recoveryStatus=null},modifier=Modifier.fillMaxWidth().heightIn(min=260.dp),readOnly=!editable,label={Text("File contents")},textStyle=MaterialTheme.typography.bodyMedium.copy(fontFamily=FontFamily.Monospace))
                 OutlinedButton(onClick={searchVisible=!searchVisible;searchMessage=null},modifier=Modifier.fillMaxWidth()){Text(if(searchVisible)"Hide find / replace" else "Find / replace")}
                 if(searchVisible){
                     OutlinedTextField(value=searchQuery,onValueChange={searchQuery=it;searchMessage=null},modifier=Modifier.fillMaxWidth(),label={Text("Find (case-insensitive)")},singleLine=true)
@@ -177,7 +222,7 @@ internal fun WorkspaceScreen(){
                                 val from=if(selectedIsMatch)selection.start else maxOf(selection.start,selection.end)
                                 val result=EditorTextActions.replaceNext(draft,searchQuery,replacementText,from)
                                 if(result==null)searchMessage="No matches found."
-                                else{draft=result.text;selection=TextRange(result.selectionStart,result.selectionEnd);notice=null;searchMessage="Replaced one match."}
+                                else{draft=result.text;selection=TextRange(result.selectionStart,result.selectionEnd);notice=null;recoveryStatus=null;searchMessage="Replaced one match."}
                             }
                         },modifier=Modifier.weight(1f)){Text("Replace match")}
                     }
@@ -185,8 +230,8 @@ internal fun WorkspaceScreen(){
                         if(searchQuery.isEmpty())searchMessage="Enter text to find."
                         else{
                             val result=EditorTextActions.replaceAll(draft,searchQuery,replacementText)
-                            draft=result.text;selection=TextRange(result.selectionStart,result.selectionEnd);notice=null
-                            searchMessage=if(result.replacements==0)"No matches found." else "Replaced ${result.replacements} match(es)."
+                            draft=result.text;selection=TextRange(result.selectionStart,result.selectionEnd);notice=null;recoveryStatus=null
+                            searchMessage=if(result.replacements==0"No matches found." else "Replaced ${result.replacements} match(es)."
                         }
                     },modifier=Modifier.fillMaxWidth()){Text("Replace all")}
                     val matchCount=EditorTextActions.countMatches(draft,searchQuery)
@@ -197,7 +242,7 @@ internal fun WorkspaceScreen(){
                 if(openedWritable&&!truncated){
                     Button(onClick={
                         val uri=tree;val id=openedId;val text=draft
-                        if(uri!=null&&id!=null)mutate({repository.writeText(uri,id,text)},{original=text;notice="Saved ${openedName.orEmpty()}."})
+                        if(uri!=null&&id!=null)mutate({repository.writeText(uri,id,text)},{original=text;recoveryStatus=null;notice="Saved ${openedName.orEmpty()}."})
                     },enabled=dirty&&!loading,modifier=Modifier.fillMaxWidth()){Text(if(loading)"Saving…" else "Save file")}
                 }
             }
@@ -304,7 +349,7 @@ internal fun WorkspaceScreen(){
         onDismissRequest={discardDialog=false},
         title={Text("Discard unsaved changes?")},
         text={Text("Your changes to ${openedName.orEmpty()} have not been saved.")},
-        confirmButton={TextButton(onClick={discardDialog=false;clearFile()}){Text("Discard")}},
+        confirmButton={TextButton(onClick={discardDialog=false;clearFile(discardRecovery=true)}){Text("Discard")}},
         dismissButton={TextButton(onClick={discardDialog=false}){Text("Keep editing")}}
     )
 }

@@ -33,9 +33,10 @@ Primary destinations: Chat · Code · Git · Build · More. Phones use bottom na
 - [x] Create file/folder, rename/delete and move via `DocumentsContract`.
 - [x] Explicit-save text editor for supported files, unsaved-state warning and a 256 KiB read/write cap.
 - [x] Add case-insensitive find-next, replace-match and replace-all for the in-memory editor draft.
-- [ ] Add tabs, autosave, snapshots, recovery, folding and shared diff.
+- [x] Add debounced app-private draft recovery, validated against the saved file baseline and excluded from Android backup.
+- [ ] Add tabs, workspace-file autosave, snapshots, folding and shared diff.
 - [ ] Add measured large-file handling and Web Live Preview.
-- **Exit:** CRUD, save/recovery, scope and performance tests pass. Editor tabs/autosave/recovery remain outstanding.
+- **Exit:** CRUD, save/recovery, scope and performance tests pass. Tabs, workspace-file autosave, snapshots, folding and shared diff remain outstanding.
 
 ### P4 — Settings and cloud AI
 - [ ] Provider abstraction, routing, secure credentials, connection tests and attachments.

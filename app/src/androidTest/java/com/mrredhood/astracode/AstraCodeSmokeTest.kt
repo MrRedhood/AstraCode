@@ -23,7 +23,7 @@ class AstraCodeSmokeTest {
     @Test
     fun moreContainsSearchableSettingsAndOpensHelpGuide() {
         composeRule.onNodeWithText("More").performClick()
-        composeRule.onNodeWithText("Tools and settings").assertIsDisplayed()
+        composeRule.onNodeWithText("Find tools, configuration and help from one place.").assertIsDisplayed()
         composeRule.onNodeWithText("Search tools and settings").performTextInput("help")
         composeRule.onNodeWithText("Help & Guide").assertIsDisplayed()
         composeRule.onNodeWithText("Help & Guide").performClick()
