@@ -16,7 +16,7 @@ class AstraCodeSmokeTest {
     @Test
     fun shellShowsBrandAndPrimaryDestinations() {
         composeRule.onNodeWithText("ASTRACODE").assertIsDisplayed()
-        listOf("Chat", "Code", "Git", "Build", "More").forEach { label ->
+        listOf("Home", "Projects", "AI", "Terminal", "More").forEach { label ->
             composeRule.onNodeWithText(label).assertIsDisplayed()
         }
     }
@@ -60,7 +60,7 @@ class AstraCodeSmokeTest {
 
     @Test
     fun chatShowsSetupActionUntilAProviderAndModelAreConfigured() {
-        composeRule.onNodeWithText("Chat").performClick()
+        composeRule.onNodeWithText("AI").performClick()
         composeRule.onNodeWithText("Cloud AI not configured").assertIsDisplayed()
         composeRule.onNodeWithText("Attach files").assertIsDisplayed()
         composeRule.onNodeWithText("/10 attached", substring = true).assertIsDisplayed()
@@ -73,7 +73,7 @@ class AstraCodeSmokeTest {
 
     @Test
     fun workspaceOffersFolderPickerWhenNoFolderIsSaved() {
-        composeRule.onNodeWithText("Code").performClick()
+        composeRule.onNodeWithText("Projects").performClick()
         composeRule.onNodeWithText("No workspace selected").assertIsDisplayed()
         composeRule.onNodeWithText("Choose project folder").assertIsDisplayed()
     }
@@ -83,5 +83,29 @@ class AstraCodeSmokeTest {
         composeRule.onNodeWithText("More").performClick()
         composeRule.onNodeWithText("Search tools and settings").performTextInput("security")
         composeRule.onNodeWithText("Security & Notifications").assertIsDisplayed()
+    }
+
+    @Test
+    fun dashboardBuildShortcutClearlyReportsBuildRunnerUnavailable() {
+        composeRule.onNodeWithText("Build & Run").performClick()
+        composeRule.onNodeWithText("Build execution is not wired into this build yet.", substring = true)
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Start build").performScrollTo().performClick()
+        composeRule.onNodeWithText("No build was started.", substring = true)
+            .performScrollTo()
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun terminalRejectsArbitraryShellCommandsWithoutLaunchingProcess() {
+        composeRule.onNodeWithText("Terminal").performClick()
+        composeRule.onNodeWithText("Scoped terminal · built-ins only").assertIsDisplayed()
+        composeRule.onNodeWithText("Enter a safe command").performTextInput("rm -rf /")
+        composeRule.onNodeWithText("Run built-in").performClick()
+        composeRule.onNodeWithText("Blocked: this terminal currently supports only", substring = true)
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("No shell process was started.", substring = true).assertIsDisplayed()
     }
 }
