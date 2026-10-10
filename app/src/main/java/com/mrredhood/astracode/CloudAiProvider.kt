@@ -123,11 +123,13 @@ data class AiGenerationResponse(
 enum class AiProviderFailureCode {
     NETWORK,
     AUTHENTICATION,
+    MISSING_CREDENTIALS,
     RATE_LIMITED,
     INVALID_REQUEST,
     UNAVAILABLE,
     CANCELLED,
     UNSUPPORTED_MODEL,
+    RESPONSE_TOO_LARGE,
     UNKNOWN
 }
 

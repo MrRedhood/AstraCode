@@ -156,3 +156,12 @@
 - Added catalog tests for completeness, unique IDs, expected provider coverage, custom endpoint behavior, protocol distinctions and HTTPS metadata.
 - Updated roadmap, architecture, Help & Guide and this implementation log. The catalog is groundwork; live API adapters, secure credential persistence and UI selection/connection tests remain planned.
 - Validation: committed directly to main with expected-head protection. Exact-head Android CI and UI Smoke statuses are reported separately; no unverified test result is claimed.
+
+## 2026-10-10 — Cloud AI HTTP adapters
+- Added injectable credential and HTTP transport interfaces and a bounded HTTPS transport with redirects disabled, request/response byte caps, connect/read timeouts, coroutine cancellation propagation and no credential/request-body logging.
+- Implemented OpenAI-compatible Chat Completions adapters for catalogued compatible providers, plus native OpenAI Responses, Gemini generateContent, Anthropic Messages and Cohere Chat v2 protocol mappings.
+- Added typed missing-credential, authentication, rate-limit, invalid-request, unavailable, oversized-response and unsupported-model failures; HTTP error bodies are not copied to user-facing detail.
+- Added a provider factory that selects the correct protocol, supports custom HTTPS base URLs where catalogued, and requires explicit model capability configuration. Streaming and vision remain disabled in adapter capability reports until implemented.
+- Added test-only JSON runtime dependency and adapter tests for request encoding, response parsing, provider-specific headers, missing credentials, safe error mapping, output limits and factory selection. Added Android INTERNET permission.
+- Updated roadmap, architecture, Help & Guide and this implementation log. The adapter layer is not yet wired to encrypted credential storage, model discovery, provider UI or chat execution.
+- Validation: changes committed directly to main with expected-head protection. Exact-head Android CI/UI Smoke workflows are authoritative; no unverified test result is claimed.
