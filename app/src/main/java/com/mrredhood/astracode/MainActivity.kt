@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -35,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 
 private enum class PrimaryDestination(
     val label: String,
@@ -214,7 +216,11 @@ private fun DestinationScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(9.dp)
         ) {
-            AstraIcon("code", size = 26.dp, description = "AstraCode")
+            Image(
+                painter = painterResource(id = R.drawable.astracode_logo),
+                contentDescription = "AstraCode logo",
+                modifier = Modifier.size(28.dp)
+            )
             Text(
                 "ASTRACODE",
                 style = MaterialTheme.typography.labelLarge,
