@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -143,6 +144,7 @@ internal fun AstraPageHero(
     title: String,
     description: String,
     icon: String = "more",
+    mascot: Boolean = false,
     trailing: (@Composable () -> Unit)? = null
 ) {
     val dark = MaterialTheme.colorScheme.background == AstraNavy
@@ -165,14 +167,18 @@ internal fun AstraPageHero(
                     trailing()
                 }
             }
-            Box(
-                modifier = Modifier.size(58.dp).background(
-                    Brush.linearGradient(listOf(AstraBlue.copy(alpha = .24f), AstraPurple.copy(alpha = .26f), AstraPink.copy(alpha = .12f))),
-                    CircleShape
-                ),
-                contentAlignment = Alignment.Center
-            ) {
-                AstraIcon(icon, size = 35.dp, description = null)
+            if (mascot) {
+                AstraRobotIllustration()
+            } else {
+                Box(
+                    modifier = Modifier.size(58.dp).background(
+                        Brush.linearGradient(listOf(AstraBlue.copy(alpha = .24f), AstraPurple.copy(alpha = .26f), AstraPink.copy(alpha = .12f))),
+                        CircleShape
+                    ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AstraIcon(icon, size = 35.dp, description = null)
+                }
             }
         }
     }
@@ -203,6 +209,50 @@ internal fun AstraPanel(
                 RoundedCornerShape(22.dp)
             )
     ) { content() }
+}
+
+@Composable
+private fun AstraRobotIllustration() {
+    Box(Modifier.size(width = 78.dp, height = 78.dp), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier.align(Alignment.TopCenter).offset(y = 3.dp).size(width = 4.dp, height = 12.dp)
+                .background(AstraPurple, CircleShape)
+        )
+        Box(
+            Modifier.align(Alignment.TopCenter).offset(y = 12.dp)
+                .size(width = 58.dp, height = 44.dp)
+                .background(
+                    Brush.linearGradient(listOf(Color(0xFF1A2D51), Color(0xFF0A1225))),
+                    RoundedCornerShape(17.dp)
+                )
+                .border(1.dp, AstraCyan.copy(alpha = .85f), RoundedCornerShape(17.dp))
+        ) {
+            Row(
+                Modifier.align(Alignment.Center).padding(horizontal = 13.dp),
+                horizontalArrangement = Arrangement.spacedBy(9.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(Modifier.size(8.dp).background(AstraCyan, CircleShape))
+                Box(Modifier.size(8.dp).background(AstraCyan, CircleShape))
+            }
+            Box(
+                Modifier.align(Alignment.BottomCenter).padding(bottom = 7.dp)
+                    .width(12.dp).height(2.dp).background(AstraPurple, RoundedCornerShape(2.dp))
+            )
+        }
+        Row(
+            Modifier.align(Alignment.BottomCenter).padding(bottom = 1.dp),
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(Modifier.size(width = 13.dp, height = 15.dp).background(AstraBlue, RoundedCornerShape(5.dp)))
+            Box(
+                Modifier.size(width = 39.dp, height = 18.dp)
+                    .background(Brush.horizontalGradient(listOf(AstraBlue, AstraPurple)), RoundedCornerShape(8.dp))
+            )
+            Box(Modifier.size(width = 13.dp, height = 15.dp).background(AstraPurple, RoundedCornerShape(5.dp)))
+        }
+    }
 }
 
 @Composable
@@ -296,6 +346,7 @@ internal fun HomeDashboardScreen(
             title = "Let's build something amazing",
             description = "Your ideas, your workspace, and cloud AI in one mobile coding environment.",
             icon = "code",
+            mascot = true,
             trailing = {
                 AstraPrimaryButton("＋  New project", onClick = onCreateProject)
             }
@@ -364,7 +415,7 @@ internal fun CreateProjectScreen(
     val frameworks = listOf("Flutter", "Android", "Compose", "Web", "Node.js", "Python", "Java", "Empty")
     val templates = listOf("Basic app", "Bottom navigation", "API starter")
     Column(verticalArrangement = Arrangement.spacedBy(15.dp)) {
-        AstraPageHero("Create a new project", "Choose a starter direction and configure your project details.", "build")
+        AstraPageHero("Create a new project", "Choose a starter direction and configure your project details.", "build", mascot = true)
         AstraPanel(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 AstraSectionTitle("1 · Choose a framework")
@@ -574,7 +625,7 @@ internal fun BuildRunScreen() {
     var verboseLogs by rememberSaveable { mutableStateOf(false) }
     var notice by rememberSaveable { mutableStateOf<String?>(null) }
     Column(verticalArrangement = Arrangement.spacedBy(15.dp)) {
-        AstraPageHero("Build & Run", "Choose a target and review settings before building.", "build")
+        AstraPageHero("Build & Run", "Choose a target and review settings before building.", "build", mascot = true)
         AstraPanel(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 AstraSectionTitle("1 · Select target")
@@ -644,7 +695,7 @@ internal fun BuildRunScreen() {
 internal fun AiExecutionScreen(onOpenChat: () -> Unit) {
     val steps = listOf("Plan request", "Analyze workspace", "Approve action", "Execute", "Verify result", "Complete")
     Column(verticalArrangement = Arrangement.spacedBy(15.dp)) {
-        AstraPageHero("AI Execution", "Observe work and evidence. Multi-step autonomous execution is not enabled yet.", "execution")
+        AstraPageHero("AI Execution", "Observe work and evidence. Multi-step autonomous execution is not enabled yet.", "execution", mascot = true)
         AstraPanel(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 AstraSectionTitle("Execution lifecycle")
