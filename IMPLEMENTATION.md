@@ -306,3 +306,10 @@
 - Tightened settings affordances: informational File & Storage and Security & Privacy sections no longer show a chevron or route to unrelated screens. The UI header reuses the existing launcher artwork without changing it.
 - Expanded the UI smoke test to verify the code-font-size preference survives activity recreation. Help & Guide, architecture and implementation docs were updated to match behavior.
 - Validation: code changes and commits are present on `main`; this environment has no local Gradle executable/Android SDK and cannot reach GitHub directly. The available connector exposed only earlier workflow runs (the handoff Android CI succeeded, and the handoff UI Smoke run failed during emulator startup/install); no green status is confirmed for the latest UI commits.
+
+
+## 2026-10-10 — Final UI verification hardening
+
+- Adjusted the Home dashboard UI smoke test to scroll the execution action into view before clicking, reducing viewport-dependent emulator failures.
+- Made Light theme accent colors use deeper contrast-safe shades, so changing the saved accent visibly affects both dark and light appearances while maintaining text contrast.
+- Static source review confirmed balanced delimiters across the changed Kotlin screens, theme, preferences, workspace/editor, icon and UI test files. This is a syntax-structure check only, not a substitute for Gradle compilation or emulator tests.
