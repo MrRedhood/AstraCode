@@ -25,7 +25,8 @@ fun interface AiCredentialSource {
 data class AiHttpRequest(
     val url: String,
     val headers: Map<String, String>,
-    val body: String
+    val body: String = "",
+    val method: String = "POST"
 )
 
 data class AiHttpResponse(val statusCode: Int, val body: String)
@@ -48,18 +49,22 @@ class UrlConnectionAiHttpTransport : AiHttpTransport {
         require(uri.userInfo == null && uri.fragment == null) {
             "AI endpoint must not contain user information or a fragment"
         }
+        require(request.method == "GET" || request.method == "POST") { "Unsupported HTTP method" }
         val requestBytes = request.body.toByteArray(StandardCharsets.UTF_8)
         if (requestBytes.size > MAX_REQUEST_BYTES) throw AiResponseLimitException()
+        require(request.method == "POST" || request.body.isEmpty()) { "GET requests must not contain a body" }
         val connection = (URL(request.url).openConnection() as? HttpURLConnection)
             ?: throw IOException("Unsupported network connection")
         try {
-            connection.requestMethod = "POST"
+            connection.requestMethod = request.method
             connection.connectTimeout = CONNECT_TIMEOUT_MS
             connection.readTimeout = READ_TIMEOUT_MS
             connection.instanceFollowRedirects = false
-            connection.doOutput = true
-            connection.setFixedLengthStreamingMode(requestBytes.size)
-            connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            connection.doOutput = request.method == "POST"
+            if (request.method == "POST") {
+                connection.setFixedLengthStreamingMode(requestBytes.size)
+                connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            }
             connection.setRequestProperty("Accept", "application/json")
             request.headers.forEach { (name, value) ->
                 require(name.matches(Regex("[A-Za-z0-9-]{1,64}"))) { "Invalid HTTP header name" }
@@ -67,7 +72,9 @@ class UrlConnectionAiHttpTransport : AiHttpTransport {
                 connection.setRequestProperty(name, value)
             }
             currentCoroutineContext().ensureActive()
-            connection.outputStream.use { it.write(requestBytes) }
+            if (request.method == "POST") {
+                connection.outputStream.use { it.write(requestBytes) }
+            }
             currentCoroutineContext().ensureActive()
             val status = connection.responseCode
             val stream = if (status in 200..299) connection.inputStream else connection.errorStream

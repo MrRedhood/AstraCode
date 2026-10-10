@@ -54,7 +54,16 @@ class AstraCodeSmokeTest {
         composeRule.onNodeWithText("AI provider settings").assertIsDisplayed()
         composeRule.onNodeWithText("Model ID").assertIsDisplayed()
         composeRule.onNodeWithText("API key (optional when already saved)").assertIsDisplayed()
+        composeRule.onNodeWithText("Discover models").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Save & test").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun chatShowsSetupActionUntilAProviderAndModelAreConfigured() {
+        composeRule.onNodeWithText("Chat").performClick()
+        composeRule.onNodeWithText("Cloud AI not configured").assertIsDisplayed()
+        composeRule.onNodeWithText("Configure AI provider").performClick()
+        composeRule.onNodeWithText("AI provider settings").assertIsDisplayed()
     }
 
     @Test

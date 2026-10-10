@@ -182,7 +182,10 @@ private fun DestinationScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .then(
+                if (destination == PrimaryDestination.Chat) Modifier
+                else Modifier.verticalScroll(rememberScrollState())
+            )
             .padding(horizontal = if (compact) 20.dp else 36.dp, vertical = 24.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
@@ -208,16 +211,16 @@ private fun DestinationScreen(
             }
         } else if (destination == PrimaryDestination.Code) {
             WorkspaceScreen()
+        } else if (destination == PrimaryDestination.Chat) {
+            AiChatScreen(
+                onOpenAiSettings = {
+                    onSelectDestination(PrimaryDestination.More)
+                    onOpenMoreEntry("AI & Models")
+                },
+                modifier = Modifier.weight(1f).fillMaxWidth()
+            )
         } else {
             DestinationSummary(destination)
-            if (destination == PrimaryDestination.Chat) {
-                Button(
-                    onClick = { onSelectDestination(PrimaryDestination.Code) },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Open workspace")
-                }
-            }
         }
         Text(
             "Code smarter. Ship from your phone.",
@@ -369,7 +372,7 @@ private fun HelpGuideScreen(onBack: () -> Unit) {
     )
     GuideSection(
         title = "AI providers and security",
-        body = "Open More → AI & Models to select a cloud provider, enter its exact model ID and optionally set a custom HTTPS base URL. Saved API keys are encrypted by Android Keystore, masked in the UI and excluded from backup. Save & test sends a short prompt to the selected model and may incur provider charges; it does not send workspace files. A successful connection test does not yet connect the provider to the Chat screen. Never paste API keys into chat or bug reports."
+        body = "Open More → AI & Models to select a cloud provider, use Discover models or enter a model ID manually, and optionally set a custom HTTPS base URL. Saved API keys are encrypted by Android Keystore, masked in the UI and excluded from backup. Save & test sends a short prompt to the selected model and may incur provider charges; it does not send workspace files. The Chat destination uses the saved provider/model. Chat history is in memory only and is cleared when you leave the Chat screen; workspace files are not attached automatically. Never paste API keys into chat or bug reports."
     )
     GuideSection(
         title = "Build verification",

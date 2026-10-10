@@ -173,3 +173,12 @@
 - Added validation for manual model IDs and secure endpoint URLs, plus JVM validation tests and an instrumentation test for encrypted-at-rest round trips, deletion and plaintext absence.
 - Updated in-app Help & Guide, architecture, roadmap and this implementation log; fixed the prior literal backslash-n separator in the P4 roadmap.
 - Validation: committed directly to main with expected-head protection. Exact-head Android CI and UI Smoke results are authoritative; no local Gradle or API-provider result is claimed.
+
+## 2026-10-10 — Model discovery and cloud chat wiring
+- Extended the bounded HTTP transport to support body-free HTTPS GET requests while keeping POST generation behavior unchanged, redirects disabled, and request/response size limits active.
+- Added authenticated model discovery for OpenAI-compatible and OpenAI model lists, Gemini generateContent-capable models, Anthropic model lists and Cohere chat models. Model IDs are validated, response counts are capped, and raw provider error bodies are never surfaced.
+- Added model search/selection controls in More → AI & Models while preserving manual model entry. Discovering models can securely save a newly entered API key without requiring a model ID first.
+- Replaced the Chat placeholder with a provider-backed conversation UI using the explicitly configured model, bounded in-memory history, cancellable requests, sanitized error display and no automatic workspace-file attachment.
+- Added unit tests for each native model-list route, filtering and auth headers, invalid IDs, missing credentials and sanitized API failures; extended the UI smoke coverage for model discovery and Chat setup navigation.
+- Updated architecture, roadmap, Help & Guide and this implementation log.
+- Validation: commit directly to main with expected-head protection; exact-head Android CI/UI Smoke states determine verification. No provider network request was made during tests or implementation.

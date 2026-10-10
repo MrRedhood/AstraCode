@@ -45,6 +45,8 @@ fun AiProviderSettingsScreen(onBack: () -> Unit) {
     val savedConfig = remember(selectedProvider) { repository.loadConfiguration(selectedProvider) }
     var modelId by remember(selectedProvider) { mutableStateOf(savedConfig.modelId) }
     var endpointOverride by remember(selectedProvider) { mutableStateOf(savedConfig.baseUrlOverride) }
+    var discoveredModels by remember(selectedProvider) { mutableStateOf<List<AiDiscoveredModel>>(emptyList()) }
+    var modelSearchQuery by remember(selectedProvider) { mutableStateOf("") }
     // API key input is intentionally not saveable, so it is not persisted in saved-instance Bundle state.
     var apiKeyDraft by remember(selectedProvider) { mutableStateOf("") }
     var hasSavedKey by remember(selectedProvider) {
@@ -106,7 +108,7 @@ fun AiProviderSettingsScreen(onBack: () -> Unit) {
         OutlinedButton(onClick = onBack) { Text("Back to More") }
         Text("AI provider settings", style = MaterialTheme.typography.titleLarge)
         Text(
-            "Choose a cloud provider and enter its exact model ID. Model IDs are entered manually in this version; automatic discovery is not available yet.",
+            "Choose a cloud provider, discover the models available to your API key, or enter a model ID manually.",
             style = MaterialTheme.typography.bodyMedium
         )
 
@@ -124,6 +126,8 @@ fun AiProviderSettingsScreen(onBack: () -> Unit) {
                             expanded = false
                             statusMessage = null
                             isStatusError = false
+                            discoveredModels = emptyList()
+                            modelSearchQuery = ""
                         }
                     )
                 }
@@ -144,9 +148,105 @@ fun AiProviderSettingsScreen(onBack: () -> Unit) {
             singleLine = true,
             enabled = !isBusy
         )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = {
+                    val keyDraft = apiKeyDraft
+                    val endpoint = endpointOverride.trim().takeIf { it.isNotEmpty() }
+                    scope.launch {
+                        isBusy = true
+                        statusMessage = null
+                        isStatusError = false
+                        try {
+                            if (keyDraft.isNotBlank()) {
+                                withContext(Dispatchers.IO) {
+                                    repository.saveApiKey(selectedProvider, keyDraft)
+                                }
+                                apiKeyDraft = ""
+                                hasSavedKey = true
+                            }
+                            statusMessage = "Loading available models…"
+                            when (val result = withContext(Dispatchers.IO) {
+                                CloudAiModelDiscoveryService(repository).discover(selectedProvider, endpoint)
+                            }) {
+                                is AiModelDiscoveryResult.Success -> {
+                                    discoveredModels = result.models
+                                    modelSearchQuery = ""
+                                    statusMessage = if (result.models.isEmpty()) {
+                                        "The provider returned no selectable models. Check the provider account or enter a model ID manually."
+                                    } else {
+                                        "Loaded ${result.models.size} available models. Select one below."
+                                    }
+                                    isStatusError = result.models.isEmpty()
+                                }
+                                is AiModelDiscoveryResult.Failure -> {
+                                    statusMessage = result.failure.detail
+                                    isStatusError = true
+                                }
+                            }
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            statusMessage = "Model discovery failed. Check the endpoint and API key."
+                            isStatusError = true
+                        } finally {
+                            isBusy = false
+                        }
+                    }
+                },
+                enabled = !isBusy
+            ) {
+                Text(if (isBusy) "Working…" else "Discover models")
+            }
+        }
+        if (discoveredModels.isNotEmpty()) {
+            OutlinedTextField(
+                value = modelSearchQuery,
+                onValueChange = { modelSearchQuery = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Filter discovered models") },
+                placeholder = { Text("Search by name or model ID") },
+                singleLine = true,
+                enabled = !isBusy
+            )
+            val query = modelSearchQuery.trim()
+            val filteredModels = discoveredModels.filter { model ->
+                query.isEmpty() ||
+                    model.id.contains(query, ignoreCase = true) ||
+                    model.displayName.contains(query, ignoreCase = true)
+            }
+            Text(
+                "Choose a model to fill the Model ID field. Showing up to 12 matches.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (filteredModels.isEmpty()) {
+                Text("No discovered models match that search.", style = MaterialTheme.typography.bodySmall)
+            } else {
+                filteredModels.take(12).forEach { model ->
+                    OutlinedButton(
+                        onClick = {
+                            modelId = model.id
+                            statusMessage = "Selected ${model.displayName}."
+                            isStatusError = false
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isBusy
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(model.displayName, style = MaterialTheme.typography.bodyMedium)
+                            Text(model.id, style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            }
+        }
         OutlinedTextField(
             value = endpointOverride,
-            onValueChange = { endpointOverride = it },
+            onValueChange = {
+                endpointOverride = it
+                discoveredModels = emptyList()
+            },
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Custom HTTPS base URL (optional)") },
             placeholder = { Text(definition.defaultBaseUrl ?: "https://your-provider.example/v1") },
