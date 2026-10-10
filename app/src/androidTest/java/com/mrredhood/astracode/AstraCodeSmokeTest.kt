@@ -8,6 +8,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performScrollTo
 import org.junit.Rule
 import org.junit.Test
+import org.junit.Assert.assertEquals
 
 class AstraCodeSmokeTest {
     @get:Rule
@@ -102,10 +103,41 @@ class AstraCodeSmokeTest {
         composeRule.onNodeWithText("Terminal").performClick()
         composeRule.onNodeWithText("Scoped terminal · built-ins only").assertIsDisplayed()
         composeRule.onNodeWithText("Enter a safe command").performTextInput("rm -rf /")
-        composeRule.onNodeWithText("Run built-in").performClick()
+        composeRule.onNodeWithText("Run built-in").performScrollTo().performClick()
         composeRule.onNodeWithText("Blocked: this terminal currently supports only", substring = true)
             .performScrollTo()
             .assertIsDisplayed()
-        composeRule.onNodeWithText("No shell process was started.", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("No shell process was started.", substring = true).performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun homeDashboardOpensCreateProjectAndExecutionStatus() {
+        composeRule.onNodeWithText("New project", substring = true).performClick()
+        composeRule.onNodeWithText("Create a new project").assertIsDisplayed()
+        composeRule.onNodeWithText("Flutter").assertIsDisplayed()
+
+        composeRule.onNodeWithText("Back to More").performClick()
+        composeRule.onNodeWithText("Home").performClick()
+        composeRule.onNodeWithText("View execution").performClick()
+        composeRule.onNodeWithText("Execution lifecycle").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("This page does not simulate progress or claim that a task has run.", substring = true)
+            .performScrollTo()
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun settingsThemeAndAccentPreferencesPersist() {
+        composeRule.onNodeWithText("More").performClick()
+        composeRule.onNodeWithText("Search tools and settings").performTextInput("Settings")
+        composeRule.onNodeWithText("Settings").performClick()
+        composeRule.onNodeWithText("Light").performScrollTo().performClick()
+        composeRule.onNodeWithText("Pink").performScrollTo().performClick()
+
+        assertEquals("Light", AstraUiPreferences(composeRule.activity).themeMode())
+        assertEquals("Pink", AstraUiPreferences(composeRule.activity).accent())
+
+        composeRule.activityRule.scenario.recreate()
+        assertEquals("Light", AstraUiPreferences(composeRule.activity).themeMode())
+        assertEquals("Pink", AstraUiPreferences(composeRule.activity).accent())
     }
 }
