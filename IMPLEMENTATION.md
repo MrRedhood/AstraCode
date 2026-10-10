@@ -252,3 +252,6 @@
 - Added the audited `workspace_move` action. Its exact schema uses a source path and an existing destination directory (empty destination means workspace root). Approval is persisted before execution; the tool refuses name conflicts and same-parent no-ops, prevents moving a folder into itself or a descendant, and verifies the provider-returned item in the destination plus removal from the source listing.
 - Added policy/protocol tests for the 100 MiB attachment aggregate, HTTP sizing, move schema, invalid locations, root destination and move audit records. Updated runtime Help & Guide, architecture, roadmap and the UI smoke assertion.
 - Validation: committed directly to `main`; exact-head Android CI and Android UI Smoke determine verification. No workflow in progress is counted as successful.
+
+## 2026-10-10 — Align runtime tool help with workspace move capability
+- Corrected the in-app More → Help & Guide text so it no longer says AI moves are unavailable after the audited `workspace_move` tool shipped. Overwrite, delete, shell and build remain unavailable; AI moves require explicit approval and post-move verification.
