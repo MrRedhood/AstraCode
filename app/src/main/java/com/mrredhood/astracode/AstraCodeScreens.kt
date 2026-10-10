@@ -751,7 +751,9 @@ private fun SettingsSection(title: String, summary: String, icon: String, onClic
                 Text(title, style = MaterialTheme.typography.titleSmall)
                 Text(summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text("›", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
+            if (onClick != null) {
+                Text("›", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
+            }
         }
     }
 }
