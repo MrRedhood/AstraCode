@@ -108,3 +108,5 @@
 - Reworked oversized diff generation to compare lines with forward/backward streaming cursors and emit only a bounded prefix/suffix sample instead of million-entry split lists.
 - Updated current docs, UI messaging, runtime Help & Guide and tests for the new content limits.
 - Validation: Android CI and Android UI Smoke are triggered on the latest commit; only the exact run results determine success.
+
+- Documentation correction: clarify that exceeding the 1,500,000-line folding limit suppresses the folding line listing; only files above the 2 MiB editor byte cap are read-only.
