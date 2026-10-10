@@ -124,7 +124,8 @@ internal class AiChatAttachmentReader(private val context: Context) {
                         warnings.add("Skipped $name: choose a text or code file.")
                         continue
                     }
-                    if (metadata.second != null && metadata.second > AiChatAttachmentPolicy.MAX_FILE_BYTES) {
+                    val declaredBytes = metadata.second
+                    if (declaredBytes != null && declaredBytes > AiChatAttachmentPolicy.MAX_FILE_BYTES) {
                         warnings.add("Skipped $name: each file must be at most 16 KiB.")
                         continue
                     }

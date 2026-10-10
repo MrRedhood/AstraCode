@@ -205,3 +205,14 @@
 
 
 - Roadmap correction: marked explicit text/code attachments complete and left controlled tool execution and end-to-end verification open as the next AI increment.
+
+
+## 2026-10-10 — Approval-gated read-only workspace tools
+- Added a strict, bounded tool-call envelope with an exact allow-list for workspace_list and workspace_read. Unknown fields/tools, malformed envelopes, absolute paths, traversal, controls and deep paths are rejected.
+- Added a read-only executor that resolves relative paths from the persisted SAF root, checks each directory segment, lists at most 40 entries and reads only recognized UTF-8 text/code files up to 16 KiB.
+- Chat now instructs the configured model how to request an allowed tool, presents its action/path/reason for explicit human approval, records declined requests, and executes only after Approve & run. No write/delete/move/shell tool exists in this increment.
+- Tool results are persisted as visible chat entries with direct evidence including path, byte count, SHA-256 or list counts; returned workspace content is explicitly marked untrusted. Users can ask a follow-up to analyze it.
+- Added protocol tests for normal responses, valid read/list requests, rejected mutation tools, traversal and path depth, strict envelopes/field sets, invalid reasons and payload size bounds.
+- Fixed the prior attachment reader compile error by stabilizing the nullable declared file-size value before comparison.
+- Updated runtime Help & Guide, architecture, roadmap and this implementation log.
+- Validation: committed directly to main with expected-head protection. Exact-head Android CI and UI Smoke are the authority for test outcomes; no pending run was waited on.
