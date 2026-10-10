@@ -63,13 +63,16 @@ class AiChatAttachmentPolicyTest {
     }
 
     @Test
-    fun enforcesThreeFilesAnd25MibPerFileAndPerRequest() {
-        val three = listOf(attachment("a.txt"), attachment("b.txt"), attachment("c.txt"))
+    fun enforcesTenFilesAnd25MibPerFileAndPerRequest() {
+        val ten = (1..10).map { attachment("file-$it.txt") }
+        assertEquals(10, AiChatAttachmentPolicy.MAX_ATTACHMENTS)
+        assertTrue(AiChatAttachmentPolicy.composeMessage("review", ten).displayContent.contains("file-10.txt"))
         assertTrue(runCatching {
-            AiChatAttachmentPolicy.composeMessage("review", three + attachment("d.txt"))
+            AiChatAttachmentPolicy.composeMessage("review", ten + attachment("file-11.txt"))
         }.exceptionOrNull() is IllegalArgumentException)
         assertEquals(25 * 1024 * 1024, AiChatAttachmentPolicy.MAX_FILE_BYTES)
         assertEquals(25 * 1024 * 1024, AiChatAttachmentPolicy.MAX_TOTAL_BYTES)
+        assertEquals(1024L * 1024L * 1024L, AiChatAttachmentPolicy.MAX_STORED_BYTES)
         val maxFile = attachment("large.bin", "application/octet-stream", AiChatAttachmentPolicy.MAX_FILE_BYTES)
         assertTrue(AiChatAttachmentPolicy.composeMessage("review", listOf(maxFile)).displayContent.contains("25.0 MiB"))
         val tooLarge = maxFile.copy(byteCount = AiChatAttachmentPolicy.MAX_FILE_BYTES + 1)

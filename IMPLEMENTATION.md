@@ -238,3 +238,10 @@
 - Added protocol, filename policy and approval-audit tests, including a check that audit history binds to the proposed file's SHA-256 without storing its source content. Updated in-app Help & Guide, architecture, roadmap and this implementation log.
 - Corrected the previous exact-head CI compile failure: the public provider-neutral chat message exposed an internal attachment type. The attachment metadata type is now public only as a container; its constructor and file metadata/bytes remain internal to the app module. The old workflow log identified this compile error, while UI Smoke also failed on that revision.
 - Validation: committed directly to main with expected-head protection. Exact-head Android CI/UI Smoke status is authoritative; no pending workflow was waited on.
+
+## 2026-10-10 — Expand attachment capacity and AI-created file size
+- Raised the per-message attachment-count limit from 3 to 10 and the app-private retained-attachment quota from 250 MiB to 1 GiB. Kept the existing 25 MiB per-file and 25 MiB aggregate provider-request caps, and kept streaming imports so selection does not load entire files into memory.
+- Updated the composer limit, storage-quota error text, policy tests, smoke assertion and runtime Help & Guide.
+- Raised approval-gated `workspace_create_file` payloads from 16 KiB to 15 MiB of strict UTF-8 text. Expanded the tool envelope to 32 MiB and the bounded HTTP response ceiling to 64 MiB to allow JSON and nested response escaping while retaining an explicit upper bound.
+- Updated executor error messaging, protocol boundary tests, provider transport-cap tests, architecture and roadmap documentation. Workspace reads remain capped at 16 KiB; editor editing remains capped at 2 MiB.
+- Validation: changes are committed directly to `main`; exact-head Android CI and Android UI Smoke results are authoritative. No running workflow is treated as passed.

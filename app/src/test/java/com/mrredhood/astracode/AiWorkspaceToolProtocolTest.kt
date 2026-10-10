@@ -163,10 +163,18 @@ class AiWorkspaceToolProtocolTest {
     }
 
     @Test
-    fun parserNeverAllowsAnOversizedEnvelope() {
-        val longReason = "x".repeat(AiWorkspaceToolProtocol.MAX_ENVELOPE_CHARS + 10)
-        val json = org.json.JSONObject().put("name", "workspace_list").put("path", "").put("reason", longReason)
-        val result = AiWorkspaceToolProtocol.parse(marker(json.toString())) as AiWorkspaceToolParseResult.Invalid
-        assertEquals(AiWorkspaceToolParseFailure.MALFORMED_ENVELOPE, result.failure)
+    fun parserRejectsEnvelopeLengthOutsideTheConfiguredBound() {
+        assertTrue(AiWorkspaceToolProtocol.isEnvelopeLengthAllowed(AiWorkspaceToolProtocol.MAX_ENVELOPE_CHARS))
+        assertFalse(AiWorkspaceToolProtocol.isEnvelopeLengthAllowed(AiWorkspaceToolProtocol.MAX_ENVELOPE_CHARS + 1))
+        assertFalse(AiWorkspaceToolProtocol.isEnvelopeLengthAllowed(0))
+    }
+
+    @Test
+    fun acceptsFifteenMibCreateContentAndRejectsAnythingLarger() {
+        assertEquals(15 * 1024 * 1024, AiWorkspaceToolProtocol.MAX_CREATE_BYTES)
+        assertTrue(AiWorkspaceToolProtocol.MAX_ENVELOPE_CHARS >= 2 * AiWorkspaceToolProtocol.MAX_CREATE_BYTES + 4096)
+        val maximum = "x".repeat(AiWorkspaceToolProtocol.MAX_CREATE_BYTES)
+        assertTrue(AiWorkspaceToolProtocol.isValidCreateContent(maximum))
+        assertFalse(AiWorkspaceToolProtocol.isValidCreateContent(maximum + "x"))
     }
 }

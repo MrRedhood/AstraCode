@@ -129,7 +129,7 @@ internal class AiWorkspaceToolExecutor(context: Context) {
         val content = proposal.content
             ?: return failure(proposal, AiWorkspaceToolStatus.INVALID_CONTENT, "The file content was missing.")
         if (!AiWorkspaceToolProtocol.isValidCreateContent(content)) {
-            return failure(proposal, AiWorkspaceToolStatus.INVALID_CONTENT, "File content must be valid text and no larger than 16 KiB.")
+            return failure(proposal, AiWorkspaceToolStatus.INVALID_CONTENT, "File content must be valid text and no larger than 15 MiB.")
         }
         val bytes = content.toByteArray(StandardCharsets.UTF_8)
         val parts = proposal.path.split('/')

@@ -256,6 +256,12 @@ class CloudAiAdaptersTest {
     }
 
     @Test
+    fun transportResponseBudgetCanCarryMaximumCreateProposalWithEscaping() {
+        assertEquals(64 * 1024 * 1024, UrlConnectionAiHttpTransport.MAX_RESPONSE_BYTES)
+        assertTrue(UrlConnectionAiHttpTransport.MAX_RESPONSE_BYTES > 4 * AiWorkspaceToolProtocol.MAX_CREATE_BYTES)
+    }
+
+    @Test
     fun factoryCreatesSeparateNativeProtocolAdaptersAndRejectsHttpEndpoints() {
         val factory = CloudAiProviderFactory(Credentials(), FakeTransport(AiHttpResponse(200, "{}")))
         assertTrue(factory.create(CloudAiProviderId.OPENROUTER, modelCapabilities = capabilities) is OpenAiCompatibleChatProvider)

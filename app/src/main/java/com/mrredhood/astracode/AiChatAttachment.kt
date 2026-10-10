@@ -35,11 +35,11 @@ internal data class AiChatAttachmentReadResult(val attachments: List<AiChatAttac
 internal data class AiChatAttachmentMessage(val providerContent: String, val displayContent: String)
 
 internal object AiChatAttachmentPolicy {
-    const val MAX_ATTACHMENTS = 3
+    const val MAX_ATTACHMENTS = 10
     const val MAX_FILE_BYTES = 25 * 1024 * 1024
     /** Total raw attachment data hydrated into one provider request is bounded for mobile devices. */
     const val MAX_TOTAL_BYTES = 25 * 1024 * 1024
-    const val MAX_STORED_BYTES = 250 * 1024 * 1024
+    const val MAX_STORED_BYTES = 1024L * 1024L * 1024L
 
     private val textExtensions = setOf(
         "txt", "md", "markdown", "kt", "kts", "java", "js", "mjs", "cjs", "ts",
@@ -213,7 +213,7 @@ internal class AiChatAttachmentStorage(context: Context) {
             }
             if (total > hardLimit) {
                 if (hardLimit < AiChatAttachmentPolicy.MAX_FILE_BYTES) {
-                    throw AiChatAttachmentStorageException("The selected file would exceed the 25 MiB per-message or 250 MiB local-storage limit.")
+                    throw AiChatAttachmentStorageException("The selected file would exceed the 25 MiB per-request payload or 1 GiB local-storage quota.")
                 }
                 throw AiChatAttachmentTooLargeException()
             }

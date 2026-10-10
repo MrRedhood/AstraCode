@@ -105,7 +105,8 @@ class UrlConnectionAiHttpTransport : AiHttpTransport {
         const val CONNECT_TIMEOUT_MS = 15_000
         const val READ_TIMEOUT_MS = 60_000
         const val MAX_REQUEST_BYTES = 64 * 1024 * 1024
-        const val MAX_RESPONSE_BYTES = 4 * 1024 * 1024
+        /** Covers nested JSON escaping for a maximum-size AI create-file proposal. */
+        const val MAX_RESPONSE_BYTES = 64 * 1024 * 1024
     }
 }
 

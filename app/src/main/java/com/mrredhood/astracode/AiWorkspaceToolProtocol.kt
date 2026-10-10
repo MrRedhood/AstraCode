@@ -72,10 +72,13 @@ internal sealed class AiWorkspaceToolParseResult {
 internal object AiWorkspaceToolProtocol {
     const val START_MARKER = "<ASTRACODE_TOOL_CALL>"
     const val END_MARKER = "</ASTRACODE_TOOL_CALL>"
-    const val MAX_ENVELOPE_CHARS = 40_000
+    /** Allows JSON escaping around a 15 MiB UTF-8 creation payload. */
+    const val MAX_ENVELOPE_CHARS = 32 * 1024 * 1024
     const val MAX_PATH_CHARS = 240
     const val MAX_PATH_DEPTH = 8
     const val MAX_REASON_CHARS = 240
+
+    fun isEnvelopeLengthAllowed(length: Int): Boolean = length in 1..MAX_ENVELOPE_CHARS
 
     fun parse(response: String): AiWorkspaceToolParseResult {
         val text = response.trim()
@@ -88,7 +91,7 @@ internal object AiWorkspaceToolProtocol {
         ) return AiWorkspaceToolParseResult.Invalid(AiWorkspaceToolParseFailure.MALFORMED_ENVELOPE)
 
         val jsonText = text.substring(START_MARKER.length, text.length - END_MARKER.length).trim()
-        if (jsonText.isEmpty() || jsonText.length > MAX_ENVELOPE_CHARS) {
+        if (!isEnvelopeLengthAllowed(jsonText.length)) {
             return AiWorkspaceToolParseResult.Invalid(AiWorkspaceToolParseFailure.MALFORMED_ENVELOPE)
         }
         val json = try {
@@ -152,7 +155,7 @@ internal object AiWorkspaceToolProtocol {
         }
     }
 
-    const val MAX_CREATE_BYTES = 16 * 1024
+    const val MAX_CREATE_BYTES = 15 * 1024 * 1024
 
     fun isValidRelativePath(path: String, allowRoot: Boolean): Boolean {
         if (path.isEmpty()) return allowRoot
