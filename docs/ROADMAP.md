@@ -26,6 +26,9 @@ Primary destinations: Chat · Code · Git · Build · More. Phones use bottom na
 ### P2 — Navigation and design system
 - [x] Add searchable More index, adaptive navigation and in-app Help & Guide.
 - [x] Expand accessibility semantics, saveable navigation restoration and adaptive-layout breakpoint coverage with unit/UI tests.
+- [x] Replace the foundation-only start page with a dark-first AstraCode dashboard and responsive Home · Projects · AI · Terminal · More navigation.
+- [x] Add focused Create Project, Build & Run, AI Execution and Settings screens while keeping unavailable generators/build/task runners clearly non-operational.
+- [x] Add the safe built-in terminal commands `help`, `pwd`, `ls` and `clear`; unrestricted shell commands remain disabled.
 
 ### P3 — Workspace and editor
 - [x] SAF folder picker and persistent URI read permission; scoped directory browse/filter/refresh.
