@@ -63,7 +63,8 @@ class AstraCodeSmokeTest {
         composeRule.onNodeWithText("Chat").performClick()
         composeRule.onNodeWithText("Cloud AI not configured").assertIsDisplayed()
         composeRule.onNodeWithText("Attach files").assertIsDisplayed()
-        composeRule.onNodeWithText("Do not attach secrets.", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("25 MiB/file", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("Never attach secrets.", substring = true).assertIsDisplayed()
         composeRule.onNodeWithText("Configure AI provider").performClick()
         composeRule.onNodeWithText("AI provider settings").assertIsDisplayed()
     }

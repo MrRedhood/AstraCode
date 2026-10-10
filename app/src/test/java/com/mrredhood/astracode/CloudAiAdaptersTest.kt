@@ -178,6 +178,83 @@ class CloudAiAdaptersTest {
         assertEquals(0, transport.calls)
     }
 
+
+    @Test
+    fun openAiCompatibleSerializesImageAndPdfAsNativeContentParts() = runBlocking {
+        val transport = FakeTransport(AiHttpResponse(200, """
+            {"model":"test-model","choices":[{"message":{"role":"assistant","content":"seen"}}]}
+        """.trimIndent()))
+        val image = AiChatAttachment(
+            java.util.UUID.randomUUID().toString(), "image.png", "image/png", 3, data = byteArrayOf(1, 2, 3)
+        )
+        val pdf = AiChatAttachment(
+            java.util.UUID.randomUUID().toString(), "report.pdf", "application/pdf", 2, data = byteArrayOf(4, 5)
+        )
+        val req = request.copy(messages = listOf(
+            AiChatMessage(AiMessageRole.SYSTEM, "Follow the system rule."),
+            AiChatMessage(AiMessageRole.USER, "Review these files.", attachments = listOf(image, pdf))
+        ))
+        val result = provider(CloudAiProviderId.OPENROUTER, transport = transport).generate("test-model", req)
+        assertTrue(result is AiProviderResult.Success)
+        val parts = JSONObject(requireNotNull(transport.captured).body)
+            .getJSONArray("messages").getJSONObject(1).getJSONArray("content")
+        assertEquals("text", parts.getJSONObject(0).getString("type"))
+        assertEquals("image_url", parts.getJSONObject(1).getString("type"))
+        assertTrue(parts.getJSONObject(1).getJSONObject("image_url").getString("url").endsWith("AQID"))
+        assertEquals("file", parts.getJSONObject(2).getString("type"))
+        assertEquals("data:application/pdf;base64,BAU=", parts.getJSONObject(2).getJSONObject("file").getString("file_data"))
+    }
+
+    @Test
+    fun geminiSerializesImageAudioVideoAndPdfInlineData() = runBlocking {
+        val transport = FakeTransport(AiHttpResponse(200, """
+            {"modelVersion":"test-model","candidates":[{"content":{"parts":[{"text":"ok"}]}}]}
+        """.trimIndent()))
+        fun file(name: String, mime: String, bytes: ByteArray) =
+            AiChatAttachment(java.util.UUID.randomUUID().toString(), name, mime, bytes.size, data = bytes)
+        val attachments = listOf(
+            file("photo.png", "image/png", byteArrayOf(1, 2, 3)),
+            file("voice.mp3", "audio/mpeg", byteArrayOf(4, 5)),
+            file("clip.mp4", "video/mp4", byteArrayOf(6, 7)),
+            file("report.pdf", "application/pdf", byteArrayOf(8, 9))
+        )
+        val req = request.copy(messages = listOf(
+            AiChatMessage(AiMessageRole.USER, "Inspect these files.", attachments = attachments)
+        ))
+        val result = GeminiGenerateContentProvider(
+            "https://generativelanguage.googleapis.com/v1beta",
+            Credentials(), transport, capabilities
+        ).generate("test-model", req)
+        assertTrue(result is AiProviderResult.Success)
+        val parts = JSONObject(requireNotNull(transport.captured).body)
+            .getJSONArray("contents").getJSONObject(0).getJSONArray("parts")
+        val mimes = (0 until parts.length()).mapNotNull { index ->
+            parts.optJSONObject(index)?.optJSONObject("inlineData")?.optString("mimeType")
+        }
+        assertEquals(listOf("image/png", "audio/mpeg", "video/mp4", "application/pdf"), mimes)
+        assertEquals("AQID", parts.getJSONObject(1).getJSONObject("inlineData").getString("data"))
+        assertEquals("BAU=", parts.getJSONObject(2).getJSONObject("inlineData").getString("data"))
+    }
+
+    @Test
+    fun unsupportedCohereAudioIsRejectedBeforeNetworkRequest() = runBlocking {
+        val transport = FakeTransport(AiHttpResponse(200, """
+            {"message":{"content":[{"type":"text","text":"ok"}]}}
+        """.trimIndent()))
+        val audio = AiChatAttachment(
+            java.util.UUID.randomUUID().toString(), "voice.mp3", "audio/mpeg", 3, data = byteArrayOf(1, 2, 3)
+        )
+        val req = request.copy(messages = listOf(
+            AiChatMessage(AiMessageRole.USER, "Transcribe this audio.", attachments = listOf(audio))
+        ))
+        val result = CohereChatV2Provider("https://api.cohere.com/v2", Credentials(), transport, capabilities)
+            .generate("test-model", req)
+        assertTrue(result is AiProviderResult.Failure)
+        assertEquals(AiProviderFailureCode.INVALID_REQUEST, (result as AiProviderResult.Failure).failure.code)
+        assertTrue(result.failure.detail.contains("Gemini"))
+        assertEquals(0, transport.calls)
+    }
+
     @Test
     fun factoryCreatesSeparateNativeProtocolAdaptersAndRejectsHttpEndpoints() {
         val factory = CloudAiProviderFactory(Credentials(), FakeTransport(AiHttpResponse(200, "{}")))

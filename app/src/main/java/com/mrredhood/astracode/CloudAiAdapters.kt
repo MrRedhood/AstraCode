@@ -8,6 +8,7 @@ import java.net.URI
 import java.net.URL
 import java.nio.charset.StandardCharsets
 import java.util.Locale
+import java.util.Base64
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -51,7 +52,7 @@ class UrlConnectionAiHttpTransport : AiHttpTransport {
         }
         require(request.method == "GET" || request.method == "POST") { "Unsupported HTTP method" }
         val requestBytes = request.body.toByteArray(StandardCharsets.UTF_8)
-        if (requestBytes.size > MAX_REQUEST_BYTES) throw AiResponseLimitException()
+        if (requestBytes.size > MAX_REQUEST_BYTES) throw AiRequestLimitException()
         require(request.method == "POST" || request.body.isEmpty()) { "GET requests must not contain a body" }
         val connection = (URL(request.url).openConnection() as? HttpURLConnection)
             ?: throw IOException("Unsupported network connection")
@@ -103,12 +104,14 @@ class UrlConnectionAiHttpTransport : AiHttpTransport {
     companion object {
         const val CONNECT_TIMEOUT_MS = 15_000
         const val READ_TIMEOUT_MS = 60_000
-        const val MAX_REQUEST_BYTES = 8 * 1024 * 1024
+        const val MAX_REQUEST_BYTES = 64 * 1024 * 1024
         const val MAX_RESPONSE_BYTES = 4 * 1024 * 1024
     }
 }
 
-private class AiResponseLimitException : IOException("AI payload exceeded the configured size bound")
+private class AiRequestLimitException : IOException("AI request exceeded the configured size bound")
+private class AiResponseLimitException : IOException("AI response exceeded the configured size bound")
+private class AiUnsupportedAttachmentException(message: String) : IllegalArgumentException(message)
 
 /**
  * Shared failure mapping and safety checks. All protocol classes below have independent request and
@@ -153,8 +156,8 @@ abstract class JsonCloudAiProvider(
 
             val (path, headers) = pathAndHeaders(apiKey, modelId)
             val payload = createPayload(modelId, request).toString()
-            if (payload.toByteArray(StandardCharsets.UTF_8).size > UrlConnectionAiHttpTransport.MAX_REQUEST_BYTES) {
-                return failure(AiProviderFailureCode.INVALID_REQUEST, false, "The request is too large for the configured transport limit.")
+            if (payload.length > UrlConnectionAiHttpTransport.MAX_REQUEST_BYTES) {
+                return failure(AiProviderFailureCode.INVALID_REQUEST, false, "The provider payload exceeds the 64 MiB request limit. Reduce the attachment size.")
             }
             val response = transport.execute(AiHttpRequest(joinUrl(baseUrl, path), headers, payload))
             currentCoroutineContext().ensureActive()
@@ -167,6 +170,10 @@ abstract class JsonCloudAiProvider(
             AiProviderResult.Success(parsePayload(modelId, parsed))
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (requestTooLarge: AiRequestLimitException) {
+            failure(AiProviderFailureCode.INVALID_REQUEST, false, "The attachment payload exceeds the 64 MiB request limit. Reduce file sizes.")
+        } catch (unsupported: AiUnsupportedAttachmentException) {
+            failure(AiProviderFailureCode.INVALID_REQUEST, false, unsupported.message ?: "The selected provider cannot accept this attachment format.")
         } catch (tooLarge: AiResponseLimitException) {
             failure(AiProviderFailureCode.RESPONSE_TOO_LARGE, false, "The provider response exceeded the 4 MiB safety limit.")
         } catch (timeout: SocketTimeoutException) {
@@ -225,6 +232,171 @@ abstract class JsonCloudAiProvider(
     }
 }
 
+
+private fun attachmentBytes(attachment: AiChatAttachment): ByteArray {
+    val data = attachment.data
+        ?: throw AiUnsupportedAttachmentException("An attachment could not be loaded. Remove it and attach the file again.")
+    if (data.size != attachment.byteCount || data.size > AiChatAttachmentPolicy.MAX_FILE_BYTES) {
+        throw AiUnsupportedAttachmentException("An attachment does not match its saved size. Attach it again.")
+    }
+    return data
+}
+
+private fun attachmentBase64(attachment: AiChatAttachment): String =
+    Base64.getEncoder().encodeToString(attachmentBytes(attachment))
+
+private fun attachmentDataUri(attachment: AiChatAttachment): String =
+    "data:" + AiChatAttachmentPolicy.normalizeMimeType(attachment.mimeType) +
+        ";base64," + attachmentBase64(attachment)
+
+private fun attachmentText(attachment: AiChatAttachment): String? {
+    if (!AiChatAttachmentPolicy.isTextLike(attachment.name, attachment.mimeType)) return null
+    val data = attachmentBytes(attachment)
+    return AiChatAttachmentPolicy.decodeUtf8(data)
+        ?: throw AiUnsupportedAttachmentException(
+            "The text attachment '" + AiChatAttachmentPolicy.safeLabel(attachment.name) +
+                "' is not valid UTF-8. Remove it or attach a UTF-8 text copy."
+        )
+}
+
+private fun attachmentLabelledText(attachment: AiChatAttachment, decoded: String): String =
+    "[Attached file: " + AiChatAttachmentPolicy.safeLabel(attachment.name) + "]\n" + decoded
+
+private fun requireResponsesFile(attachment: AiChatAttachment) {
+    val extension = attachment.name.substringAfterLast('.', "").lowercase(Locale.ROOT)
+    val supported = extension in setOf(
+        "pdf", "doc", "docx", "dot", "odt", "rtf", "ppt", "pptx", "pot", "ppa",
+        "pps", "xls", "xlsx", "xla", "xlb", "xlc", "xlm", "xlt", "xlw", "csv",
+        "tsv", "iif", "txt", "md", "markdown", "json", "html", "xml", "asm",
+        "bat", "c", "cc", "conf", "cpp", "css", "cxx", "h", "hh", "htm", "js",
+        "ksh", "log", "mjs", "nws", "pl", "py", "rb", "rst", "s", "sql", "tex",
+        "text", "vtt", "vcf"
+    )
+    if (!supported) {
+        throw AiUnsupportedAttachmentException(
+            "The configured OpenAI Responses API does not accept this file type as an inline file input. Try Gemini for audio/video or remove this attachment."
+        )
+    }
+}
+
+private fun openAiChatContent(message: AiChatMessage): Any {
+    if (message.attachments.isEmpty()) return message.content
+    val content = JSONArray()
+    if (message.content.isNotBlank()) content.put(JSONObject().put("type", "text").put("text", message.content))
+    message.attachments.forEach { attachment ->
+        val text = attachmentText(attachment)
+        when {
+            text != null -> content.put(JSONObject().put("type", "text").put("text", attachmentLabelledText(attachment, text)))
+            AiChatAttachmentPolicy.isInlineImageMime(attachment.mimeType) -> content.put(
+                JSONObject().put("type", "image_url")
+                    .put("image_url", JSONObject().put("url", attachmentDataUri(attachment)).put("detail", "auto"))
+            )
+            AiChatAttachmentPolicy.isPdf(attachment) -> content.put(
+                JSONObject().put("type", "file")
+                    .put("file", JSONObject()
+                        .put("filename", AiChatAttachmentPolicy.safeLabel(attachment.name))
+                        .put("file_data", attachmentDataUri(attachment)))
+            )
+            else -> throw AiUnsupportedAttachmentException(
+                "This OpenAI-compatible chat endpoint supports text, PNG/JPEG/WEBP/GIF images and PDF attachments. Use Gemini for audio/video or remove this attachment."
+            )
+        }
+    }
+    return content
+}
+
+private fun openAiResponsesContent(message: AiChatMessage): Any {
+    if (message.attachments.isEmpty()) return message.content
+    val content = JSONArray()
+    if (message.content.isNotBlank()) content.put(JSONObject().put("type", "input_text").put("text", message.content))
+    message.attachments.forEach { attachment ->
+        val text = attachmentText(attachment)
+        when {
+            text != null -> content.put(JSONObject().put("type", "input_text").put("text", attachmentLabelledText(attachment, text)))
+            AiChatAttachmentPolicy.isInlineImageMime(attachment.mimeType) -> content.put(
+                JSONObject().put("type", "input_image")
+                    .put("image_url", attachmentDataUri(attachment)).put("detail", "auto")
+            )
+            else -> {
+                requireResponsesFile(attachment)
+                content.put(
+                    JSONObject().put("type", "input_file")
+                        .put("filename", AiChatAttachmentPolicy.safeLabel(attachment.name))
+                        .put("file_data", attachmentDataUri(attachment))
+                )
+            }
+        }
+    }
+    return content
+}
+
+private fun geminiParts(message: AiChatMessage): JSONArray {
+    val parts = JSONArray()
+    if (message.content.isNotBlank()) parts.put(JSONObject().put("text", message.content))
+    message.attachments.forEach { attachment ->
+        val text = attachmentText(attachment)
+        if (text != null) {
+            parts.put(JSONObject().put("text", attachmentLabelledText(attachment, text)))
+        } else {
+            parts.put(JSONObject().put("inlineData",
+                JSONObject()
+                    .put("mimeType", AiChatAttachmentPolicy.normalizeMimeType(attachment.mimeType))
+                    .put("data", attachmentBase64(attachment))))
+        }
+    }
+    return parts
+}
+
+private fun anthropicContent(message: AiChatMessage): Any {
+    if (message.attachments.isEmpty()) return message.content
+    val content = JSONArray()
+    if (message.content.isNotBlank()) content.put(JSONObject().put("type", "text").put("text", message.content))
+    message.attachments.forEach { attachment ->
+        val text = attachmentText(attachment)
+        when {
+            text != null -> content.put(JSONObject().put("type", "text").put("text", attachmentLabelledText(attachment, text)))
+            AiChatAttachmentPolicy.isInlineImageMime(attachment.mimeType) -> content.put(
+                JSONObject().put("type", "image")
+                    .put("source", JSONObject()
+                        .put("type", "base64")
+                        .put("media_type", AiChatAttachmentPolicy.normalizeMimeType(attachment.mimeType))
+                        .put("data", attachmentBase64(attachment)))
+            )
+            AiChatAttachmentPolicy.isPdf(attachment) -> content.put(
+                JSONObject().put("type", "document")
+                    .put("source", JSONObject()
+                        .put("type", "base64")
+                        .put("media_type", "application/pdf")
+                        .put("data", attachmentBase64(attachment)))
+            )
+            else -> throw AiUnsupportedAttachmentException(
+                "The configured Anthropic Messages API adapter supports text, PNG/JPEG/WEBP/GIF images and PDF documents in this message. Use Gemini for audio/video or remove this attachment."
+            )
+        }
+    }
+    return content
+}
+
+private fun cohereContent(message: AiChatMessage): Any {
+    if (message.attachments.isEmpty()) return message.content
+    val content = JSONArray()
+    if (message.content.isNotBlank()) content.put(JSONObject().put("type", "text").put("text", message.content))
+    message.attachments.forEach { attachment ->
+        val text = attachmentText(attachment)
+        when {
+            text != null -> content.put(JSONObject().put("type", "text").put("text", attachmentLabelledText(attachment, text)))
+            AiChatAttachmentPolicy.isInlineImageMime(attachment.mimeType) -> content.put(
+                JSONObject().put("type", "image_url")
+                    .put("image_url", JSONObject().put("url", attachmentDataUri(attachment)))
+            )
+            else -> throw AiUnsupportedAttachmentException(
+                "The configured Cohere Chat API adapter supports text and PNG/JPEG/WEBP/GIF image attachments. Use Gemini for audio/video or remove this attachment."
+            )
+        }
+    }
+    return content
+}
+
 /** OpenAI Chat Completions-compatible adapter for OpenRouter, xAI and other compatible endpoints. */
 class OpenAiCompatibleChatProvider(
     id: CloudAiProviderId,
@@ -238,7 +410,11 @@ class OpenAiCompatibleChatProvider(
 
     override fun createPayload(modelId: String, request: AiGenerationRequest): JSONObject {
         val messages = JSONArray()
-        request.messages.forEach { messages.put(JSONObject().put("role", it.role.name.lowercase(Locale.ROOT)).put("content", it.content)) }
+        request.messages.forEach { message ->
+            messages.put(JSONObject()
+                .put("role", message.role.name.lowercase(Locale.ROOT))
+                .put("content", openAiChatContent(message)))
+        }
         val payload = JSONObject().put("model", modelId).put("messages", messages).put("stream", false)
         request.maxOutputTokens?.let { payload.put("max_tokens", it) }
         request.temperature?.let { payload.put("temperature", it) }
@@ -280,7 +456,7 @@ class OpenAiResponsesProvider(
         request.messages.filter { it.role != AiMessageRole.SYSTEM }.forEach { message ->
             input.put(JSONObject()
                 .put("role", message.role.name.lowercase(Locale.ROOT))
-                .put("content", message.content))
+                .put("content", openAiResponsesContent(message)))
         }
         val payload = JSONObject()
             .put("model", modelId)
@@ -335,7 +511,7 @@ class GeminiGenerateContentProvider(
         request.messages.filter { it.role != AiMessageRole.SYSTEM }.forEach { message ->
             contents.put(JSONObject()
                 .put("role", if (message.role == AiMessageRole.ASSISTANT) "model" else "user")
-                .put("parts", JSONArray().put(JSONObject().put("text", message.content))))
+                .put("parts", geminiParts(message)))
         }
         val payload = JSONObject().put("contents", contents)
         val systemText = request.messages.filter { it.role == AiMessageRole.SYSTEM }.joinToString("\n\n") { it.content }
@@ -382,7 +558,7 @@ class AnthropicMessagesProvider(
         request.messages.filter { it.role != AiMessageRole.SYSTEM }.forEach { message ->
             messages.put(JSONObject()
                 .put("role", message.role.name.lowercase(Locale.ROOT))
-                .put("content", message.content))
+                .put("content", anthropicContent(message)))
         }
         val payload = JSONObject()
             .put("model", modelId)
@@ -422,7 +598,7 @@ class CohereChatV2Provider(
         request.messages.forEach { message ->
             messages.put(JSONObject()
                 .put("role", message.role.name.lowercase(Locale.ROOT))
-                .put("content", message.content))
+                .put("content", cohereContent(message)))
         }
         val payload = JSONObject()
             .put("model", modelId)

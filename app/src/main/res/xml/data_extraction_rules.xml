@@ -3,9 +3,11 @@
     <cloud-backup>
         <exclude domain="sharedpref" path="astracode_ai_secrets.xml" />
         <exclude domain="database" path="astracode_chat.db" />
+        <exclude domain="file" path="ai_chat_attachments/" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="astracode_ai_secrets.xml" />
         <exclude domain="database" path="astracode_chat.db" />
+        <exclude domain="file" path="ai_chat_attachments/" />
     </device-transfer>
 </data-extraction-rules>

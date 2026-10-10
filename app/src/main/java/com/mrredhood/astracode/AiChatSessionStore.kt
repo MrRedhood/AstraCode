@@ -37,6 +37,7 @@ internal class AiChatSessionStore(
                 role TEXT NOT NULL,
                 content TEXT NOT NULL,
                 display_content TEXT NOT NULL DEFAULT '',
+                attachments_json TEXT NOT NULL DEFAULT '[]',
                 created_at INTEGER NOT NULL,
                 FOREIGN KEY(session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
             )
@@ -49,6 +50,9 @@ internal class AiChatSessionStore(
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) {
             db.execSQL("ALTER TABLE chat_messages ADD COLUMN display_content TEXT NOT NULL DEFAULT ''")
+        }
+        if (oldVersion < 3) {
+            db.execSQL("ALTER TABLE chat_messages ADD COLUMN attachments_json TEXT NOT NULL DEFAULT '[]'")
         }
     }
 
@@ -84,7 +88,7 @@ internal class AiChatSessionStore(
     fun loadMessages(sessionId: Long): List<AiChatMessage> {
         val result = ArrayList<AiChatMessage>(MAX_MESSAGES_PER_SESSION)
         readableDatabase.query(
-            "chat_messages", arrayOf("role", "content", "display_content"),
+            "chat_messages", arrayOf("role", "content", "display_content", "attachments_json"),
             "session_id = ?", arrayOf(sessionId.toString()),
             null, null, "id DESC", MAX_MESSAGES_PER_SESSION.toString()
         ).use { cursor ->
@@ -93,7 +97,14 @@ internal class AiChatSessionStore(
                 val content = cursor.getString(1)
                 if (role != null && content.isNotBlank()) {
                     val display = cursor.getString(2).orEmpty().takeIf { it.isNotBlank() && it != content }
-                    result.add(AiChatMessage(role, boundMessage(content), display))
+                    result.add(
+                        AiChatMessage(
+                            role = role,
+                            content = boundMessage(content),
+                            displayContent = display,
+                            attachments = AiChatAttachmentMetadataCodec.decode(cursor.getString(3))
+                        )
+                    )
                 }
             }
         }
@@ -118,6 +129,7 @@ internal class AiChatSessionStore(
                 put("role", message.role.name)
                 put("content", boundMessage(message.content))
                 put("display_content", boundMessage(message.displayContent ?: message.content))
+                put("attachments_json", AiChatAttachmentMetadataCodec.encode(message.attachments))
                 put("created_at", nowMillis)
             }
             db.insertOrThrow("chat_messages", null, values)
@@ -145,6 +157,21 @@ internal class AiChatSessionStore(
             db.endTransaction()
         }
         pruneSessions(db)
+    }
+
+    @Synchronized
+    fun storedAttachmentIds(): Set<String> {
+        val ids = linkedSetOf<String>()
+        readableDatabase.query(
+            "chat_messages",
+            arrayOf("attachments_json"),
+            null, null, null, null, null
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                AiChatAttachmentMetadataCodec.decode(cursor.getString(0)).forEach { ids.add(it.id) }
+            }
+        }
+        return ids
     }
 
     @Synchronized
@@ -192,7 +219,7 @@ internal class AiChatSessionStore(
         const val MAX_MESSAGE_CHARS = 60_000
         const val NEW_SESSION_TITLE = "New chat"
         const val DATABASE_NAME = "astracode_chat.db"
-        private const val DATABASE_VERSION = 2
+        private const val DATABASE_VERSION = 3
         private val WHITESPACE = Regex("\\s+")
     }
 }

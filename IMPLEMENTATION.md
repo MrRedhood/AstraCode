@@ -216,3 +216,14 @@
 - Fixed the prior attachment reader compile error by stabilizing the nullable declared file-size value before comparison.
 - Updated runtime Help & Guide, architecture, roadmap and this implementation log.
 - Validation: committed directly to main with expected-head protection. Exact-head Android CI and UI Smoke are the authority for test outcomes; no pending run was waited on.
+
+
+## 2026-10-10 — 25 MiB multimodal chat attachments
+- Raised the per-file cap to 25 MiB and allow selection from Android's all-file-type picker. Supports up to three selected files, with a 25 MiB aggregate attachment payload cap per model request and a 250 MiB local attachment-storage quota.
+- Replaced in-memory text-only file loading with bounded streaming copies to app-private attachment files. SQLite schema v3 persists only validated attachment metadata and references; raw bytes remain outside the database and excluded from Android cloud backup/device transfer.
+- Added request-time attachment hydration with ID/size/byte-count checks and a bounded payload. User-visible chat bubbles show file names, MIME type and sizes, not binary data.
+- Added native adapter payload construction for Gemini inline media data (including supported audio/video/document MIME types), OpenAI-compatible image/PDF parts, OpenAI Responses image/file parts, Anthropic image/PDF blocks and Cohere image parts. Text/code files are decoded as UTF-8 only when their type is text-like; unsupported provider/format combinations fail clearly instead of being silently omitted.
+- Raised the HTTP request ceiling to 64 MiB to account for Base64 expansion while keeping a 25 MiB aggregate raw attachment limit.
+- Added policy, metadata-persistence and provider payload tests. Fixed the previous workspace-tool protocol test by classifying missing required fields as malformed JSON rather than unknown fields.
+- Updated Help & Guide, architecture, roadmap and this implementation log.
+- Validation: committed directly to main using expected-head protection. Exact-head workflow results are authoritative; pending workflows were not waited on.

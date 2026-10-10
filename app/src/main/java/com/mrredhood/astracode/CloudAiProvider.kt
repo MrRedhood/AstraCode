@@ -46,8 +46,10 @@ enum class AiMessageRole { SYSTEM, USER, ASSISTANT }
 data class AiChatMessage(
     val role: AiMessageRole,
     val content: String,
-    /** Optional visible text; adapters send content and ignore this presentation field. */
-    val displayContent: String? = null
+    /** Optional visible text; provider adapters use content and leave this presentation field local. */
+    val displayContent: String? = null,
+    /** Metadata is always local; request messages hydrate the bytes before calling a provider. */
+    val attachments: List<AiChatAttachment> = emptyList()
 ) {
     init {
         require(content.isNotBlank()) { "Message content must not be blank" }
@@ -72,6 +74,16 @@ data class AiGenerationRequest(
         require(messages.sumOf { it.content.length.toLong() } <= MAX_TOTAL_CHARACTERS) {
             "Prompt exceeds the mobile-safe character limit"
         }
+        val attachedFiles = messages.flatMap { it.attachments }
+        require(attachedFiles.all { it.byteCount in 0..AiChatAttachmentPolicy.MAX_FILE_BYTES }) {
+            "Each attachment must be no larger than 25 MiB"
+        }
+        require(attachedFiles.sumOf { it.byteCount.toLong() } <= MAX_TOTAL_ATTACHMENT_BYTES) {
+            "Attachments for one provider request must total no more than 25 MiB"
+        }
+        require(attachedFiles.all { it.data != null && it.data.size == it.byteCount }) {
+            "Attachment bytes must be available before generating a provider request"
+        }
         require(temperature == null || (temperature.isFinite() && temperature in 0.0..2.0)) {
             "Temperature must be between 0 and 2"
         }
@@ -83,6 +95,7 @@ data class AiGenerationRequest(
     companion object {
         const val MAX_MESSAGES = 100
         const val MAX_TOTAL_CHARACTERS = 2L * 1024L * 1024L
+        const val MAX_TOTAL_ATTACHMENT_BYTES = 25 * 1024 * 1024
         const val MAX_OUTPUT_TOKENS = 1_000_000
     }
 }

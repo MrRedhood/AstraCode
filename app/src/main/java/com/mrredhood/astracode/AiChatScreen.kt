@@ -52,10 +52,11 @@ fun AiChatScreen(
     val context = LocalContext.current.applicationContext
     val repository = remember(context) { AiProviderSettingsRepository(context) }
     val sessionStore = remember(context) { AiChatSessionStore(context) }
+    val attachmentStorage = remember(context) { AiChatAttachmentStorage(context) }
     val toolExecutor = remember(context) { AiWorkspaceToolExecutor(context) }
     var pendingToolProposal by remember { mutableStateOf<AiWorkspaceToolProposal?>(null) }
     var isExecutingTool by remember { mutableStateOf(false) }
-    val attachmentReader = remember(context) { AiChatAttachmentReader(context) }
+    val attachmentReader = remember(context) { AiChatAttachmentReader(context, attachmentStorage) }
     val attachments = remember { mutableStateListOf<AiChatAttachment>() }
     var isLoadingAttachments by remember { mutableStateOf(false) }
     val configuredProvider = remember(repository) { repository.selectedProviderId() }
@@ -110,6 +111,7 @@ fun AiChatScreen(
             val restored = withContext(Dispatchers.IO) {
                 val recent = sessionStore.listSessions()
                 val id = recent.firstOrNull()?.id ?: sessionStore.createSession()
+                attachmentStorage.cleanup(sessionStore.storedAttachmentIds())
                 Triple(id, sessionStore.loadMessages(id), sessionStore.listSessions())
             }
             activeSessionId = restored.first
@@ -155,7 +157,12 @@ fun AiChatScreen(
         }
         // Bound retained history for lower-memory Android devices and provider context limits.
         while (messages.size >= MAX_HISTORY_MESSAGES - 1) messages.removeAt(0)
-        val userMessage = AiChatMessage(AiMessageRole.USER, composed.providerContent, composed.displayContent)
+        val userMessage = AiChatMessage(
+            role = AiMessageRole.USER,
+            content = composed.providerContent,
+            displayContent = composed.displayContent,
+            attachments = selectedAttachments
+        )
         messages.add(userMessage)
         prompt = ""
         attachments.clear()
@@ -183,6 +190,7 @@ fun AiChatScreen(
             try {
                 val latestSessions = withContext(Dispatchers.IO) {
                     sessionStore.appendMessage(sessionId, userMessage)
+                    attachmentStorage.cleanup(sessionStore.storedAttachmentIds())
                     sessionStore.listSessions()
                 }
                 sessions.clear()
@@ -199,10 +207,11 @@ fun AiChatScreen(
                         baseUrlOverride = configuration.baseUrlOverride.trim().takeIf { it.isNotEmpty() },
                         modelCapabilities = capabilities
                     )
+                    val hydratedHistory = attachmentStorage.hydrateForRequest(history)
                     provider.generate(
                         modelId = configuration.modelId,
                         request = AiGenerationRequest(
-                            messages = history,
+                            messages = hydratedHistory,
                             maxOutputTokens = CHAT_MAX_OUTPUT_TOKENS
                         )
                     )
@@ -258,7 +267,11 @@ fun AiChatScreen(
                 statusIsError = false
                 throw cancelled
             } catch (error: Exception) {
-                statusMessage = "The request or local save failed. Check storage and AI & Models, then try again."
+                statusMessage = when (error) {
+                    is AiChatAttachmentStorageException -> error.message
+                        ?: "The attached files could not be prepared. Remove them and retry."
+                    else -> "The request or local save failed. Check storage and AI & Models, then try again."
+                }
                 statusIsError = true
             } finally {
                 isSending = false
@@ -304,8 +317,14 @@ fun AiChatScreen(
                         isSessionReady = false
                         scope.launch {
                             try {
-                                val newId = withContext(Dispatchers.IO) { sessionStore.createSession() }
+                                val newId = withContext(Dispatchers.IO) {
+                                    val created = sessionStore.createSession()
+                                    attachmentStorage.cleanup(sessionStore.storedAttachmentIds())
+                                    created
+                                }
                                 activeSessionId = newId
+                                attachments.toList().forEach(attachmentStorage::delete)
+                                attachments.clear()
                                 messages.clear()
                                 statusMessage = null
                                 statusIsError = false
@@ -340,7 +359,7 @@ fun AiChatScreen(
                 ) {
                     Text("Connect a cloud model", style = MaterialTheme.typography.titleSmall)
                     Text(
-                        "Choose a provider, discover or enter a model ID, save its API key, and run Save & test. Chat sends only the conversation text you type; workspace files are not attached automatically.",
+                        "Choose a provider, discover or enter a model ID, save its API key, and run Save & test. Only files you explicitly select are attached to a message; workspace files are never added automatically.",
                         style = MaterialTheme.typography.bodySmall
                     )
                     Button(onClick = onOpenAiSettings) { Text("Configure AI provider") }
@@ -533,6 +552,7 @@ fun AiChatScreen(
                             try {
                                 val restored = withContext(Dispatchers.IO) {
                                     sessionStore.deleteSession(candidate.id)
+                                    attachmentStorage.cleanup(sessionStore.storedAttachmentIds())
                                     val recent = sessionStore.listSessions()
                                     val id = if (wasActive) recent.firstOrNull()?.id ?: sessionStore.createSession() else currentActiveId
                                     Triple(id, sessionStore.listSessions(), id?.let { sessionStore.loadMessages(it) } ?: emptyList())
@@ -575,10 +595,10 @@ fun AiChatScreen(
                     onClick = { attachmentPicker.launch(arrayOf("*/*")) },
                     enabled = !isSending && pendingToolProposal == null && !isExecutingTool && !isLoadingAttachments &&
                         attachments.size < AiChatAttachmentPolicy.MAX_ATTACHMENTS
-                ) { Text(if (isLoadingAttachments) "Reading files…" else "Attach files") }
+                ) { Text(if (isLoadingAttachments) "Copying files…" else "Attach files") }
                 Text(
                     attachments.size.toString() + "/" + AiChatAttachmentPolicy.MAX_ATTACHMENTS +
-                        " attached · 16 KiB/file · 32 KiB total",
+                        " attached · 25 MiB/file · 25 MiB/request",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -601,7 +621,9 @@ fun AiChatScreen(
                                 )
                             }
                             TextButton(
-                                onClick = { attachments.remove(attachment) },
+                                onClick = {
+                                    if (attachments.remove(attachment)) attachmentStorage.delete(attachment)
+                                },
                                 enabled = !isSending && !isLoadingAttachments
                             ) { Text("Remove") }
                         }
@@ -609,7 +631,7 @@ fun AiChatScreen(
                 }
             }
             Text(
-                "Selected text is sent to your configured model and saved locally. Do not attach secrets.",
+                "Selected file contents are copied into private app storage and sent to your configured model when supported. Never attach secrets.",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -629,7 +651,8 @@ fun AiChatScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
                 minLines = 1,
                 maxLines = 4,
-                enabled = isConfigured && !isSending
+                enabled = isConfigured && !isSending && pendingToolProposal == null &&
+                    !isExecutingTool && !isLoadingAttachments
             )
             if (isSending) {
                 OutlinedButton(onClick = { activeRequest?.cancel() }) {

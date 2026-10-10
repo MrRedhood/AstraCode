@@ -64,7 +64,10 @@ internal object AiWorkspaceToolProtocol {
         val fieldNames = mutableSetOf<String>()
         val keys = json.keys()
         while (keys.hasNext()) fieldNames.add(keys.next())
-        if (fieldNames != setOf("name", "path", "reason")) {
+        if (!fieldNames.containsAll(setOf("name", "path", "reason"))) {
+            return AiWorkspaceToolParseResult.Invalid(AiWorkspaceToolParseFailure.MALFORMED_JSON)
+        }
+        if (fieldNames.size != 3) {
             return AiWorkspaceToolParseResult.Invalid(AiWorkspaceToolParseFailure.UNKNOWN_FIELDS)
         }
         if (json.opt("name") !is String || json.opt("path") !is String || json.opt("reason") !is String) {

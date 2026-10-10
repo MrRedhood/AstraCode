@@ -88,6 +88,48 @@ class AiChatSessionStoreTest {
         }
     }
 
+    @Test
+    fun attachmentMetadataSurvivesStoreRecreationWithoutPersistingFileBytes() {
+        withTemporaryDatabase { name ->
+            val store = AiChatSessionStore(context, name)
+            val sessionId: Long
+            val attachmentId = UUID.randomUUID().toString()
+            try {
+                sessionId = store.createSession()
+                val message = AiChatMessage(
+                    role = AiMessageRole.USER,
+                    content = "Inspect this file.",
+                    displayContent = "Inspect this file.\n\nAttached files:\n• photo.png",
+                    attachments = listOf(
+                        AiChatAttachment(
+                            id = attachmentId,
+                            name = "photo.png",
+                            mimeType = "image/png",
+                            byteCount = 3,
+                            sourceUri = "content://private/document/123",
+                            data = byteArrayOf(1, 2, 3)
+                        )
+                    )
+                )
+                store.appendMessage(sessionId, message)
+            } finally {
+                store.close()
+            }
+
+            val reopened = AiChatSessionStore(context, name)
+            try {
+                val restored = reopened.loadMessages(sessionId).single()
+                assertEquals(attachmentId, restored.attachments.single().id)
+                assertEquals("photo.png", restored.attachments.single().name)
+                assertEquals(3, restored.attachments.single().byteCount)
+                assertEquals(null, restored.attachments.single().data)
+                assertEquals("", restored.attachments.single().sourceUri)
+            } finally {
+                reopened.close()
+            }
+        }
+    }
+
     private fun withTemporaryDatabase(block: (String) -> Unit) {
         val name = "chat-test-" + UUID.randomUUID().toString().replace("-", "") + ".db"
         context.deleteDatabase(name)
