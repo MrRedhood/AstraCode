@@ -78,6 +78,16 @@ private fun accentColor(name: String): Color = when (name) {
     else -> AstraBlue
 }
 
+/** Deeper accent shades retain readable contrast on the Light theme. */
+private fun lightAccentColor(name: String): Color = when (name) {
+    "Cyan" -> Color(0xFF087FA8)
+    "Purple" -> Color(0xFF7040CE)
+    "Pink" -> Color(0xFFB52D91)
+    "Gold" -> Color(0xFF9A5A00)
+    "Green" -> Color(0xFF007A64)
+    else -> Color(0xFF245DDB)
+}
+
 /** Typography uses the system sans/mono fallbacks so no missing font binaries are referenced. */
 @Composable
 internal fun AstraCodeTheme(
@@ -110,7 +120,7 @@ internal fun AstraCodeTheme(
         )
     } else {
         lightColorScheme(
-            primary = Color(0xFF285FCB),
+            primary = lightAccentColor(accent),
             secondary = Color(0xFF7442CF),
             tertiary = Color(0xFFB52D91),
             background = Color(0xFFF4F7FF),
