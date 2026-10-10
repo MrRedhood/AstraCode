@@ -397,11 +397,15 @@ private fun HelpGuideScreen(onBack: () -> Unit) {
     Text("AstraCode Help & Guide", style = MaterialTheme.typography.titleLarge)
     GuideSection(
         title = "Getting started",
-        body = "AstraCode is designed for coding and project workflows from an Android device. The current build is a foundation shell; some areas in More are still planned."
+        body = "AstraCode is designed for coding and project workflows from an Android device. Home provides shortcuts into Projects, cloud AI Chat, the safe Terminal, Build & Run, project setup and AI Execution status. Projects opens the selected Android Storage Access Framework workspace; the editor retains its existing tabs, autosave, recovery, snapshots, find/replace and safe live-preview behavior. Not every visual screen means its underlying runner is available: project scaffolding, unrestricted shell execution, local/hosted build launching from the UI, and autonomous multi-step AI execution are not enabled yet."
     )
     GuideSection(
         title = "Accessibility and adaptive navigation",
         body = "Primary navigation items keep visible text labels for assistive technology; their custom icon drawings are decorative to avoid reading the same name twice. Narrow windows use a bottom navigation bar, while windows 600 dp and wider use a navigation rail. Primary selection, More search text and the selected More section are saveable and are restored when Android recreates the activity with saved instance state."
+    )
+    GuideSection(
+        title = "Dashboard, terminal and execution status",
+        body = "Use the Home dashboard to open Projects, AI Chat, Terminal, Build & Run, Create Project or AI Execution. The terminal runs only the built-in help, pwd, ls and clear commands, scoped to the selected SAF workspace; arbitrary shell, Flutter, Git, Python and build commands are rejected and do not launch a process. Build & Run is a configuration/status UI only; clicking Start build explicitly reports that no build started. Create Project validates a project name but does not create files until a real generator is implemented. AI Execution displays the planned lifecycle without simulating a running task. Today, supported one-action AI workspace tools run from Chat and require explicit approval and direct verification evidence."
     )
     GuideSection(
         title = "Workspace and files",
