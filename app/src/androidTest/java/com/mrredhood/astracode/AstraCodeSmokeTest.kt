@@ -132,12 +132,15 @@ class AstraCodeSmokeTest {
         composeRule.onNodeWithText("Settings").performClick()
         composeRule.onNodeWithText("Light").performScrollTo().performClick()
         composeRule.onNodeWithText("Pink").performScrollTo().performClick()
+        composeRule.onNodeWithText("14").performScrollTo().performClick()
 
         assertEquals("Light", AstraUiPreferences(composeRule.activity).themeMode())
         assertEquals("Pink", AstraUiPreferences(composeRule.activity).accent())
+        assertEquals(14, AstraUiPreferences(composeRule.activity).codeFontSize())
 
         composeRule.activityRule.scenario.recreate()
         assertEquals("Light", AstraUiPreferences(composeRule.activity).themeMode())
         assertEquals("Pink", AstraUiPreferences(composeRule.activity).accent())
+        assertEquals(14, AstraUiPreferences(composeRule.activity).codeFontSize())
     }
 }
