@@ -140,7 +140,7 @@ abstract class JsonCloudAiProvider(
             if (apiKey.isNullOrEmpty()) {
                 return failure(AiProviderFailureCode.MISSING_CREDENTIALS, false, "Add an API key for the selected provider.")
             }
-            if (apiKey.length > MAX_API_KEY_LENGTH || apiKey.any { it == '\r' || it == '\n' || it.isISOControl() }) {
+            if (apiKey.length > MAX_API_KEY_LENGTH || apiKey.any { it == '\r' || it == '\n' || Character.isISOControl(it) }) {
                 return failure(AiProviderFailureCode.MISSING_CREDENTIALS, false, "The configured API credential is invalid.")
             }
 
@@ -205,7 +205,7 @@ abstract class JsonCloudAiProvider(
             val cleaned = value.trim().trimEnd('/')
             val uri = runCatching { URI(cleaned) }.getOrNull()
                 ?: throw IllegalArgumentException("AI endpoint URL is invalid")
-            require(uri.scheme.equals("https", ignoreCase = true)) { "AI endpoint must use HTTPS" }
+            require("https".equals(uri.scheme, ignoreCase = true)) { "AI endpoint must use HTTPS" }
             require(!uri.host.isNullOrBlank()) { "AI endpoint must include a host" }
             require(uri.userInfo == null && uri.query == null && uri.fragment == null) {
                 "AI endpoint must not include credentials, query or fragment"
@@ -356,14 +356,11 @@ class GeminiGenerateContentProvider(
             for (i in 0 until parts.length()) append(parts.optJSONObject(i)?.optString("text").orEmpty())
         }
         if (text.isBlank()) throw JSONException("Missing generated text")
-        val usage = payload.optJSONObject("usageMetadata")
+        val usageJson = payload.optJSONObject("usageMetadata")
         return AiGenerationResponse(
-            payload.optString("modelVersion").takeIf { it.isNotBlank() } ?: modelId,
-            // Replaced below to preserve constructor argument ordering.
-            modelId
-        ).copy(
             text = text,
-            usage = usage(usage?.nullableInt("promptTokenCount"), usage?.nullableInt("candidatesTokenCount"))
+            modelId = payload.optString("modelVersion").takeIf { it.isNotBlank() } ?: modelId,
+            usage = usage(usageJson?.nullableInt("promptTokenCount"), usageJson?.nullableInt("candidatesTokenCount"))
         )
     }
 }
@@ -401,11 +398,11 @@ class AnthropicMessagesProvider(
         val content = payload.optJSONArray("content") ?: throw JSONException("Missing content")
         val text = textFromContentArray(content)
         if (text.isBlank()) throw JSONException("Missing generated text")
-        val usage = payload.optJSONObject("usage")
+        val usageJson = payload.optJSONObject("usage")
         return AiGenerationResponse(
             text,
             payload.optString("model").takeIf { it.isNotBlank() } ?: modelId,
-            usage(usage?.nullableInt("input_tokens"), usage?.nullableInt("output_tokens"))
+            usage(usageJson?.nullableInt("input_tokens"), usageJson?.nullableInt("output_tokens"))
         )
     }
 }
@@ -440,14 +437,19 @@ class CohereChatV2Provider(
         val content = payload.optJSONObject("message")?.optJSONArray("content") ?: throw JSONException("Missing message content")
         val text = textFromContentArray(content)
         if (text.isBlank()) throw JSONException("Missing generated text")
-        val usage = payload.optJSONObject("usage")
-        val meta = payload.optJSONObject("meta")
-        val billed = meta?.optJSONObject("billed_units")
-        val tokens = usage ?: billed
+        val usageJson = payload.optJSONObject("usage")
+        val tokenCounts = usageJson?.optJSONObject("tokens")
+        val billed = payload.optJSONObject("meta")?.optJSONObject("billed_units")
+        val inputTokens = tokenCounts?.nullableInt("input_tokens")
+            ?: usageJson?.nullableInt("input_tokens")
+            ?: billed?.nullableInt("input_tokens")
+        val outputTokens = tokenCounts?.nullableInt("output_tokens")
+            ?: usageJson?.nullableInt("output_tokens")
+            ?: billed?.nullableInt("output_tokens")
         return AiGenerationResponse(
             text,
             modelId,
-            usage(tokens?.nullableInt("input_tokens"), tokens?.nullableInt("output_tokens"))
+            usage(inputTokens, outputTokens)
         )
     }
 }

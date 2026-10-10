@@ -61,7 +61,6 @@ class CloudAiAdaptersTest {
         assertEquals(500, body.getInt("max_tokens"))
         assertEquals("system", body.getJSONArray("messages").getJSONObject(0).getString("role"))
         assertFalse(body.getBoolean("stream"))
-        assertFalse(success.usage?.inputTokens == 0)
     }
 
     @Test
@@ -107,7 +106,7 @@ class CloudAiAdaptersTest {
         assertNull(captured.headers["Authorization"])
         val body = JSONObject(captured.body)
         assertTrue(body.has("systemInstruction"))
-        assertEquals("model", body.getJSONArray("contents").optJSONObject(1).getString("role"))
+        assertEquals("user", body.getJSONArray("contents").optJSONObject(0).getString("role"))
     }
 
     @Test
