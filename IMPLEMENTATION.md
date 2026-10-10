@@ -45,3 +45,4 @@
 - Fixed a stale UI Smoke assertion to match the current More screen description instead of removed copy.
 - Updated the roadmap, architecture, in-app Help & Guide, and this implementation log.
 - Validation: Android CI and Android UI Smoke were triggered on the resulting main commit. Results must be checked for that exact commit before claiming success.
+- CI follow-up on 2026-10-10: corrected a syntax error in the replace-all status conditional found by the first Android CI run. Re-running Android CI and UI Smoke on the corrected main head.

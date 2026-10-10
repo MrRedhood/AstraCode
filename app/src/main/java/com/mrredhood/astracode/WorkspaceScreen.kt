@@ -231,7 +231,7 @@ internal fun WorkspaceScreen(){
                         else{
                             val result=EditorTextActions.replaceAll(draft,searchQuery,replacementText)
                             draft=result.text;selection=TextRange(result.selectionStart,result.selectionEnd);notice=null;recoveryStatus=null
-                            searchMessage=if(result.replacements==0"No matches found." else "Replaced ${result.replacements} match(es)."
+                            searchMessage=if(result.replacements==0)"No matches found." else "Replaced ${result.replacements} match(es)."
                         }
                     },modifier=Modifier.fillMaxWidth()){Text("Replace all")}
                     val matchCount=EditorTextActions.countMatches(draft,searchQuery)
