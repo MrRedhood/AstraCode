@@ -68,6 +68,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
@@ -172,6 +173,7 @@ internal fun AstraPageHero(
     description: String,
     icon: String = "more",
     mascot: Boolean = false,
+    height: Dp = 154.dp,
     trailing: (@Composable () -> Unit)? = null
 ) {
     val dark = MaterialTheme.colorScheme.background == AstraNavy
@@ -182,16 +184,16 @@ internal fun AstraPageHero(
             painter = painterResource(id = R.drawable.astracode_splash_background),
             contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxWidth().height(154.dp).clip(RoundedCornerShape(22.dp))
+            modifier = Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(22.dp))
         )
         Box(
-            modifier = Modifier.fillMaxWidth().height(154.dp).background(
+            modifier = Modifier.fillMaxWidth().height(height).background(
                 Brush.horizontalGradient(listOf(Color(0xF0050B18), Color(0xC7071023), Color(0x65221547))),
                 RoundedCornerShape(22.dp)
             )
         )
         Row(
-            modifier = Modifier.fillMaxWidth().height(154.dp).padding(horizontal = 16.dp, vertical = 12.dp),
+            modifier = Modifier.fillMaxWidth().height(height).padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -456,8 +458,12 @@ private fun AstraFeatureCard(
             ) { AstraIcon(icon, size = 27.dp, description = null) }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
+            Box(
+                modifier = Modifier.size(30.dp).background(Color(0x332A9FFF), CircleShape),
+                contentAlignment = Alignment.Center
+            ) { Text("→", color = MaterialTheme.colorScheme.onSurface, fontSize = 19.sp) }
         }
     }
 }
@@ -498,74 +504,122 @@ internal fun HomeDashboardScreen(
     onOpenExecution: () -> Unit,
     onOpenGit: () -> Unit
 ) {
-    val context = LocalContext.current
-    val workspace = remember(context) { WorkspaceRepository(context.applicationContext).savedTreeUri() }
-    Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+    val context = LocalContext.current.applicationContext
+    val repository = remember(context) { WorkspaceRepository(context) }
+    val workspace = remember(context) { repository.savedTreeUri() }
+    var recentProjects by remember { mutableStateOf<List<RecentWorkspace>>(emptyList()) }
+
+    LaunchedEffect(repository) {
+        recentProjects = withContext(Dispatchers.IO) {
+            runCatching { repository.recentWorkspaces() }.getOrDefault(emptyList())
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(13.dp)) {
         AstraPageHero(
-            title = "Let's build something amazing",
-            description = "Your ideas, your workspace, and cloud AI in one mobile coding environment.",
+            title = "Good Morning,\nLet's Build Something Amazing!",
+            description = "Turn your ideas into real projects with the power of AI.",
             icon = "code",
             mascot = true,
+            height = 178.dp,
             trailing = {
-                AstraPrimaryButton("＋  New project", onClick = onCreateProject)
+                AstraPrimaryButton("＋  New Project", onClick = onCreateProject, modifier = Modifier.fillMaxWidth())
             }
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            AstraFeatureCard("AI Chat", "Ask, explain, create", "chat", AstraPurple, Modifier.weight(1f), onOpenChat)
-            AstraFeatureCard("Terminal tools", "Safe workspace commands", "terminal", AstraCyan, Modifier.weight(1f), onOpenTerminal)
+        Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+            AstraFeatureCard("AI Chat", "Get help & build with AI", "chat", AstraPurple, Modifier.weight(1f), onOpenChat)
+            AstraFeatureCard("Terminal", "Run safe commands", "terminal", AstraCyan, Modifier.weight(1f), onOpenTerminal)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            AstraFeatureCard("Project files", "Browse files & edit", "files", AstraGreen, Modifier.weight(1f), onOpenProjects)
-            AstraFeatureCard("Build & Run", "Build status & targets", "build", AstraGold, Modifier.weight(1f), onOpenBuild)
+        Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+            AstraFeatureCard("Projects", "Manage files & workspace", "files", AstraGreen, Modifier.weight(1f), onOpenProjects)
+            AstraFeatureCard("Build & Run", "Build, test and run your app", "build", AstraGold, Modifier.weight(1f), onOpenBuild)
         }
+
         AstraPanel(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                AstraSectionTitle(
+                    "Recent Projects",
+                    trailing = "View all ›",
+                    onTrailing = onOpenProjects
+                )
+                if (recentProjects.isEmpty()) {
+                    Text(
+                        if (workspace == null) "No recent projects yet. Open Projects to select a workspace."
+                        else "Your selected workspace is saved. Reopen Projects to browse its files.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedButton(onClick = onOpenProjects, modifier = Modifier.fillMaxWidth()) {
+                        AstraIcon("files", size = 19.dp, description = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (workspace == null) "Open Project" else "Open Current Workspace")
+                    }
+                } else {
+                    recentProjects.forEach { project ->
+                        Card(
+                            onClick = {
+                                repository.saveTreeUri(project.uri)
+                                onOpenProjects()
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(15.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .65f)),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = .82f))
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier.size(42.dp).background(
+                                        Brush.linearGradient(listOf(AstraBlue.copy(alpha = .28f), AstraPurple.copy(alpha = .25f))),
+                                        RoundedCornerShape(12.dp)
+                                    ),
+                                    contentAlignment = Alignment.Center
+                                ) { AstraIcon("files", size = 25.dp, description = null) }
+                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(project.displayName, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text("Saved workspace · tap to open", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = when (project.kind) {
+                                        "Flutter" -> AstraBlue.copy(alpha = .15f)
+                                        "Android" -> AstraGreen.copy(alpha = .15f)
+                                        "Python" -> AstraGold.copy(alpha = .17f)
+                                        else -> AstraPurple.copy(alpha = .15f)
+                                    }
+                                ) {
+                                    Text(project.kind, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
+                                }
+                                Text("⋮", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 19.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        AstraPanel(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth().padding(11.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 AstraSectionTitle("Quick Actions")
-                Row(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
-                    AstraQuickAction("Create file", "code", AstraBlue, Modifier.weight(1f), onOpenProjects)
-                    AstraQuickAction("Create folder", "files", AstraCyan, Modifier.weight(1f), onOpenProjects)
-                    AstraQuickAction("Open project", "files", AstraPurple, Modifier.weight(1f), onOpenProjects)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                    AstraQuickAction("Create File", "code", AstraBlue, Modifier.weight(1f), onOpenProjects)
+                    AstraQuickAction("Create Folder", "files", AstraCyan, Modifier.weight(1f), onOpenProjects)
+                    AstraQuickAction("Open Project", "files", AstraPurple, Modifier.weight(1f), onOpenProjects)
                     AstraQuickAction("Clone from Git", "git", AstraPink, Modifier.weight(1f), onOpenGit)
                 }
             }
         }
         AstraPanel(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                AstraSectionTitle("Workspace")
-                if (workspace == null) {
-                    Text("No project folder selected", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        "Choose a folder once to browse, edit, and create files within that granted workspace.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                } else {
-                    Text("Workspace access is saved on this device", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        "AstraCode can work only inside the folder you selected through Android's document picker.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                OutlinedButton(onClick = onOpenProjects, modifier = Modifier.fillMaxWidth()) {
-                    AstraIcon("files", size = 20.dp)
-                    Spacer(Modifier.width(8.dp))
-                    Text(if (workspace == null) "Choose project folder" else "Open project files")
-                }
-            }
-        }
-        AstraPanel(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                AstraSectionTitle("AI workflow", trailing = "View execution", onTrailing = onOpenExecution)
+            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                AstraSectionTitle("AI Workflow", trailing = "Execution ›", onTrailing = onOpenExecution)
                 Text(
-                    "Chat with a configured cloud model, review each workspace-action approval, and verify the result.",
-                    style = MaterialTheme.typography.bodyMedium,
+                    "Chat with your configured cloud model. Review file changes and approve supported workspace actions before they run.",
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AstraIcon("approval", size = 22.dp, description = "Approval")
-                    Text("Approval-gated file creation and moves", style = MaterialTheme.typography.bodySmall)
-                }
             }
         }
     }

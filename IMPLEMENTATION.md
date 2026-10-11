@@ -399,3 +399,10 @@
 
 - Workspace selections now keep a bounded most-recent-first list of up to four SAF tree URIs alongside the existing active workspace preference. This history is local-only and uses the same Android document-provider grant boundary.
 - The repository resolves the display name and an informational framework tag from real top-level files when the grant remains valid. Revoked/unavailable providers are skipped rather than shown as fake projects. The home screen can use this for real Recent Projects cards.
+
+
+## 2026-10-11 — Home dashboard and real Recent Projects
+
+- Updated Home to the reference hierarchy: taller cosmic hero with New Project CTA, paired colored feature cards, Recent Projects rows, and compact four-column Quick Actions.
+- Connected Recent Projects to a new local bounded list of real SAF workspaces from the workspace repository. Each row shows its resolved folder name and a best-effort framework tag derived from actual top-level manifest/build files; revoked/unavailable grants are not shown as successful projects. Selecting a row restores that saved workspace selection and opens Projects.
+- Added a visible arrow treatment to feature cards. Empty state directs the user to the actual workspace picker instead of showing sample/fake projects.

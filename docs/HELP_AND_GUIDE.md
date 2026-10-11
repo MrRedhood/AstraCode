@@ -73,3 +73,8 @@ The shell places the local cosmic background below a dark navy readability scrim
 ## AI Chat presentation
 
 AI Chat uses the animated Astra mascot, provider/model status, a settings shortcut, horizontally scrollable capability chips, and starter prompts for project creation, explanation, error repair and feature planning. The Files and Images chips open Android's system picker. Tools explains the supported approval-gated workspace operations; Web explicitly states that browsing is not connected in this version. Chat content continues to use the existing local history, selected provider and approval flow. Do not treat the visible design or a model's response as proof of a file operation.
+
+
+## Home dashboard and Recent Projects
+
+Home uses the cosmic hero with a New Project action, colored AI/Terminal/Projects/Build cards, Recent Projects and four Quick Actions. Recent Projects are populated from up to four locally saved Android document-provider workspace selections. A framework label is inferred from real files in the selected root and may show "Project" if no known manifest is found. A revoked/unavailable folder is skipped; the app does not fill the list with demo projects. Quick-action tiles route to existing workspace or Git screens and do not automatically create files or clone repositories.
