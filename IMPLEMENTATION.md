@@ -350,3 +350,9 @@
 - Kept the existing launcher icon unchanged. The cosmic background is a compressed WebP in `drawable-nodpi`; the A mark and wordmark are drawn in Compose so they can animate independently. The loading indicator is explicitly cosmetic, not reported build, CI or network progress.
 - Added this user-facing behavior to More → Help & Guide, architecture and roadmap documentation. UI smoke tests now wait for the launch overlay to finish before interacting.
 - Validation caveat: the change is committed directly to `main`; the exact commit's Android CI/UI status is authoritative. No unobserved result is claimed.
+
+
+## 2026-10-11 — Startup splash CI compile repair
+
+- Fixed a missing Compose container-closing brace in `MainActivity.kt` that caused Kotlin to interpret subsequent top-level composables as local functions and report cascading unresolved references. The splash overlay now sits as a sibling over the responsive content container.
+- Validation note: the failure was reproduced from Android CI run 38101170148; verify the new commit's CI result before claiming green status.

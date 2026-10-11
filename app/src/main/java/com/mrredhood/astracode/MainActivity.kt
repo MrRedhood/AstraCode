@@ -232,6 +232,7 @@ private fun AstraCodeApp(showStartupSplashOnLaunch: Boolean) {
                         }
                     }
                 }
+                }
                 AnimatedVisibility(
                     visible = showStartupSplash,
                     modifier = Modifier.fillMaxSize(),
