@@ -100,3 +100,6 @@ About AstraCode external actions use Android ACTION_VIEW for the public releases
 
 
 AI Chat temporarily owns its header and system-back handling so the global app toolbar is not duplicated on the conversation screen. Attachment menu options route into MIME-filtered system pickers for supported document and media selection. Camera remains an explicit unavailable state until a real capture flow is implemented.
+
+
+Compact navigation separates the central Create (+) action from AI Chat. The fourth action is context-labelled as Tools, Terminal, Build or More while the last action always opens AI Chat. Menu routes remain the source of truth for More subpages and their settings.

@@ -444,3 +444,9 @@
 
 - AI Chat now owns its own header with a back action, animated Astra assistant, provider/model shortcut and settings shortcut. The general application header is hidden while Chat is open; Android Back returns to Home.
 - Removed the duplicated AI Settings action from the secondary toolbar. The attachment plus menu now offers File, Image, Video, Audio and Camera; supported media choices launch Android's document picker. Camera clearly reports that direct capture is not integrated and directs users to Image.
+
+
+## 2026-10-11 — Reference-style bottom navigation behavior
+
+- Changed the compact bottom bar to Home, Projects, a central gradient Create (+) action, contextual Tools/Terminal/Build/More, and a separate AI Chat destination. The central plus opens Create Project rather than AI Chat; AI Chat now has its own right-side navigation item and its own focused header.
+- The context label and icon for the fourth item reflect Terminal, Build & Run, a More detail or Tools. The global menu remains the entry to the More hub and its settings sections.

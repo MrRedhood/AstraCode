@@ -106,3 +106,6 @@ Settings categories are grouped as Editor Preferences, AI Settings, Terminal Set
 
 
 AI Chat is a focused screen with its own back/model/settings header; the global application header is hidden while the conversation is open. Back returns to Home. The attachment menu offers File, Image, Video, Audio and Camera; the first four use Android's document picker with the selected MIME filter. Camera is shown for layout parity but currently reports that capture is not connected.
+
+
+The phone bottom bar now follows the reference ordering: Home, Projects, a central + action for Create Project, a contextual Tools/Terminal/Build/More item and AI. AI Chat opens as a focused screen with its own back button and no global bottom bar. The hamburger/overflow menu still exposes More and all app settings.

@@ -184,30 +184,71 @@ private fun AstraCodeApp(showStartupSplashOnLaunch: Boolean) {
                                 containerColor = Color(0xE6071020),
                                 contentColor = MaterialTheme.colorScheme.onBackground
                             ) {
-                                PrimaryDestination.values().forEach { destination ->
-                                    NavigationBarItem(
-                                        selected = selected == destination,
-                                        onClick = { selectDestination(destination) },
-                                        icon = {
-                                            if (destination == PrimaryDestination.AI) {
-                                                Box(
-                                                    modifier = Modifier.size(46.dp).background(
-                                                        Brush.horizontalGradient(
-                                                            listOf(Color(0xFF8050FF), Color(0xFF3678FF), Color(0xFF12C8FF))
-                                                        ),
-                                                        CircleShape
-                                                    ).border(1.dp, Color(0xFF93A7FF), CircleShape),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Text("＋", fontSize = 27.sp, fontWeight = FontWeight.Medium, color = Color.White)
-                                                }
-                                            } else {
-                                                AstraIcon(destination.icon, size = 23.dp, description = null)
-                                            }
-                                        },
-                                        label = { Text(destination.label) }
-                                    )
+                                NavigationBarItem(
+                                    selected = selected == PrimaryDestination.Home,
+                                    onClick = { selectDestination(PrimaryDestination.Home) },
+                                    icon = { AstraIcon("home", size = 23.dp, description = null) },
+                                    label = { Text("Home") }
+                                )
+                                NavigationBarItem(
+                                    selected = selected == PrimaryDestination.Projects,
+                                    onClick = { selectDestination(PrimaryDestination.Projects) },
+                                    icon = { AstraIcon("files", size = 23.dp, description = null) },
+                                    label = { Text("Projects") }
+                                )
+                                NavigationBarItem(
+                                    selected = selected == PrimaryDestination.More && selectedMoreEntry == "Create Project",
+                                    onClick = {
+                                        selectDestination(PrimaryDestination.More)
+                                        selectedMoreEntry = "Create Project"
+                                    },
+                                    icon = {
+                                        Box(
+                                            modifier = Modifier.size(48.dp).background(
+                                                Brush.horizontalGradient(
+                                                    listOf(Color(0xFF8050FF), Color(0xFF3678FF), Color(0xFF12C8FF))
+                                                ),
+                                                CircleShape
+                                            ).border(1.dp, Color(0xFF93A7FF), CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text("＋", fontSize = 29.sp, fontWeight = FontWeight.Medium, color = Color.White)
+                                        }
+                                    },
+                                    label = {}
+                                )
+                                val toolLabel = when {
+                                    selected == PrimaryDestination.Terminal -> "Terminal"
+                                    selected == PrimaryDestination.More && selectedMoreEntry == "Build & Run" -> "Build"
+                                    selected == PrimaryDestination.More && selectedMoreEntry != null -> "More"
+                                    else -> "Tools"
                                 }
+                                val toolIcon = when (toolLabel) {
+                                    "Terminal" -> "terminal"
+                                    "Build" -> "build"
+                                    "More" -> "more"
+                                    else -> "more"
+                                }
+                                NavigationBarItem(
+                                    selected = selected == PrimaryDestination.Terminal ||
+                                        (selected == PrimaryDestination.More && selectedMoreEntry != "Create Project"),
+                                    onClick = {
+                                        if (selected == PrimaryDestination.More && selectedMoreEntry != null && selectedMoreEntry != "Create Project") {
+                                            // Keep the selected tools sub-screen rather than navigating away from it.
+                                            selectedMoreEntry = selectedMoreEntry
+                                        } else {
+                                            selectDestination(PrimaryDestination.Terminal)
+                                        }
+                                    },
+                                    icon = { AstraIcon(toolIcon, size = 23.dp, description = null) },
+                                    label = { Text(toolLabel) }
+                                )
+                                NavigationBarItem(
+                                    selected = selected == PrimaryDestination.AI,
+                                    onClick = { selectDestination(PrimaryDestination.AI) },
+                                    icon = { AstraIcon("chat", size = 23.dp, description = null) },
+                                    label = { Text("AI") }
+                                )
                             }
                         }
                     ) { innerPadding ->
