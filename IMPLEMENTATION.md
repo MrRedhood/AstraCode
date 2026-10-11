@@ -475,3 +475,10 @@
 - Added the reference-style File, Image, Video, Audio and Camera action strip above the composer. File/media actions use Android's filtered document picker; Camera continues to report that direct capture is unavailable.
 - The model selector now displays the configured model ID, not just a provider label. Build Output now has Logs, Problems and Artifacts tabs with truthful empty states when no build runner has produced results.
 - Validation caveat: source-level changes were committed to `main`. Android compilation, instrumentation and screenshot comparison were not executed here, so CI/UI success and pixel-identical parity are not claimed.
+
+
+## 2026-10-11 — UI regression coverage for reference states
+
+- Updated the chat smoke test to assert that the assistant welcome and a suggested action are visible in the empty conversation state.
+- Updated the Build & Run smoke test to assert the build-output section and Artifacts tab are present while the runner remains unavailable.
+- Test source was updated; the emulator workflow has not been run here and no passing result is claimed.

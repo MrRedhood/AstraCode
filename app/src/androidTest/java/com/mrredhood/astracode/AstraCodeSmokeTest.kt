@@ -80,9 +80,13 @@ class AstraCodeSmokeTest {
     }
 
     @Test
-    fun chatShowsSetupActionUntilApiKeyConnectionIsComplete() {
+    fun chatShowsReferenceWelcomeAndSetupActionUntilApiKeyConnectionIsComplete() {
         composeRule.onNodeWithText("AI").performClick()
         composeRule.onNodeWithText("Cloud AI not configured").assertIsDisplayed()
+        composeRule.onNodeWithText("Hi! I'm Astra, your AI coding assistant.")
+            .performScrollTo()
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("Fix errors").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Files").assertIsDisplayed()
         composeRule.onNodeWithText("＋").performClick()
         listOf("File", "Image", "Video", "Audio", "Camera").forEach { option ->
@@ -117,6 +121,8 @@ class AstraCodeSmokeTest {
         composeRule.onNodeWithText("Build execution is not wired into this build yet.", substring = true)
             .performScrollTo()
             .assertIsDisplayed()
+        composeRule.onNodeWithText("Build Output").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Artifacts").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Start build").performScrollTo().performClick()
         composeRule.onNodeWithText("No build was started.", substring = true)
             .performScrollTo()
