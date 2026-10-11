@@ -455,3 +455,9 @@
 ## 2026-10-11 — Mobile layout integration cleanup
 
 - Added the explicit Compose layout imports used by AI Chat's focused toolbar and attachment menu, and by the workspace's owned scroll container. This prevents unresolved symbols introduced by the reference-style UI pass.
+
+
+## 2026-10-11 — UI smoke tests updated for reference navigation
+
+- Updated instrumented smoke coverage to open More via the hamburger menu, expect the Home bottom bar's Tools label, and inspect the new Chat attachment menu. The camera menu item is tapped to verify its explicit unavailable-state message rather than launching a fake capture flow.
+- Test source was updated but the emulator workflow has not been executed from this session.

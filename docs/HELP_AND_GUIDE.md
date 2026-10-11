@@ -109,3 +109,6 @@ AI Chat is a focused screen with its own back/model/settings header; the global 
 
 
 The phone bottom bar now follows the reference ordering: Home, Projects, a central + action for Create Project, a contextual Tools/Terminal/Build/More item and AI. AI Chat opens as a focused screen with its own back button and no global bottom bar. The hamburger/overflow menu still exposes More and all app settings.
+
+
+The UI smoke tests follow the reference navigation: open More from the hamburger menu and inspect the Chat attachment plus menu. The menu exposes File, Image, Video, Audio and Camera. Camera currently reports that capture is not connected.

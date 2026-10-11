@@ -16,6 +16,11 @@ class AstraCodeSmokeTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<MainActivity>()
 
+    private fun openMoreHub() {
+        composeRule.onNodeWithText("☰").performClick()
+        openMoreHub()
+    }
+
     @Before
     fun waitForStartupAnimation() {
         composeRule.waitUntil(timeoutMillis = 7_000) {
@@ -30,14 +35,14 @@ class AstraCodeSmokeTest {
     fun shellShowsBrandAndPrimaryDestinations() {
         composeRule.onNodeWithText("Astra").assertIsDisplayed()
         composeRule.onNodeWithText("Code").assertIsDisplayed()
-        listOf("Home", "Projects", "AI", "Terminal", "More").forEach { label ->
+        listOf("Home", "Projects", "AI", "Terminal", "Tools").forEach { label ->
             composeRule.onNodeWithText(label).assertIsDisplayed()
         }
     }
 
     @Test
     fun moreContainsSearchableSettingsAndOpensHelpGuide() {
-        composeRule.onNodeWithText("More").performClick()
+        openMoreHub()
         composeRule.onNodeWithText("Find tools, configuration and help from one place.").assertIsDisplayed()
         composeRule.onNodeWithText("Search tools and settings").performTextInput("help")
         composeRule.onNodeWithText("Help & Guide").assertIsDisplayed()
@@ -48,7 +53,7 @@ class AstraCodeSmokeTest {
 
     @Test
     fun moreSearchAndSelectedEntrySurviveActivityRecreation() {
-        composeRule.onNodeWithText("More").performClick()
+        openMoreHub()
         composeRule.onNodeWithText("Search tools and settings").performTextInput("security")
         composeRule.activityRule.scenario.recreate()
         composeRule.onNodeWithText("Security & Notifications").assertIsDisplayed()
@@ -62,7 +67,7 @@ class AstraCodeSmokeTest {
 
     @Test
     fun aiProviderSettingsRequireOnlyAnApiKeyAndSelectModelAutomatically() {
-        composeRule.onNodeWithText("More").performClick()
+        openMoreHub()
         composeRule.onNodeWithText("Search tools and settings").performTextInput("AI & Models")
         composeRule.onAllNodesWithText("AI & Models", substring = false).onLast().performClick()
         composeRule.onNodeWithText("AI provider settings").assertIsDisplayed()
@@ -78,7 +83,12 @@ class AstraCodeSmokeTest {
     fun chatShowsSetupActionUntilApiKeyConnectionIsComplete() {
         composeRule.onNodeWithText("AI").performClick()
         composeRule.onNodeWithText("Cloud AI not configured").assertIsDisplayed()
-        composeRule.onNodeWithText("Attach files").assertIsDisplayed()
+        composeRule.onNodeWithText("Files").assertIsDisplayed()
+        composeRule.onNodeWithText("＋").performClick()
+        listOf("File", "Image", "Video", "Audio", "Camera").forEach { option ->
+            composeRule.onNodeWithText(option).assertIsDisplayed()
+        }
+        composeRule.onNodeWithText("Camera").performClick()
         composeRule.onNodeWithText("/10 attached", substring = true).assertIsDisplayed()
         composeRule.onNodeWithText("25 MiB/file", substring = true).assertIsDisplayed()
         composeRule.onNodeWithText("100 MiB/request", substring = true).assertIsDisplayed()
@@ -96,7 +106,7 @@ class AstraCodeSmokeTest {
 
     @Test
     fun searchShowsMatchingMoreEntries() {
-        composeRule.onNodeWithText("More").performClick()
+        openMoreHub()
         composeRule.onNodeWithText("Search tools and settings").performTextInput("security")
         composeRule.onNodeWithText("Security & Notifications").assertIsDisplayed()
     }
@@ -141,7 +151,7 @@ class AstraCodeSmokeTest {
 
     @Test
     fun settingsThemeAndAccentPreferencesPersist() {
-        composeRule.onNodeWithText("More").performClick()
+        openMoreHub()
         composeRule.onNodeWithText("Search tools and settings").performTextInput("Settings")
         composeRule.onAllNodesWithText("Settings", substring = false).onLast().performClick()
         composeRule.onNodeWithText("Light").performScrollTo().performClick()
