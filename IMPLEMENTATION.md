@@ -341,3 +341,12 @@
 - Added context filters for high (128K+), standard (32K–128K), low (under 32K) and unknown token windows. Model entries show reported context and price details where available, with the visible list capped for mobile responsiveness.
 - Updated discovery unit tests and More → Help & Guide. API keys remain encrypted, and previously saved custom endpoint overrides remain supported.
 - Validation caveat: changes are prepared for direct commit to `main`; no post-change CI/UI result is claimed.
+
+
+## 2026-10-11 — Space-themed animated startup screen
+
+- Added the provided artwork as a full-screen startup background while removing embedded sample status icons/time and the static progress bar so the real system UI and animated Compose progress indicator remain authoritative.
+- Added transparent overlays for the A/orbit mark and AstraCode wordmark, animated with a pulse/tilt and vertical float. A cyan-blue-magenta progress bar animates during launch, and the screen fades over the existing app shell rather than resetting navigation.
+- Kept the existing launcher icon unchanged. The cosmic background is a compressed WebP in `drawable-nodpi`; the A mark and wordmark are drawn in Compose so they can animate independently. The loading indicator is explicitly cosmetic, not reported build, CI or network progress.
+- Added this user-facing behavior to More → Help & Guide, architecture and roadmap documentation. UI smoke tests now wait for the launch overlay to finish before interacting.
+- Validation caveat: the change is committed directly to `main`; the exact commit's Android CI/UI status is authoritative. No unobserved result is claimed.

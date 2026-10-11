@@ -80,3 +80,11 @@ Touch-friendly and adaptive UI; real-operation evidence; safe permission scope a
 - [x] Give all catalogued providers an HTTPS default while preserving existing saved custom endpoint overrides.
 - [x] Keep chat status text full-width and move chat actions to a horizontally scrollable row on compact phones.
 - [x] Add model-selector and API-key-only validation coverage; repair known UI smoke navigation/selectors.
+
+
+## 2026-10-11 — Animated launch screen
+
+- [x] Add the space-themed startup artwork as compressed Android resources while retaining the existing launcher icon.
+- [x] Overlay an animated gradient progress bar, pulsing/tilting A mark and gently floating AstraCode wordmark.
+- [x] Fade into the existing navigation shell without resetting its state; document that launch progress is cosmetic.
+- [x] Add Help & Guide instructions and make UI smoke tests wait for the startup overlay to finish.

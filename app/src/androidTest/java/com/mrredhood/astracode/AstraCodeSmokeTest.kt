@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performScrollTo
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.Assert.assertEquals
@@ -14,6 +15,16 @@ import org.junit.Assert.assertEquals
 class AstraCodeSmokeTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<MainActivity>()
+
+    @Before
+    fun waitForStartupAnimation() {
+        composeRule.waitUntil(timeoutMillis = 7_000) {
+            composeRule.onAllNodesWithText(
+                "Initializing your coding environment…",
+                substring = false
+            ).fetchSemanticsNodes().isEmpty()
+        }
+    }
 
     @Test
     fun shellShowsBrandAndPrimaryDestinations() {

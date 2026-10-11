@@ -8,6 +8,10 @@ Compose UI → ViewModel/use case → policy/service → repository → Android/
 ```
 UI renders state; repositories/adapters own I/O; policy owns validation and approvals.
 
+## Startup experience
+
+The launcher first uses Android's platform splash surface, then `AstraCodeStartupSplash` layers the bundled cosmic background, a Compose-drawn geometric A mark, gradient AstraCode wordmark, tagline and gradient progress bar above the existing destination UI. The launch overlay fades away after its visual sequence; the navigation shell and destination state remain composed underneath. The bar is explicitly cosmetic and is not reused to imply progress for builds, CI, AI operations or network work. The splash background is stored as a compressed WebP in `app/src/main/res/drawable-nodpi`; the A mark, gradient wordmark, tagline and progress bar are rendered independently in Compose so they can animate cleanly.
+
 ## Package direction
 Keep the one-module app until boundaries stabilize. Gradually introduce common, navigation, design system, security, local persistence, workspace and feature packages. Avoid mass moves.
 

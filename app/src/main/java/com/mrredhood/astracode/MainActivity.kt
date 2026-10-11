@@ -1,10 +1,37 @@
 package com.mrredhood.astracode
 
 import android.os.Bundle
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -38,6 +65,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 
@@ -81,12 +109,27 @@ private val moreEntries = listOf(
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { AstraCodeApp() }
+        setContent { AstraCodeApp(showStartupSplashOnLaunch = savedInstanceState == null) }
     }
 }
 
 @Composable
-private fun AstraCodeApp() {
+private fun AstraCodeApp(showStartupSplashOnLaunch: Boolean) {
+    val startupProgress = remember { Animatable(0f) }
+    var showStartupSplash by remember { mutableStateOf(showStartupSplashOnLaunch) }
+
+    LaunchedEffect(showStartupSplashOnLaunch) {
+        if (showStartupSplashOnLaunch) {
+            // Cosmetic launch animation only; this is not build, CI, or network progress.
+            startupProgress.animateTo(0.86f, tween(durationMillis = 1_750, easing = FastOutSlowInEasing))
+            startupProgress.animateTo(1f, tween(durationMillis = 320, easing = FastOutSlowInEasing))
+            kotlinx.coroutines.delay(160)
+            showStartupSplash = false
+        } else {
+            startupProgress.snapTo(1f)
+        }
+    }
+
     val context = LocalContext.current.applicationContext
     val uiPreferences = remember(context) { AstraUiPreferences(context) }
     var selectedName by rememberSaveable { mutableStateOf(PrimaryDestination.Home.name) }
@@ -108,7 +151,8 @@ private fun AstraCodeApp() {
 
     AstraCodeTheme(mode = themeMode, accent = accentName) {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                 val compact = AstraCodeLayoutPolicy.usesBottomNavigation(maxWidth.value)
                 if (compact) {
                     Scaffold(
@@ -188,8 +232,276 @@ private fun AstraCodeApp() {
                         }
                     }
                 }
+                AnimatedVisibility(
+                    visible = showStartupSplash,
+                    modifier = Modifier.fillMaxSize(),
+                    enter = fadeIn(animationSpec = tween(180)),
+                    exit = fadeOut(animationSpec = tween(420))
+                ) {
+                    AstraCodeStartupSplash(progress = startupProgress.value)
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun AstraCodeStartupSplash(progress: Float) {
+    val transition = rememberInfiniteTransition(label = "astracode-startup")
+    val markScale by transition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.035f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1_450, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "A mark pulse"
+    )
+    val markTilt by transition.animateFloat(
+        initialValue = -0.55f,
+        targetValue = 0.55f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2_100, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "A mark tilt"
+    )
+    val wordmarkScale by transition.animateFloat(
+        initialValue = 0.992f,
+        targetValue = 1.014f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1_750, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "AstraCode wordmark pulse"
+    )
+    val wordmarkLift by transition.animateFloat(
+        initialValue = 1.5f,
+        targetValue = -1.5f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1_750, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "AstraCode wordmark float"
+    )
+    val glowAlpha by transition.animateFloat(
+        initialValue = 0.45f,
+        targetValue = 0.95f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1_300, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "A mark glow"
+    )
+
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val wordmarkFontSize = (maxWidth.value * 0.101f).coerceIn(30f, 39f).sp
+        Image(
+            painter = painterResource(id = R.drawable.astracode_splash_background),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.FillBounds
+        )
+        Canvas(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = maxHeight * 0.252f)
+                .width(maxWidth * 0.60f)
+                .height(maxHeight * 0.205f)
+                .graphicsLayer {
+                    scaleX = markScale
+                    scaleY = markScale
+                    rotationZ = markTilt
+                    alpha = glowAlpha
+                    transformOrigin = TransformOrigin.Center
+                }
+        ) {
+            val w = size.width
+            val h = size.height
+            drawOval(
+                brush = Brush.radialGradient(
+                    colors = listOf(Color(0x665A58FF), Color(0x2234DFFF), Color.Transparent)
+                )
+            )
+            val orbit = Path().apply {
+                moveTo(w * 0.03f, h * 0.60f)
+                cubicTo(w * -0.04f, h * 0.26f, w * 0.79f, h * 0.20f, w * 0.97f, h * 0.43f)
+                cubicTo(w * 1.05f, h * 0.66f, w * 0.22f, h * 0.85f, w * 0.03f, h * 0.60f)
+            }
+            drawPath(
+                path = orbit,
+                brush = Brush.horizontalGradient(
+                    colors = listOf(Color(0xFF32E7FF), Color(0xFF517BFF), Color(0xFFE84BFF))
+                ),
+                style = Stroke(width = w * 0.012f, cap = StrokeCap.Round)
+            )
+            val leftLeg = Path().apply {
+                moveTo(w * 0.09f, h * 0.94f)
+                lineTo(w * 0.49f, h * 0.04f)
+                lineTo(w * 0.50f, h * 0.49f)
+                lineTo(w * 0.29f, h * 0.73f)
+                close()
+            }
+            drawPath(
+                leftLeg,
+                brush = Brush.linearGradient(
+                    colors = listOf(Color(0xFF22E9FF), Color(0xFF276BFF), Color(0xFF3E43FF)),
+                    start = Offset(w * 0.15f, h * 0.90f),
+                    end = Offset(w * 0.49f, h * 0.05f)
+                )
+            )
+            val rightLeg = Path().apply {
+                moveTo(w * 0.51f, h * 0.04f)
+                lineTo(w * 0.92f, h * 0.94f)
+                lineTo(w * 0.68f, h * 0.94f)
+                lineTo(w * 0.50f, h * 0.49f)
+                close()
+            }
+            drawPath(
+                rightLeg,
+                brush = Brush.linearGradient(
+                    colors = listOf(Color(0xFF5F55FF), Color(0xFFB03DFF), Color(0xFFFF55D7)),
+                    start = Offset(w * 0.50f, h * 0.10f),
+                    end = Offset(w * 0.90f, h * 0.90f)
+                )
+            )
+            val crossbar = Path().apply {
+                moveTo(w * 0.30f, h * 0.94f)
+                lineTo(w * 0.49f, h * 0.74f)
+                lineTo(w * 0.69f, h * 0.94f)
+                close()
+            }
+            drawPath(
+                crossbar,
+                brush = Brush.horizontalGradient(
+                    colors = listOf(Color(0xFF285BFF), Color(0xFF9D3DFF), Color(0xFFFF63D6))
+                )
+            )
+            val star = Path().apply {
+                moveTo(w * 0.78f, h * 0.14f)
+                lineTo(w * 0.81f, h * 0.25f)
+                lineTo(w * 0.90f, h * 0.29f)
+                lineTo(w * 0.81f, h * 0.33f)
+                lineTo(w * 0.78f, h * 0.44f)
+                lineTo(w * 0.75f, h * 0.33f)
+                lineTo(w * 0.66f, h * 0.29f)
+                lineTo(w * 0.75f, h * 0.25f)
+                close()
+            }
+            drawPath(
+                star,
+                brush = Brush.verticalGradient(
+                    colors = listOf(Color(0xFFFF9EEB), Color(0xFF9D5CFF))
+                )
+            )
+        }
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = maxHeight * 0.463f)
+                .graphicsLayer {
+                    scaleX = wordmarkScale
+                    scaleY = wordmarkScale
+                    translationY = wordmarkLift
+                    alpha = 0.98f
+                    transformOrigin = TransformOrigin.Center
+                },
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Astra",
+                color = Color(0xFFF8F9FF),
+                style = MaterialTheme.typography.displaySmall.copy(
+                    fontSize = wordmarkFontSize,
+                    fontWeight = FontWeight.ExtraBold
+                )
+            )
+            Text(
+                "Code",
+                style = TextStyle(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(Color(0xFF29BFFF), Color(0xFF625BFF), Color(0xFFEF42D8))
+                    ),
+                    fontSize = wordmarkFontSize,
+                    fontWeight = FontWeight.ExtraBold
+                )
+            )
+        }
+        Text(
+            "C O D E   •   B U I L D   •   C R E A T E   •   A N Y W H E R E",
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = maxHeight * 0.525f)
+                .fillMaxWidth(0.96f),
+            color = Color(0xFFCCD4F5),
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 8.sp,
+                letterSpacing = 0.6.sp
+            ),
+            textAlign = TextAlign.Center
+        )
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = maxHeight * 0.785f)
+                .fillMaxWidth(0.78f),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                "Initializing your coding environment…",
+                color = Color(0xFFE7ECFF),
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center
+            )
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(12.dp)
+            ) {
+                val radius = androidx.compose.ui.geometry.CornerRadius(size.height / 2f)
+                drawRoundRect(color = Color(0x55233554), cornerRadius = radius)
+                val activeWidth = size.width * progress.coerceIn(0f, 1f)
+                if (activeWidth > 0f) {
+                    drawRoundRect(
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(Color(0xFF32E6FF), Color(0xFF367DFF), Color(0xFFF044F5)),
+                            startX = 0f,
+                            endX = size.width
+                        ),
+                        size = androidx.compose.ui.geometry.Size(activeWidth, size.height),
+                        cornerRadius = radius
+                    )
+                }
+            }
+        }
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = maxHeight * 0.885f)
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            StartupFeature(symbol = "▦", title = "AI POWERED", tint = Color(0xFF26DFFF))
+            StartupFeature(symbol = "ϟ", title = "FAST", tint = Color(0xFFB05CFF))
+            StartupFeature(symbol = "⬡", title = "SECURE", tint = Color(0xFFFF56CE))
+            StartupFeature(symbol = "☁", title = "ANYWHERE", tint = Color(0xFF29D7FF))
+        }
+    }
+}
+
+@Composable
+private fun StartupFeature(symbol: String, title: String, tint: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text(symbol, color = tint, fontSize = 22.sp, fontWeight = FontWeight.Medium)
+        Text(
+            title,
+            color = Color(0xFFD3DAF3),
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, letterSpacing = 1.2.sp),
+            textAlign = TextAlign.Center
+        )
     }
 }
 
@@ -439,6 +751,10 @@ private fun MoreEntryDetailScreen(entry: MoreEntry?, onBack: () -> Unit) {
 private fun HelpGuideScreen(onBack: () -> Unit) {
     OutlinedButton(onClick = onBack) { Text("Back to More") }
     Text("AstraCode Help & Guide", style = MaterialTheme.typography.titleLarge)
+    GuideSection(
+        title = "Startup screen",
+        body = "On a fresh app launch, AstraCode shows the space-themed artwork, animated gradient loading bar, pulsing A mark and gently floating AstraCode wordmark before fading into the app. The progress indicator is a visual launch animation and does not report build, CI or network-task progress."
+    )
     GuideSection(
         title = "Getting started",
         body = "AstraCode is designed for coding and project workflows from an Android device. Home provides shortcuts into Projects, cloud AI Chat, the safe Terminal, Build & Run, project setup and AI Execution status. Projects opens the selected Android Storage Access Framework workspace; the editor retains its existing tabs, autosave, recovery, snapshots, find/replace and safe live-preview behavior. Not every visual screen means its underlying runner is available: project scaffolding, unrestricted shell execution, local/hosted build launching from the UI, and autonomous multi-step AI execution are not enabled yet."
