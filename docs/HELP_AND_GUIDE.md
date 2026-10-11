@@ -78,3 +78,8 @@ AI Chat uses the animated Astra mascot, provider/model status, a settings shortc
 ## Home dashboard and Recent Projects
 
 Home uses the cosmic hero with a New Project action, colored AI/Terminal/Projects/Build cards, Recent Projects and four Quick Actions. Recent Projects are populated from up to four locally saved Android document-provider workspace selections. A framework label is inferred from real files in the selected root and may show "Project" if no known manifest is found. A revoked/unavailable folder is skipped; the app does not fill the list with demo projects. Quick-action tiles route to existing workspace or Git screens and do not automatically create files or clone repositories.
+
+
+## Project creation, build, AI execution and settings UI
+
+Create Project presents framework and template selections as compact cards with selected-state styling. The location action opens the existing SAF workspace selector. Project generation remains disabled and no files are created from the screen yet. Build & Run uses compact selectable target tiles; build execution is not connected. AI Execution now shows an idle task state, the six-stage lifecycle, empty generated-file/log sections and disabled Pause/Stop controls until a real execution engine exists. Settings includes Project Settings and Advanced Settings categories in addition to the implemented appearance/editor/provider/storage/security settings.

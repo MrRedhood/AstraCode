@@ -650,12 +650,54 @@ internal fun CreateProjectScreen(
                 frameworks.chunked(3).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                         row.forEach { item ->
-                            FilterChip(
-                                selected = framework == item,
+                            val selected = framework == item
+                            val icon = when (item) {
+                                "Flutter" -> "code"
+                                "Android" -> "build"
+                                "React Native" -> "more"
+                                "Web (HTML)" -> "preview"
+                                "Next.js" -> "code"
+                                "Node.js" -> "terminal"
+                                "Python" -> "code"
+                                "Java" -> "build"
+                                else -> "files"
+                            }
+                            Card(
                                 onClick = { framework = item; message = null },
-                                label = { Text(item, maxLines = 1) },
-                                modifier = Modifier.weight(1f)
-                            )
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(15.dp),
+                                border = BorderStroke(1.dp, if (selected) AstraPurple else MaterialTheme.colorScheme.outline.copy(alpha = .8f)),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (selected) AstraPurple.copy(alpha = .18f) else MaterialTheme.colorScheme.surface.copy(alpha = .83f)
+                                )
+                            ) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().height(94.dp).padding(7.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(5.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier.size(34.dp).background(
+                                            Brush.linearGradient(
+                                                listOf(
+                                                    when (item) {
+                                                        "Flutter" -> AstraBlue.copy(alpha = .35f)
+                                                        "Android" -> AstraGreen.copy(alpha = .35f)
+                                                        "Python" -> AstraGold.copy(alpha = .35f)
+                                                        "Java" -> Color(0xFFE34B64).copy(alpha = .25f)
+                                                        else -> AstraPurple.copy(alpha = .28f)
+                                                    },
+                                                    AstraPanelRaised
+                                                )
+                                            ),
+                                            RoundedCornerShape(11.dp)
+                                        ),
+                                        contentAlignment = Alignment.Center
+                                    ) { AstraIcon(icon, size = 24.dp, description = null) }
+                                    Text(item, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                                    if (selected) Text("✓ Selected", style = MaterialTheme.typography.labelSmall, color = AstraCyan)
+                                }
+                            }
                         }
                         repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                     }
@@ -681,35 +723,63 @@ internal fun CreateProjectScreen(
                     minLines = 2,
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(capitalization = KeyboardCapitalization.Sentences)
                 )
-                Text("Project location is selected from the workspace screen. AstraCode will not write outside the granted folder.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedButton(onClick = onOpenProjects, modifier = Modifier.fillMaxWidth()) {
+                    AstraIcon("files", size = 19.dp, description = null)
+                    Spacer(Modifier.width(7.dp))
+                    Text("Choose project location")
+                }
+                Text("Project generation is not enabled yet. The destination selector opens the existing SAF workspace; AstraCode will never write outside that granted folder.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         AstraPanel(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 AstraSectionTitle("3 · Starter template")
-                templates.forEach { item ->
-                    Card(
-                        onClick = { template = item },
-                        colors = CardDefaults.cardColors(containerColor = if (template == item) AstraPurple.copy(alpha = .18f) else MaterialTheme.colorScheme.surface),
-                        border = BorderStroke(1.dp, if (template == item) AstraPurple else MaterialTheme.colorScheme.outline),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
-                        Row(Modifier.fillMaxWidth().padding(13.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            AstraIcon(if (item == "Basic app") "code" else if (item == "Bottom navigation") "more" else "preview", size = 25.dp)
-                            Column(Modifier.weight(1f)) {
-                                Text(item, style = MaterialTheme.typography.titleSmall)
-                                Text(
-                                    when (item) {
-                                        "Bottom navigation" -> "Starter layout with multiple destinations"
-                                        "API starter" -> "Structure for connecting a remote service"
-                                        else -> "Small, minimal application scaffold"
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                templates.chunked(2).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        row.forEach { item ->
+                            val selected = template == item
+                            Card(
+                                onClick = { template = item },
+                                modifier = Modifier.weight(1f),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (selected) AstraPurple.copy(alpha = .18f) else MaterialTheme.colorScheme.surface.copy(alpha = .86f)
+                                ),
+                                border = BorderStroke(1.dp, if (selected) AstraPurple else MaterialTheme.colorScheme.outline),
+                                shape = RoundedCornerShape(15.dp)
+                            ) {
+                                Column(
+                                    Modifier.fillMaxWidth().height(108.dp).padding(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(5.dp)
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        AstraIcon(
+                                            when (item) {
+                                                "Basic app" -> "code"
+                                                "Bottom navigation" -> "more"
+                                                "State management" -> "storage"
+                                                else -> "preview"
+                                            },
+                                            size = 23.dp
+                                        )
+                                        Spacer(Modifier.weight(1f))
+                                        if (selected) Text("✓", color = AstraCyan, fontWeight = FontWeight.Bold)
+                                    }
+                                    Text(item, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(
+                                        when (item) {
+                                            "Bottom navigation" -> "Multiple screens and navigation"
+                                            "State management" -> "Organized application state"
+                                            "API starter" -> "HTTP client starter structure"
+                                            else -> "Clean starter project"
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 2
+                                    )
+                                }
                             }
-                            if (template == item) Text("Selected", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
                         }
+                        if (row.size == 1) Spacer(Modifier.weight(1f))
                     }
                 }
             }
@@ -861,29 +931,39 @@ internal fun BuildRunScreen() {
         AstraPanel(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 AstraSectionTitle("1 · Select target")
-                listOf("Run app", "Debug APK", "Release APK", "Release AAB").forEach { option ->
-                    Card(
-                        onClick = { target = option; notice = null },
-                        shape = RoundedCornerShape(17.dp),
-                        border = BorderStroke(1.dp, if (target == option) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline),
-                        colors = CardDefaults.cardColors(containerColor = if (target == option) MaterialTheme.colorScheme.primary.copy(alpha = .12f) else MaterialTheme.colorScheme.surface)
-                    ) {
-                        Row(Modifier.fillMaxWidth().padding(13.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            AstraIcon(if (option.contains("AAB")) "artifact" else if (option.contains("APK")) "build" else "preview", size = 27.dp)
-                            Column(Modifier.weight(1f)) {
-                                Text(option, style = MaterialTheme.typography.titleSmall)
-                                Text(
-                                    when (option) {
-                                        "Run app" -> "Install and launch on a configured device"
-                                        "Debug APK" -> "Development build for testing"
-                                        "Release APK" -> "Optimized installable package"
-                                        else -> "Android App Bundle for store delivery"
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                listOf("Run app", "Debug APK", "Release APK", "Release AAB").chunked(2).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        row.forEach { option ->
+                            val selected = target == option
+                            Card(
+                                onClick = { target = option; notice = null },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(16.dp),
+                                border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = .14f) else MaterialTheme.colorScheme.surface.copy(alpha = .84f)
                                 )
+                            ) {
+                                Column(Modifier.fillMaxWidth().height(104.dp).padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        AstraIcon(if (option == "Run app") "preview" else if (option == "Release AAB") "artifact" else "build", size = 28.dp)
+                                        Spacer(Modifier.weight(1f))
+                                        if (selected) Text("✓", color = AstraCyan, fontWeight = FontWeight.Bold)
+                                    }
+                                    Text(option, style = MaterialTheme.typography.titleSmall)
+                                    Text(
+                                        when (option) {
+                                            "Run app" -> "On device"
+                                            "Debug APK" -> "Test package"
+                                            "Release APK" -> "Installable release"
+                                            else -> "Store bundle"
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 2
+                                    )
+                                }
                             }
-                            if (target == option) Text("Selected", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                         }
                     }
                 }
@@ -925,33 +1005,86 @@ internal fun BuildRunScreen() {
 
 @Composable
 internal fun AiExecutionScreen(onOpenChat: () -> Unit) {
-    val steps = listOf("Plan request", "Analyze workspace", "Approve action", "Execute", "Verify result", "Complete")
-    Column(verticalArrangement = Arrangement.spacedBy(15.dp)) {
-        AstraPageHero("AI Execution", "Observe work and evidence. Multi-step autonomous execution is not enabled yet.", "execution", mascot = true)
+    val steps = listOf("Plan", "Analyze", "Edit Files", "Run & Test", "Verify", "Complete")
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        AstraPageHero(
+            "AI Execution",
+            "Observe an AI task from planning through verification.",
+            "execution",
+            mascot = true
+        )
         AstraPanel(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                AstraSectionTitle("Execution lifecycle")
-                steps.forEachIndexed { index, step ->
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Box(
-                            Modifier.size(32.dp).background(MaterialTheme.colorScheme.surface, CircleShape)
-                                .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) { Text((index + 1).toString(), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelLarge) }
-                        Column(Modifier.weight(1f)) {
-                            Text(step, style = MaterialTheme.typography.titleSmall)
-                            Text("Not started", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(Modifier.size(34.dp).background(AstraPurple.copy(alpha = .2f), RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
+                        AstraIcon("execution", size = 24.dp, description = null)
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Text("No active AI task", style = MaterialTheme.typography.titleMedium)
+                        Text("Start from AI Chat", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Surface(shape = RoundedCornerShape(50), color = AstraGold.copy(alpha = .13f)) {
+                        Text("Idle", modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp), style = MaterialTheme.typography.labelSmall, color = AstraGold)
                     }
                 }
             }
         }
         AstraPanel(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("What works today", style = MaterialTheme.typography.titleMedium)
-                Text("In AI Chat, the configured cloud model can propose one supported workspace action at a time. File creation and moves require explicit approval, persist the audit decision before execution, and report verification evidence.", style = MaterialTheme.typography.bodyMedium)
-                Text("This page does not simulate progress or claim that a task has run.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                AstraPrimaryButton("Open AI Chat", onClick = onOpenChat, modifier = Modifier.fillMaxWidth())
+            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                AstraSectionTitle("Execution Progress")
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    steps.forEachIndexed { index, label ->
+                        Column(
+                            modifier = Modifier.width(76.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Box(
+                                Modifier.size(31.dp).background(Color(0xFF08172A), CircleShape)
+                                    .border(1.5.dp, if (index == 0) AstraPurple else MaterialTheme.colorScheme.outline, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) { Text((index + 1).toString(), color = if (index == 0) AstraCyan else MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium) }
+                            Text(label, style = MaterialTheme.typography.labelSmall, textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 2)
+                        }
+                    }
+                }
+                AstraPanel(modifier = Modifier.fillMaxWidth()) {
+                    Row(Modifier.fillMaxWidth().padding(11.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                        AstraIcon("code", size = 29.dp, description = null)
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text("Current step", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                            Text("Waiting for a task", style = MaterialTheme.typography.titleSmall)
+                            Text("No files are being modified.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                AstraNotice("Autonomous multi-step execution is not enabled. This screen never fabricates progress; supported individual workspace actions are proposed and approved in AI Chat.", isError = false)
+            }
+        }
+        AstraPanel(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                AstraSectionTitle("Generated Files", trailing = "0 files")
+                Text("Files created by approved workspace actions will appear in chat history and in your selected workspace. No task files to show yet.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        AstraPanel(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                AstraSectionTitle("Execution Logs")
+                Text(
+                    "No execution has been recorded. Once a supported action runs, AstraCode reports its actual result and verification evidence.",
+                    fontFamily = AstraCodeTypography.CodeFont,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = {}, enabled = false, modifier = Modifier.weight(1f)) { Text("Ⅱ  Pause") }
+                    OutlinedButton(onClick = {}, enabled = false, modifier = Modifier.weight(1f)) { Text("■  Stop") }
+                    OutlinedButton(onClick = onOpenChat, modifier = Modifier.weight(1.3f)) { Text("Open AI Chat") }
+                }
             }
         }
     }
@@ -1028,6 +1161,8 @@ internal fun AstraSettingsScreen(
         SettingsSection("AI providers", "Cloud models, encrypted API keys and connection tests.", "chat", onOpenAiSettings)
         SettingsSection("Terminal", "Scoped folder listing and built-in commands only.", "terminal", onOpenTerminal)
         SettingsSection("Build & Run", "Build targets and status; execution remains unavailable.", "build", onOpenBuild)
+        SettingsSection("Project Settings", "Default workspace and project templates.", "files", onOpenProjects)
+        SettingsSection("Advanced Settings", "Experimental preferences and app diagnostics.", "more")
         SettingsSection("File & storage", "Attachments: up to 10 per message, 25 MiB each, 100 MiB per request; private storage quota 1 GiB.", "storage")
         SettingsSection("Security & privacy", "SAF workspace scope, approval audit, credential encryption and backup exclusions.", "approval")
         AstraPanel(modifier = Modifier.fillMaxWidth()) {

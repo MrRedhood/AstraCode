@@ -82,3 +82,6 @@ AI Chat adds a compact model-aware header with the reusable animated Astra masco
 
 
 Home Recent Projects are backed by a bounded four-entry local history of SAF workspace URIs. Display names and informational framework tags are resolved from provider metadata and existing root entries when available. The list must skip unavailable grants and must never inject placeholder sample projects as real user data.
+
+
+Project, build and task screens use selected-state tiles and bounded horizontal progress stages patterned after the supplied design. UI-only selection must be separate from actual generation/build/execution state. If the relevant engine is absent, the interface displays an explicit idle/unavailable state; it must not animate fake task progress or invent generated files/logs.

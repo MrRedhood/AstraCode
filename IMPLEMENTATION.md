@@ -406,3 +406,11 @@
 - Updated Home to the reference hierarchy: taller cosmic hero with New Project CTA, paired colored feature cards, Recent Projects rows, and compact four-column Quick Actions.
 - Connected Recent Projects to a new local bounded list of real SAF workspaces from the workspace repository. Each row shows its resolved folder name and a best-effort framework tag derived from actual top-level manifest/build files; revoked/unavailable grants are not shown as successful projects. Selecting a row restores that saved workspace selection and opens Projects.
 - Added a visible arrow treatment to feature cards. Empty state directs the user to the actual workspace picker instead of showing sample/fake projects.
+
+
+## 2026-10-11 — Reference-style project, build, execution and settings layouts
+
+- Replaced Create Project framework chips with selectable icon cards and template cards with a compact two-column layout. Added a real workspace-destination shortcut; creation still reports that the generator is unavailable and does not fabricate files.
+- Changed Build & Run target selection to the reference-style 2×2 set of compact tiles, retaining honest state that no build runner is connected.
+- Reworked AI Execution into a task header, horizontal six-stage stepper, current-step panel, empty Generated Files and Execution Logs sections, and visibly disabled Pause/Stop controls when no engine is available. No fake running percentage, files or logs are shown.
+- Completed the Settings category list with Project Settings and Advanced Settings, alongside existing Appearance, Editor, AI, Terminal, Build & Run, File & Storage, Security and About.
