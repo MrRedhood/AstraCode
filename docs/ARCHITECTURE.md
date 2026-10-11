@@ -103,3 +103,8 @@ AI Chat temporarily owns its header and system-back handling so the global app t
 
 
 Compact navigation separates the central Create (+) action from AI Chat. The fourth action is context-labelled as Tools, Terminal, Build or More while the last action always opens AI Chat. Menu routes remain the source of truth for More subpages and their settings.
+
+
+## Responsive mascot and reference chat state
+
+The reusable animated Astra robot fits its caller's bounds while retaining the idle float, slight tilt and periodic blink, so the compact chat-avatar use does not inherit the full hero's dimensions. The empty-chat welcome and prompt chips are presentation-only until the user submits a request. Chat media controls use filtered Android document pickers; the camera affordance truthfully reports its unavailable implementation. Build output tabs are result-driven and must not invent logs, diagnostics or package artifacts.

@@ -112,3 +112,10 @@ The phone bottom bar now follows the reference ordering: Home, Projects, a centr
 
 
 The UI smoke tests follow the reference navigation: open More from the hamburger menu and inspect the Chat attachment plus menu. The menu exposes File, Image, Video, Audio and Camera. Camera currently reports that capture is not connected.
+
+
+## Reference-style AI Chat and build output
+
+The empty AI Chat view shows an animated Astra assistant welcome card followed by prompt shortcuts for project help, explaining code, fixing errors and adding a feature. Shortcuts fill the input only; the configured cloud model is contacted only after you press Send. The model control displays the actual configured model ID when one is saved. File, Image, Video and Audio launch the system picker with a matching file-type filter. Camera is visible for layout consistency but currently reports that direct capture is unavailable. The existing plus menu remains available for attachment options, and the same limits and explicit-attachment rules still apply.
+
+Build & Run has Logs, Problems and Artifacts output tabs. Since a build runner is not connected to this screen, these sections stay empty and explicitly say that no output/artifacts have been produced. They never show a simulated successful build.

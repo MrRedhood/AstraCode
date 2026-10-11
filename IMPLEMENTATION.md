@@ -466,3 +466,12 @@
 ## 2026-10-11 — Smoke helper correction
 
 - Corrected the instrumented smoke-test helper to tap the hamburger button and select More from its menu, rather than recursively invoking the helper. This follows the redesigned mobile navigation and avoids a test-time recursion failure.
+
+
+## 2026-10-11 — Reference fidelity and responsive mascot/chat polish
+
+- Fixed the reusable animated robot layout so its vector body scales to the caller's actual bounds; the full hero mascot and the 42 dp chat avatar no longer use the same unscaled fixed-size drawing.
+- Rebuilt the empty AI Chat state around the animated Astra assistant bubble, retained on-device privacy guidance, and moved four action chips directly beneath the welcome. The chips only fill the prompt; they do not claim to create or change files.
+- Added the reference-style File, Image, Video, Audio and Camera action strip above the composer. File/media actions use Android's filtered document picker; Camera continues to report that direct capture is unavailable.
+- The model selector now displays the configured model ID, not just a provider label. Build Output now has Logs, Problems and Artifacts tabs with truthful empty states when no build runner has produced results.
+- Validation caveat: source-level changes were committed to `main`. Android compilation, instrumentation and screenshot comparison were not executed here, so CI/UI success and pixel-identical parity are not claimed.

@@ -330,7 +330,7 @@ fun AiChatScreen(
                 modifier = Modifier.width(100.dp)
             ) {
                 Text(
-                    if (isConfigured) configuration.providerId.displayName.take(8) else "Choose model",
+                    if (isConfigured) configuration.modelId else "Choose model",
                     style = MaterialTheme.typography.labelSmall,
                     maxLines = 1,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
@@ -361,30 +361,7 @@ fun AiChatScreen(
                 if (prompt.isBlank()) prompt = "Help me write or review code for: "
             }, label = { Text("Code") })
         }
-        if (!showHistory && messages.isEmpty() && isSessionReady) {
-            Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(7.dp)
-            ) {
-                listOf(
-                    "Create a project" to "Help me create a project. Ask for requirements and framework first.",
-                    "Explain code" to "Explain this code clearly: ",
-                    "Fix errors" to "Help diagnose and fix these errors: ",
-                    "Add a feature" to "Help plan and implement this feature: "
-                ).forEach { (title, suggestedPrompt) ->
-                    Card(
-                        onClick = { prompt = suggestedPrompt },
-                        shape = RoundedCornerShape(14.dp),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                        colors = androidx.compose.material3.CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant
-                        )
-                    ) {
-                        Text(title, modifier = Modifier.padding(horizontal = 11.dp, vertical = 10.dp), style = MaterialTheme.typography.labelMedium)
-                    }
-                }
-            }
-        }
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
@@ -522,12 +499,74 @@ fun AiChatScreen(
                 }
             } else if (messages.isEmpty()) {
                 item {
-                    Text(
-                        if (isSessionReady) "Ask a coding question to begin. This conversation is saved on this device; workspace files are not attached automatically."
-                        else "Loading local chat history…",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        AstraRobotIllustration(Modifier.size(42.dp))
+                        Card(
+                            modifier = Modifier.fillMaxWidth(0.93f),
+                            shape = RoundedCornerShape(18.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .8f)),
+                            colors = androidx.compose.material3.CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .98f)
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(13.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    if (isSessionReady) "Hi! I'm Astra, your AI coding assistant."
+                                    else "Astra is preparing your chat…",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    "I can help you write, debug, refactor, explain and build your projects. What would you like to work on?",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    "Conversation history stays on this device. Workspace files are never attached automatically.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        listOf(
+                            "Create a project" to ("build" to "Help me create a project. Ask for requirements and framework first."),
+                            "Explain code" to ("code" to "Explain this code clearly: "),
+                            "Fix errors" to ("approval" to "Help diagnose and fix these errors: "),
+                            "Add a feature" to ("more" to "Help plan and implement this feature: ")
+                        ).forEach { (title, action) ->
+                            Card(
+                                onClick = { prompt = action.second },
+                                shape = RoundedCornerShape(13.dp),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                                colors = androidx.compose.material3.CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                                )
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    AstraIcon(action.first, size = 18.dp, description = null)
+                                    Text(title, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                                }
+                            }
+                        }
+                    }
                 }
             } else {
                 itemsIndexed(messages.toList(), key = { index, message -> "$index-${message.role}" }) { _, message ->
@@ -803,6 +842,63 @@ fun AiChatScreen(
                         " attached · 25 MiB/file · 100 MiB/request",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                FilterChip(
+                    selected = false,
+                    enabled = !isSending && pendingToolProposal == null && !isExecutingTool && !isLoadingAttachments &&
+                        attachments.size < AiChatAttachmentPolicy.MAX_ATTACHMENTS,
+                    onClick = { attachmentPicker.launch(arrayOf("*/*")) },
+                    label = { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        AstraIcon("files", size = 17.dp, description = null)
+                        Text("File")
+                    } }
+                )
+                FilterChip(
+                    selected = false,
+                    enabled = !isSending && pendingToolProposal == null && !isExecutingTool && !isLoadingAttachments &&
+                        attachments.size < AiChatAttachmentPolicy.MAX_ATTACHMENTS,
+                    onClick = { attachmentPicker.launch(arrayOf("image/*")) },
+                    label = { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        AstraIcon("preview", size = 17.dp, description = null)
+                        Text("Image")
+                    } }
+                )
+                FilterChip(
+                    selected = false,
+                    enabled = !isSending && pendingToolProposal == null && !isExecutingTool && !isLoadingAttachments &&
+                        attachments.size < AiChatAttachmentPolicy.MAX_ATTACHMENTS,
+                    onClick = { attachmentPicker.launch(arrayOf("video/*")) },
+                    label = { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        AstraIcon("preview", size = 17.dp, description = null)
+                        Text("Video")
+                    } }
+                )
+                FilterChip(
+                    selected = false,
+                    enabled = !isSending && pendingToolProposal == null && !isExecutingTool && !isLoadingAttachments &&
+                        attachments.size < AiChatAttachmentPolicy.MAX_ATTACHMENTS,
+                    onClick = { attachmentPicker.launch(arrayOf("audio/*")) },
+                    label = { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        AstraIcon("chat", size = 17.dp, description = null)
+                        Text("Audio")
+                    } }
+                )
+                FilterChip(
+                    selected = false,
+                    onClick = {
+                        statusMessage = "Direct camera capture is not connected. Choose Image to attach an existing photo."
+                        statusIsError = true
+                    },
+                    label = { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        AstraIcon("preview", size = 17.dp, description = null)
+                        Text("Camera")
+                    } }
                 )
             }
             if (attachments.isNotEmpty()) {

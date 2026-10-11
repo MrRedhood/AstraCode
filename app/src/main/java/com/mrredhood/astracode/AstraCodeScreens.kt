@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -250,7 +251,7 @@ internal fun AstraPanel(
 }
 
 @Composable
-internal fun AstraRobotIllustration(modifier: Modifier = Modifier) {
+internal fun AstraRobotIllustration(modifier: Modifier = Modifier.size(width = 98.dp, height = 116.dp)) {
     val motion = rememberInfiniteTransition(label = "astracode-robot-motion")
     val bob by motion.animateFloat(
         initialValue = -3.5f,
@@ -283,13 +284,17 @@ internal fun AstraRobotIllustration(modifier: Modifier = Modifier) {
         }
     }
 
-    Box(
-        modifier = modifier.size(width = 98.dp, height = 116.dp).graphicsLayer {
-            translationY = bob
-            rotationZ = tilt
-        },
-        contentAlignment = Alignment.Center
-    ) {
+    BoxWithConstraints(modifier = modifier, contentAlignment = Alignment.Center) {
+        val fitScale = minOf(maxWidth.value / 98f, maxHeight.value / 116f).coerceIn(0.08f, 1.5f)
+        Box(
+            modifier = Modifier.requiredSize(width = 98.dp, height = 116.dp).graphicsLayer {
+                scaleX = fitScale
+                scaleY = fitScale
+                translationY = bob * fitScale
+                rotationZ = tilt
+            },
+            contentAlignment = Alignment.Center
+        ) {
         Box(
             Modifier.align(Alignment.BottomCenter).offset(y = (-1).dp)
                 .width(57.dp).height(5.dp)
@@ -374,6 +379,7 @@ internal fun AstraRobotIllustration(modifier: Modifier = Modifier) {
                     .background(Brush.verticalGradient(listOf(Color(0xFF9DBBFF), Color(0xFF4B49A8))), RoundedCornerShape(7.dp))
                     .border(1.dp, Color(0xFF7877EB), RoundedCornerShape(7.dp))
             )
+        }
         }
     }
 }
@@ -997,6 +1003,7 @@ internal fun BuildRunScreen() {
     var installAfter by rememberSaveable { mutableStateOf(true) }
     var verboseLogs by rememberSaveable { mutableStateOf(false) }
     var notice by rememberSaveable { mutableStateOf<String?>(null) }
+    var outputTab by rememberSaveable { mutableStateOf("Logs") }
     Column(verticalArrangement = Arrangement.spacedBy(15.dp)) {
         AstraPageHero("Build & Run", "Choose a target and review settings before building.", "build", mascot = true)
         AstraPanel(modifier = Modifier.fillMaxWidth()) {
@@ -1065,10 +1072,38 @@ internal fun BuildRunScreen() {
             }
         }
         AstraPanel(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                AstraSectionTitle("Build output")
-                Text("No build has been run from AstraCode in this session.", style = MaterialTheme.typography.titleSmall)
-                Text("Logs, test reports, and APK/AAB artifacts will appear here when a verified build integration is available.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                AstraSectionTitle("Build Output")
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf("Logs", "Problems", "Artifacts").forEach { tab ->
+                        FilterChip(
+                            selected = outputTab == tab,
+                            onClick = { outputTab = tab },
+                            label = { Text(tab) }
+                        )
+                    }
+                }
+                when (outputTab) {
+                    "Logs" -> Text(
+                        "No build has been run from AstraCode in this session. Build logs will appear after a real build runner is connected.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontFamily = AstraCodeTypography.CodeFont
+                    )
+                    "Problems" -> Text(
+                        "No compiler or test report is available because this screen has not run a build.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    else -> Text(
+                        "No APK or AAB artifacts were produced from this screen. Artifacts will only be listed after verified build output exists.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }
