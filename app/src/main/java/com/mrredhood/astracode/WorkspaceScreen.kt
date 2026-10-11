@@ -24,6 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -118,6 +119,7 @@ internal fun WorkspaceScreen(codeFontSize: Int = 13){
     var dialogError by rememberSaveable{mutableStateOf<String?>(null)}
     var closeTabTarget by rememberSaveable{mutableStateOf<String?>(null)}
     var closeTabError by rememberSaveable{mutableStateOf<String?>(null)}
+    var selectedEditorTool by rememberSaveable{mutableStateOf("Terminal")}
     val editorTabs=remember(treeUriString){mutableStateListOf<WorkspaceEditorTab>()}
     val editorBuffers=remember(treeUriString){mutableStateMapOf<String,WorkspaceEditorBuffer>()}
     var moveId by rememberSaveable{mutableStateOf<String?>(null)}
@@ -577,7 +579,10 @@ internal fun WorkspaceScreen(codeFontSize: Int = 13){
     }
     BackHandler(enabled=openedId!=null||stack.size>1){if(openedId!=null)backToFiles()else if(stack.size>1)stack.removeAt(stack.lastIndex)}
 
-    Column(verticalArrangement=Arrangement.spacedBy(10.dp)){
+    Column(
+        modifier=Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+        verticalArrangement=Arrangement.spacedBy(10.dp)
+    ){
         AstraPanel(modifier=Modifier.fillMaxWidth()){
             Row(
                 modifier=Modifier.fillMaxWidth().padding(12.dp),
@@ -688,7 +693,7 @@ internal fun WorkspaceScreen(codeFontSize: Int = 13){
                     }
                     OutlinedButton(onClick={foldViewVisible=false},modifier=Modifier.fillMaxWidth()){Text("Edit source")}
                 }else{
-                    TextField(value=TextFieldValue(text=draft,selection=selection),onValueChange={value->updateDraft(value.text,value.selection);notice=null;searchMessage=null;recoveryStatus=null},modifier=Modifier.fillMaxWidth().heightIn(min=260.dp),readOnly=!editable,label={Text("File contents")},textStyle=MaterialTheme.typography.bodyMedium.copy(fontFamily=AstraCodeTypography.CodeFont,fontSize=codeFontSize.sp,lineHeight=(codeFontSize*1.45f).sp))
+                    TextField(value=TextFieldValue(text=draft,selection=selection),onValueChange={value->updateDraft(value.text,value.selection);notice=null;searchMessage=null;recoveryStatus=null},modifier=Modifier.fillMaxWidth().heightIn(min=260.dp,max=520.dp),readOnly=!editable,label={Text("File contents")},textStyle=MaterialTheme.typography.bodyMedium.copy(fontFamily=AstraCodeTypography.CodeFont,fontSize=codeFontSize.sp,lineHeight=(codeFontSize*1.45f).sp))
                 }
                 if(!webPreviewVisible){
                     OutlinedButton(onClick={if(foldViewVisible)foldViewVisible=false else openFoldView()},enabled=draftReady&&!previewLoading&&!foldLoading&&!truncated&&previewError==null,modifier=Modifier.fillMaxWidth()){
@@ -757,6 +762,57 @@ internal fun WorkspaceScreen(codeFontSize: Int = 13){
                         enabled=dirty&&!loading,
                         modifier=Modifier.fillMaxWidth()
                     ){Text(if(loading)"Saving…" else if(autosaveConflicts[openedId]==true)"Overwrite file…" else "Save now")}
+                }
+                AstraPanel(modifier=Modifier.fillMaxWidth()){
+                    Column(Modifier.fillMaxWidth().padding(10.dp),verticalArrangement=Arrangement.spacedBy(9.dp)){
+                        Row(
+                            modifier=Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement=Arrangement.spacedBy(6.dp),
+                            verticalAlignment=Alignment.CenterVertically
+                        ){
+                            listOf("Terminal","Problems","Output","Debug").forEach { tool ->
+                                FilterChip(
+                                    selected=selectedEditorTool==tool,
+                                    onClick={selectedEditorTool=tool},
+                                    label={Text(tool)}
+                                )
+                            }
+                        }
+                        when(selectedEditorTool){
+                            "Terminal" -> {
+                                Text("Terminal",style=MaterialTheme.typography.titleSmall)
+                                Text(
+                                    "The terminal destination currently supports help, pwd, ls and clear only. Open Terminal from the main navigation to run those allow-listed commands.",
+                                    style=MaterialTheme.typography.bodySmall,
+                                    color=MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            "Problems" -> {
+                                Text("Problems",style=MaterialTheme.typography.titleSmall)
+                                Text(
+                                    "No compiler or analyzer is connected to this editor panel. Diagnostics are not available here yet.",
+                                    style=MaterialTheme.typography.bodySmall,
+                                    color=MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            "Output" -> {
+                                Text("Output",style=MaterialTheme.typography.titleSmall)
+                                Text(
+                                    "No build or run output has been captured for this workspace session.",
+                                    style=MaterialTheme.typography.bodySmall,
+                                    color=MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            else -> {
+                                Text("Debug",style=MaterialTheme.typography.titleSmall)
+                                Text(
+                                    "A device debugger is not connected to this editor. No debug session is active.",
+                                    style=MaterialTheme.typography.bodySmall,
+                                    color=MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
                 }
             }
             if(notice!=null)Text(notice.orEmpty(),color=MaterialTheme.colorScheme.primary)

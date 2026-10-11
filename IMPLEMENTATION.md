@@ -426,3 +426,9 @@
 
 - Added a persistent contextual header to Projects showing Project Files or the open filename, the current SAF breadcrumb path, and an explicit FILES/EDITOR state badge. The file list rows now use the same rounded geometry as the reference UI.
 - Fixed the parent destination container so Projects is no longer wrapped in a second vertical scroll container. Workspace lists and editor text retain their own scroll behavior, reducing nested-scroll interference on phones.
+
+
+## 2026-10-11 — Editor workspace tool window and bounded scroll
+
+- The workspace now owns its vertical scrolling rather than inheriting a shell-level scroll container. The source editing field has a bounded display height and keeps its own text scrolling, while editor controls remain reachable below it on small phones.
+- Added Terminal, Problems, Output and Debug tabs under the editor. These are explicit status panels: Terminal points to the existing allow-listed command screen; Problems/Output/Debug say when analyzers, build output or a device debugger are not connected instead of inventing diagnostics or logs.

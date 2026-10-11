@@ -93,3 +93,8 @@ The Terminal screen uses tab-style chips for bash, Flutter, Git and Python, show
 ## Workspace/editor layout
 
 The Projects screen has a contextual header showing the open file or Project Files, the current SAF breadcrumb path, and whether the view is in FILES or EDITOR mode. The selected file tabs remain separate from folder navigation. The outer destination no longer wraps Projects in another vertical scroll container, so the file list and code editor keep their own scrolling. The header does not expand the granted workspace scope.
+
+
+## Editor tool windows
+
+The editor has Terminal, Problems, Output and Debug tabs styled as a compact tool-window strip. Terminal directs users to the separate safe terminal destination, which only runs `help`, `pwd`, `ls` and `clear`. The Problems, Output and Debug tabs explicitly state when no compiler diagnostics, build output or debugger session is connected. The editor has its own bounded scrolling so source text scrolls inside its field and the remaining controls remain reachable below it.

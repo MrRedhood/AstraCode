@@ -91,3 +91,6 @@ Terminal-style tabs and quick command cards are presentation only. The command d
 
 
 The Projects destination is exempt from the shell's outer vertical scroll wrapper. Workspace folder lists, the source editor and the read-only live preview own their scrolling to avoid nested-scroll conflicts on small screens. A context header may present the active file and SAF breadcrumbs, but mutations remain within the existing selected tree URI.
+
+
+Editor tool windows expose truthful integration state. Until an analyzer, build output stream or device debugger is connected, the corresponding panel displays unavailability instead of simulated results. The workspace/editor owns its scrolling; the source text field is bounded vertically and maintains internal text scrolling.
