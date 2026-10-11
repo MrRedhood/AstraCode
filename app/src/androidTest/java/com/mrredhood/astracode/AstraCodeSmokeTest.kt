@@ -18,7 +18,7 @@ class AstraCodeSmokeTest {
 
     private fun openMoreHub() {
         composeRule.onNodeWithText("☰").performClick()
-        openMoreHub()
+        composeRule.onNodeWithText("More").performClick()
     }
 
     @Before

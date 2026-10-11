@@ -461,3 +461,8 @@
 
 - Updated instrumented smoke coverage to open More via the hamburger menu, expect the Home bottom bar's Tools label, and inspect the new Chat attachment menu. The camera menu item is tapped to verify its explicit unavailable-state message rather than launching a fake capture flow.
 - Test source was updated but the emulator workflow has not been executed from this session.
+
+
+## 2026-10-11 — Smoke helper correction
+
+- Corrected the instrumented smoke-test helper to tap the hamburger button and select More from its menu, rather than recursively invoking the helper. This follows the redesigned mobile navigation and avoids a test-time recursion failure.
