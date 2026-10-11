@@ -5,6 +5,10 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -32,6 +36,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -571,7 +577,46 @@ internal fun WorkspaceScreen(codeFontSize: Int = 13){
     }
     BackHandler(enabled=openedId!=null||stack.size>1){if(openedId!=null)backToFiles()else if(stack.size>1)stack.removeAt(stack.lastIndex)}
 
-    Column(verticalArrangement=Arrangement.spacedBy(12.dp)){
+    Column(verticalArrangement=Arrangement.spacedBy(10.dp)){
+        AstraPanel(modifier=Modifier.fillMaxWidth()){
+            Row(
+                modifier=Modifier.fillMaxWidth().padding(12.dp),
+                verticalAlignment=Alignment.CenterVertically,
+                horizontalArrangement=Arrangement.spacedBy(10.dp)
+            ){
+                Box(
+                    modifier=Modifier.size(44.dp).background(
+                        Brush.horizontalGradient(listOf(Color(0x332F87FF),Color(0x334B46FF))),
+                        RoundedCornerShape(13.dp)
+                    ),
+                    contentAlignment=Alignment.Center
+                ){
+                    AstraIcon(if(openedId!=null)"code" else "files",size=26.dp,description=null)
+                }
+                Column(modifier=Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)){
+                    Text(if(openedId!=null)openedName.orEmpty() else "Project Files",style=MaterialTheme.typography.titleMedium,maxLines=1,overflow=TextOverflow.Ellipsis)
+                    Text(
+                        if(tree==null)"Choose a project folder to begin"
+                        else stack.joinToString("  /  "){it.name}.ifBlank{"Workspace"},
+                        style=MaterialTheme.typography.bodySmall,
+                        color=MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines=1,
+                        overflow=TextOverflow.Ellipsis
+                    )
+                }
+                Surface(
+                    shape=RoundedCornerShape(50),
+                    color=(if(openedId!=null)Color(0xFF9B73FF)else Color(0xFF25CDA0)).copy(alpha=.14f)
+                ){
+                    Text(
+                        if(openedId!=null)"EDITOR" else "FILES",
+                        modifier=Modifier.padding(horizontal=9.dp,vertical=6.dp),
+                        style=MaterialTheme.typography.labelSmall,
+                        color=if(openedId!=null)Color(0xFFBDA6FF)else Color(0xFF58E7BC)
+                    )
+                }
+            }
+        }
         if(tree!=null&&editorTabs.isNotEmpty()){
             Row(modifier=Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){
                 editorTabs.forEach{tab->
@@ -754,7 +799,7 @@ internal fun WorkspaceScreen(codeFontSize: Int = 13){
                         Card(onClick={
                             if(entry.isDirectory){stack.add(WorkspaceBreadcrumb(entry.documentId,entry.displayName));query=""}
                             else{openDocument(entry)}
-                        },modifier=Modifier.fillMaxWidth(),shape=MaterialTheme.shapes.large){
+                        },modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(15.dp)){
                             Row(modifier=Modifier.fillMaxWidth().padding(12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)){
                                 AstraIcon(if(entry.isDirectory)"more"else"code",size=24.dp,description=if(entry.isDirectory)"Folder"else"File")
                                 Column(modifier=Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(3.dp)){

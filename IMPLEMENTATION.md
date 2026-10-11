@@ -420,3 +420,9 @@
 
 - Added terminal tabs styled for bash, Flutter, Git and Python. Only bash-style built-ins use the existing safe handler; Flutter, Git and Python tabs visibly explain that arbitrary execution is unavailable and never start a process.
 - Added the selected-workspace status strip and a compact Quick Commands tile grid. Runnable tiles only populate the input; the user still presses Run built-in. Unsupported sample commands surface a warning and are refused by the existing dispatcher.
+
+
+## 2026-10-11 — Workspace/editor screen shell
+
+- Added a persistent contextual header to Projects showing Project Files or the open filename, the current SAF breadcrumb path, and an explicit FILES/EDITOR state badge. The file list rows now use the same rounded geometry as the reference UI.
+- Fixed the parent destination container so Projects is no longer wrapped in a second vertical scroll container. Workspace lists and editor text retain their own scroll behavior, reducing nested-scroll interference on phones.

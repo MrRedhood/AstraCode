@@ -88,3 +88,6 @@ Project, build and task screens use selected-state tiles and bounded horizontal 
 
 
 Terminal-style tabs and quick command cards are presentation only. The command dispatcher remains allow-listed to `help`, `pwd`, `ls` and `clear`; other commands must be rejected before process launch and must not be reported as run.
+
+
+The Projects destination is exempt from the shell's outer vertical scroll wrapper. Workspace folder lists, the source editor and the read-only live preview own their scrolling to avoid nested-scroll conflicts on small screens. A context header may present the active file and SAF breadcrumbs, but mutations remain within the existing selected tree URI.

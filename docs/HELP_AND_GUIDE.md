@@ -88,3 +88,8 @@ Create Project presents framework and template selections as compact cards with 
 ## Terminal layout
 
 The Terminal screen uses tab-style chips for bash, Flutter, Git and Python, shows the selected SAF workspace state, and includes a Quick Commands grid. The only executable commands remain `help`, `pwd`, `ls` and `clear`; quick tiles populate the input and require the user to tap Run built-in. Flutter, Git, Python, package-manager and build commands remain unavailable and are refused without starting a shell process.
+
+
+## Workspace/editor layout
+
+The Projects screen has a contextual header showing the open file or Project Files, the current SAF breadcrumb path, and whether the view is in FILES or EDITOR mode. The selected file tabs remain separate from folder navigation. The outer destination no longer wraps Projects in another vertical scroll container, so the file list and code editor keep their own scrolling. The header does not expand the granted workspace scope.

@@ -566,7 +566,7 @@ private fun DestinationScreen(
         modifier = modifier
             .fillMaxSize()
             .then(
-                if (destination == PrimaryDestination.AI) Modifier
+                if (destination == PrimaryDestination.AI || destination == PrimaryDestination.Projects) Modifier
                 else Modifier.verticalScroll(rememberScrollState())
             )
             .padding(horizontal = if (compact) 12.dp else 22.dp, vertical = if (compact) 8.dp else 18.dp),
