@@ -12,6 +12,7 @@ internal data class WorkspaceEntry(val documentId:String,val displayName:String,
     val isDirectory:Boolean get()=mimeType==DocumentsContract.Document.MIME_TYPE_DIR
 }
 internal data class WorkspaceTextPreview(val text:String,val truncated:Boolean)
+internal data class RecentWorkspace(val uri: Uri, val displayName: String, val kind: String)
 
 internal enum class WorkspaceWriteResult { Saved, Conflict, TooLarge, Failed }
 
@@ -19,9 +20,51 @@ internal class WorkspaceRepository(context:Context) {
     private val resolver=context.applicationContext.contentResolver
     private val prefs=context.applicationContext.getSharedPreferences("astracode_workspace",Context.MODE_PRIVATE)
     fun savedTreeUri():Uri?=prefs.getString("selected_tree_uri",null)?.let{runCatching{Uri.parse(it)}.getOrNull()}
-    fun saveTreeUri(uri:Uri){prefs.edit().putString("selected_tree_uri",uri.toString()).apply()}
+    fun saveTreeUri(uri:Uri){
+        val stored = prefs.getString(KEY_RECENT_TREE_URIS, "").orEmpty()
+        val prior = stored.split('\n').filter { it.isNotBlank() && it != uri.toString() }
+        val history = (listOf(uri.toString()) + prior).take(MAX_RECENT_WORKSPACES)
+        prefs.edit()
+            .putString("selected_tree_uri", uri.toString())
+            .putString(KEY_RECENT_TREE_URIS, history.joinToString("\n"))
+            .apply()
+    }
     fun clearTreeUri(){prefs.edit().remove("selected_tree_uri").apply()}
     fun rootDocumentId(uri:Uri)=DocumentsContract.getTreeDocumentId(uri)
+
+    /** Lists only real, previously selected SAF workspaces; invalid/revoked grants are skipped. */
+    fun recentWorkspaces(): List<RecentWorkspace> {
+        val stored = prefs.getString(KEY_RECENT_TREE_URIS, "").orEmpty()
+        val recentStrings = (stored.split('\n').filter { it.isNotBlank() } + listOfNotNull(savedTreeUri()?.toString()))
+            .distinct()
+            .take(MAX_RECENT_WORKSPACES)
+        return recentStrings.mapNotNull { value ->
+            runCatching {
+                val uri = Uri.parse(value)
+                val rootId = rootDocumentId(uri)
+                val documentUri = DocumentsContract.buildDocumentUriUsingTree(uri, rootId)
+                val displayName = resolver.query(
+                    documentUri,
+                    arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+                    null,
+                    null,
+                    null
+                )?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0) else null
+                }?.takeIf { it.isNotBlank() } ?: "Project workspace"
+                val names = listChildren(uri, rootId).map { it.displayName.lowercase(Locale.ROOT) }.toSet()
+                val kind = when {
+                    "pubspec.yaml" in names || ".dart_tool" in names -> "Flutter"
+                    "build.gradle" in names || "build.gradle.kts" in names || "settings.gradle.kts" in names -> "Android"
+                    "package.json" in names -> "Web / Node"
+                    "requirements.txt" in names || "pyproject.toml" in names -> "Python"
+                    "pom.xml" in names -> "Java"
+                    else -> "Project"
+                }
+                RecentWorkspace(uri, displayName, kind)
+            }.getOrNull()
+        }
+    }
 
     fun listChildren(tree:Uri,parentId:String):List<WorkspaceEntry>{
         val childUri=DocumentsContract.buildChildDocumentsUriUsingTree(tree,parentId)
@@ -97,5 +140,9 @@ internal class WorkspaceRepository(context:Context) {
         }
     }
 
-    companion object{private const val MAX_BYTES=2*1024*1024}
+    companion object {
+        private const val MAX_BYTES = 2 * 1024 * 1024
+        private const val KEY_RECENT_TREE_URIS = "recent_tree_uris"
+        private const val MAX_RECENT_WORKSPACES = 4
+    }
 }

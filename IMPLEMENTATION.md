@@ -393,3 +393,9 @@
 - Added horizontally scrollable Chat/Tools/Files/Images/Web/Code controls. Files and Images launch the actual system picker; Tools explains the limited approval-gated workspace actions; Web reports that external browsing is not integrated; Code inserts a practical prompt starter.
 - Added first-turn prompt cards for project creation, code explanation, error repair and feature planning. Redesigned user/assistant message bubbles with distinct color/shape treatment and animated bot avatars for assistant messages. Composer copy now follows the reference's "Ask me anything" pattern.
 - These are presentation changes over the existing safe provider/session/approval layer; web browsing and unsupported agent/file creation operations are not simulated.
+
+
+## 2026-10-11 — Recent project history for Home
+
+- Workspace selections now keep a bounded most-recent-first list of up to four SAF tree URIs alongside the existing active workspace preference. This history is local-only and uses the same Android document-provider grant boundary.
+- The repository resolves the display name and an informational framework tag from real top-level files when the grant remains valid. Revoked/unavailable providers are skipped rather than shown as fake projects. The home screen can use this for real Recent Projects cards.
