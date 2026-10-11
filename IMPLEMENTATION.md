@@ -364,3 +364,9 @@
 - Expanded Create Project framework/template selections and configuration toggles to align with the supplied reference layout. These remain UI configuration only; no project files are generated, and the screen continues to state that honestly.
 - Added Home quick-action cards for file/folder creation, project workspace access and AI Execution. Actions route only to existing safe destinations; no shell, Git clone, build, or project-generation capability is implied.
 - Validation caveat: repository changes were prepared against the inspected main HEAD; Android compilation and emulator screenshot comparison must be run by the repository workflows before claiming pixel-level parity or build success.
+
+
+## 2026-10-11 — Branded in-app header
+
+- Replaced the small uppercase wordmark and duplicated page-title row with a compact AstraCode brand header, gradient wordmark, current destination subtitle and working shortcuts for workspace/search entry, Build & Run, and Settings.
+- Removed the repeated footer tagline so the available vertical space better matches the supplied mobile screens. No profile button or profile screen was added.

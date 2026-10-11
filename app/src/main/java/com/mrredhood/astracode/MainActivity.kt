@@ -44,6 +44,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -537,24 +538,59 @@ private fun DestinationScreen(
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(9.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Image(
                 painter = painterResource(id = R.drawable.astracode_logo),
                 contentDescription = "AstraCode logo",
-                modifier = Modifier.size(28.dp)
+                modifier = Modifier.size(40.dp)
             )
-            Text(
-                "ASTRACODE",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary
-            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(1.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Astra",
+                        color = MaterialTheme.colorScheme.onBackground,
+                        fontSize = 21.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                    Text(
+                        "Code",
+                        style = TextStyle(
+                            brush = Brush.horizontalGradient(
+                                listOf(Color(0xFF29BFFF), Color(0xFF625BFF), Color(0xFFEF42D8))
+                            ),
+                            fontSize = 21.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    )
+                }
+                Text(
+                    if (destination == PrimaryDestination.More && selectedMoreEntry != null) selectedMoreEntry
+                    else destination.title,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
+                )
+            }
+            IconButton(onClick = { onSelectDestination(PrimaryDestination.Projects) }) {
+                AstraIcon("search", size = 23.dp, description = "Open projects and search")
+            }
+            IconButton(onClick = {
+                onSelectDestination(PrimaryDestination.More)
+                onOpenMoreEntry("Build & Run")
+            }) {
+                AstraIcon("run", size = 23.dp, description = "Build and run")
+            }
+            IconButton(onClick = {
+                onSelectDestination(PrimaryDestination.More)
+                onOpenMoreEntry("Settings")
+            }) {
+                AstraIcon("settings", size = 23.dp, description = "Settings")
+            }
         }
-        Text(
-            if (destination == PrimaryDestination.More && selectedMoreEntry != null) selectedMoreEntry
-            else destination.title,
-            style = MaterialTheme.typography.headlineMedium
-        )
         if (
             destination == PrimaryDestination.More &&
             selectedMoreEntry in listOf("Create Project", "Build & Run", "AI Execution", "Settings")
@@ -620,11 +656,6 @@ private fun DestinationScreen(
         } else {
             DestinationSummary(destination)
         }
-        Text(
-            "Code smarter. Ship from your phone.",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
     }
 }
 

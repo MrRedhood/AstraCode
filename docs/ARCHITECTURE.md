@@ -63,3 +63,6 @@ Capability boundaries are reflected in the UI. Terminal supports only `help`, `p
 ## Reference-screen styling
 
 Shared page hero cards reuse the bundled cosmic artwork with a dark gradient overlay and native Compose foreground controls. This is a decorative local resource; no network image request is made. Create Project options describe future generator configuration and must not be treated as proof that project files, Git initialization, packages or lint files were created. The Home quick actions route to the existing workspace and AI Execution destinations without bypassing workspace grants or approval boundaries.
+
+
+The shared mobile header keeps destination context visible while exposing navigation shortcuts. Header actions route through existing destination selection and do not create privileged capabilities. Profile UI is intentionally omitted per the design requirement.

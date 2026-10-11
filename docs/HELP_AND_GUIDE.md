@@ -55,3 +55,6 @@ Phones use bottom navigation; wider layouts use a navigation rail. More includes
 ## Reference-matched screen layout update — 2026-10-11
 
 The shared page hero now uses the bundled cosmic artwork as a cropped decorative background behind native, accessible Compose text and controls. Create Project includes framework choices for Flutter, Android, React Native, HTML, Next.js, Node.js, Python, Java and Empty Project, plus reference-style template and additional-option switches. These are configuration choices only: project creation remains explicitly unavailable until a verified generator exists. Home includes quick-action cards for file/folder creation, project workspace access and AI Execution. The file/folder shortcuts open Projects, where the existing workspace tools are available; they do not create files automatically. No profile screen or profile control is added.
+
+
+The shared header shows the AstraCode wordmark and current destination. Its search/workspace shortcut opens Projects, the run shortcut opens Build & Run, and the settings shortcut opens Settings. These are navigation shortcuts and do not claim that a search or build has run.
