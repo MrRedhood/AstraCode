@@ -370,3 +370,11 @@
 
 - Replaced the small uppercase wordmark and duplicated page-title row with a compact AstraCode brand header, gradient wordmark, current destination subtitle and working shortcuts for workspace/search entry, Build & Run, and Settings.
 - Removed the repeated footer tagline so the available vertical space better matches the supplied mobile screens. No profile button or profile screen was added.
+
+
+## 2026-10-11 — Reference visual foundation and mascot motion
+
+- Replaced the static robot illustration with a native Compose mascot using a blue/purple helmet, glossy visor, cyan eyes, feet and antenna glow. It floats and tilts gently and performs a periodic natural/double blink without video decoding or a fast polling loop.
+- Standardized shared hero banners around the bundled cosmic artwork, dark contrast overlay, rounded neon border, compact responsive foreground layout and floating mascot. Primary CTAs use a violet-to-blue-to-cyan gradient.
+- Rebuilt Home Quick Actions as four equal-width compact tiles (Create file, Create folder, Open project, Clone from Git). The Git tile routes to the repository entry instead of pretending to clone; file/folder tiles route to the real workspace where their safe actions live.
+- Validation caveat: source was edited directly on main; Android build and emulator screenshot comparison have not been run here. Pixel-identical parity is not claimed until verified on-device.

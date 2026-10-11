@@ -66,3 +66,8 @@ Shared page hero cards reuse the bundled cosmic artwork with a dark gradient ove
 
 
 The shared mobile header keeps destination context visible while exposing navigation shortcuts. Header actions route through existing destination selection and do not create privileged capabilities. Profile UI is intentionally omitted per the design requirement.
+
+
+## Reference-inspired banners and animated Astra mascot
+
+Page heroes use a local cosmic background and a dark scrim under accessible Compose foreground content. The Astra robot is a lightweight Compose illustration animated with low-amplitude translation/rotation and a delayed blink sequence. No remote resources or video decoding are used. Quick-action surfaces are navigation affordances only; they route to the existing workspace/Git entry and do not bypass workspace permissions or report unsupported actions as completed.

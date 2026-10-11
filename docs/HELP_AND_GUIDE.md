@@ -58,3 +58,8 @@ The shared page hero now uses the bundled cosmic artwork as a cropped decorative
 
 
 The shared header shows the AstraCode wordmark and current destination. Its search/workspace shortcut opens Projects, the run shortcut opens Build & Run, and the settings shortcut opens Settings. These are navigation shortcuts and do not claim that a search or build has run.
+
+
+## Reference visual foundation and animated mascot
+
+The shared hero banner uses a bundled cosmic background, a navy scrim, rounded neon edges and a native Astra robot. The robot gently floats and tilts and blinks its cyan eyes (including a quick double blink) using Compose animation. It does not play video or load a remote image. Primary actions use a violet-to-blue-to-cyan gradient. Home Quick Actions open the real workspace or Git & GitHub entry; no file is created and no clone is performed simply by tapping these navigation tiles. The app has no profile screen or profile control.

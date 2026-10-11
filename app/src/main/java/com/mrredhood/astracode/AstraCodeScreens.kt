@@ -3,10 +3,18 @@ package com.mrredhood.astracode
 import android.app.Activity
 import android.view.View
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -40,6 +48,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,6 +60,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
@@ -61,6 +71,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -164,38 +175,31 @@ internal fun AstraPageHero(
     trailing: (@Composable () -> Unit)? = null
 ) {
     val dark = MaterialTheme.colorScheme.background == AstraNavy
-    val heroTitleColor = if (dark) Color(0xFFEAF3FF) else Color(0xFF12203B)
-    val heroBodyColor = if (dark) AstraMuted else Color(0xFF52627F)
-    AstraPanel(
-        modifier = Modifier.fillMaxWidth(),
-        gradient = true
-    ) {
-        // Reuse bundled cosmic artwork as a cropped, decorative hero backdrop.
+    val heroTitleColor = if (dark) Color(0xFFF2F6FF) else Color(0xFF12203B)
+    val heroBodyColor = if (dark) Color(0xFFD0DDF8) else Color(0xFF52627F)
+    AstraPanel(modifier = Modifier.fillMaxWidth(), gradient = true) {
         Image(
             painter = painterResource(id = R.drawable.astracode_splash_background),
             contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxWidth().height(154.dp)
+            modifier = Modifier.fillMaxWidth().height(154.dp).clip(RoundedCornerShape(22.dp))
         )
         Box(
-            modifier = Modifier.fillMaxWidth().height(154.dp)
-                .background(
-                    Brush.horizontalGradient(
-                        listOf(Color(0xE8050B18), Color(0xAA07132A), Color(0x3320144A))
-                    ),
-                    RoundedCornerShape(22.dp)
-                )
+            modifier = Modifier.fillMaxWidth().height(154.dp).background(
+                Brush.horizontalGradient(listOf(Color(0xF0050B18), Color(0xC7071023), Color(0x65221547))),
+                RoundedCornerShape(22.dp)
+            )
         )
         Row(
-            modifier = Modifier.fillMaxWidth().padding(18.dp),
+            modifier = Modifier.fillMaxWidth().height(154.dp).padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                Text(title, style = MaterialTheme.typography.headlineMedium, color = heroTitleColor)
-                Text(description, style = MaterialTheme.typography.bodyMedium, color = heroBodyColor)
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(title, style = MaterialTheme.typography.headlineSmall, color = heroTitleColor, fontWeight = FontWeight.Bold)
+                Text(description, style = MaterialTheme.typography.bodySmall, color = heroBodyColor)
                 if (trailing != null) {
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(2.dp))
                     trailing()
                 }
             }
@@ -203,14 +207,12 @@ internal fun AstraPageHero(
                 AstraRobotIllustration()
             } else {
                 Box(
-                    modifier = Modifier.size(58.dp).background(
-                        Brush.linearGradient(listOf(AstraBlue.copy(alpha = .24f), AstraPurple.copy(alpha = .26f), AstraPink.copy(alpha = .12f))),
+                    modifier = Modifier.size(54.dp).background(
+                        Brush.linearGradient(listOf(AstraBlue.copy(alpha = .42f), AstraPurple.copy(alpha = .48f))),
                         CircleShape
-                    ),
+                    ).border(1.dp, AstraCyan.copy(alpha = .7f), CircleShape),
                     contentAlignment = Alignment.Center
-                ) {
-                    AstraIcon(icon, size = 35.dp, description = null)
-                }
+                ) { AstraIcon(icon, size = 30.dp, description = null) }
             }
         }
     }
@@ -244,45 +246,130 @@ internal fun AstraPanel(
 }
 
 @Composable
-private fun AstraRobotIllustration() {
-    Box(Modifier.size(width = 78.dp, height = 78.dp), contentAlignment = Alignment.Center) {
-        Box(
-            Modifier.align(Alignment.TopCenter).offset(y = 3.dp).size(width = 4.dp, height = 12.dp)
-                .background(AstraPurple, CircleShape)
-        )
-        Box(
-            Modifier.align(Alignment.TopCenter).offset(y = 12.dp)
-                .size(width = 58.dp, height = 44.dp)
-                .background(
-                    Brush.linearGradient(listOf(Color(0xFF1A2D51), Color(0xFF0A1225))),
-                    RoundedCornerShape(17.dp)
-                )
-                .border(1.dp, AstraCyan.copy(alpha = .85f), RoundedCornerShape(17.dp))
-        ) {
-            Row(
-                Modifier.align(Alignment.Center).padding(horizontal = 13.dp),
-                horizontalArrangement = Arrangement.spacedBy(9.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(Modifier.size(8.dp).background(AstraCyan, CircleShape))
-                Box(Modifier.size(8.dp).background(AstraCyan, CircleShape))
-            }
-            Box(
-                Modifier.align(Alignment.BottomCenter).padding(bottom = 7.dp)
-                    .width(12.dp).height(2.dp).background(AstraPurple, RoundedCornerShape(2.dp))
-            )
+internal fun AstraRobotIllustration(modifier: Modifier = Modifier) {
+    val motion = rememberInfiniteTransition(label = "astracode-robot-motion")
+    val bob by motion.animateFloat(
+        initialValue = -3.5f,
+        targetValue = 3.5f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1_650, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "robot float"
+    )
+    val tilt by motion.animateFloat(
+        initialValue = -1.2f,
+        targetValue = 1.2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2_300, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "robot tilt"
+    )
+    val eyeOpen = remember { Animatable(1f) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(2_250)
+            eyeOpen.animateTo(0.12f, tween(85))
+            delay(100)
+            eyeOpen.animateTo(1f, tween(115))
+            delay(70)
+            eyeOpen.animateTo(0.18f, tween(65))
+            eyeOpen.animateTo(1f, tween(135))
         }
+    }
+
+    Box(
+        modifier = modifier.size(width = 98.dp, height = 116.dp).graphicsLayer {
+            translationY = bob
+            rotationZ = tilt
+        },
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            Modifier.align(Alignment.BottomCenter).offset(y = (-1).dp)
+                .width(57.dp).height(5.dp)
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(Color(0x002ADFFF), Color(0xAA4B7CFF), Color(0x00D34BFF))
+                    ),
+                    CircleShape
+                )
+        )
         Row(
-            Modifier.align(Alignment.BottomCenter).padding(bottom = 1.dp),
+            modifier = Modifier.align(Alignment.BottomCenter).offset(y = (-8).dp),
             horizontalArrangement = Arrangement.spacedBy(5.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(Modifier.size(width = 13.dp, height = 15.dp).background(AstraBlue, RoundedCornerShape(5.dp)))
+            Box(Modifier.size(width = 13.dp, height = 17.dp).background(
+                Brush.verticalGradient(listOf(Color(0xFFB6DFFF), Color(0xFF4B74C9))),
+                RoundedCornerShape(6.dp)
+            ))
+            Box(Modifier.size(width = 38.dp, height = 28.dp).background(
+                Brush.verticalGradient(listOf(Color(0xFF244D9B), Color(0xFF101C43))),
+                RoundedCornerShape(10.dp)
+            ).border(1.dp, Color(0xFF4EBEFF), RoundedCornerShape(10.dp)))
+            Box(Modifier.size(width = 13.dp, height = 17.dp).background(
+                Brush.verticalGradient(listOf(Color(0xFFE0B9FF), Color(0xFF7045CE))),
+                RoundedCornerShape(6.dp)
+            ))
+        }
+        Box(
+            Modifier.align(Alignment.BottomCenter).offset(y = (-29).dp).size(width = 38.dp, height = 26.dp)
+                .background(Brush.verticalGradient(listOf(Color(0xFF25447C), Color(0xFF101932))), RoundedCornerShape(10.dp))
+                .border(1.dp, Color(0xFF6687D9), RoundedCornerShape(10.dp))
+        )
+        Box(
+            Modifier.align(Alignment.TopCenter).offset(y = 3.dp).width(4.dp).height(17.dp)
+                .background(Brush.verticalGradient(listOf(Color(0xFF4BE7FF), Color(0xFF8760FF))), CircleShape)
+        )
+        Box(
+            Modifier.align(Alignment.TopCenter).size(9.dp)
+                .background(Brush.radialGradient(listOf(Color.White, Color(0xFF42E6FF), Color(0xFF655DFF))), CircleShape)
+        )
+        Row(
+            modifier = Modifier.align(Alignment.TopCenter).offset(y = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(0.dp)
+        ) {
             Box(
-                Modifier.size(width = 39.dp, height = 18.dp)
-                    .background(Brush.horizontalGradient(listOf(AstraBlue, AstraPurple)), RoundedCornerShape(8.dp))
+                Modifier.size(width = 11.dp, height = 24.dp)
+                    .background(Brush.verticalGradient(listOf(Color(0xFF7CB9FF), Color(0xFF233A78))), RoundedCornerShape(7.dp))
+                    .border(1.dp, Color(0xFF587EDD), RoundedCornerShape(7.dp))
             )
-            Box(Modifier.size(width = 13.dp, height = 15.dp).background(AstraPurple, RoundedCornerShape(5.dp)))
+            Box(
+                Modifier.size(width = 76.dp, height = 58.dp)
+                    .background(
+                        Brush.linearGradient(listOf(Color(0xFFDAF1FF), Color(0xFF658FD9), Color(0xFF253C7A), Color(0xFFA37AFF))),
+                        RoundedCornerShape(22.dp)
+                    )
+                    .border(1.2.dp, Color(0xFF7DDFFF), RoundedCornerShape(22.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    Modifier.size(width = 64.dp, height = 43.dp)
+                        .background(
+                            Brush.linearGradient(listOf(Color(0xFF030918), Color(0xFF07152F), Color(0xFF020714))),
+                            RoundedCornerShape(18.dp)
+                        )
+                        .border(1.dp, Color(0xFF365AA0), RoundedCornerShape(18.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        listOf(Color(0xFF53F5FF), Color(0xFF18C5FF)).forEach { eye ->
+                            Box(
+                                Modifier.width(8.dp).height(16.dp).graphicsLayer { scaleY = eyeOpen.value }
+                                    .background(Brush.verticalGradient(listOf(Color.White, eye, Color(0xFF247CFF))), CircleShape)
+                            )
+                        }
+                    }
+                }
+            }
+            Box(
+                Modifier.size(width = 11.dp, height = 24.dp)
+                    .background(Brush.verticalGradient(listOf(Color(0xFF9DBBFF), Color(0xFF4B49A8))), RoundedCornerShape(7.dp))
+                    .border(1.dp, Color(0xFF7877EB), RoundedCornerShape(7.dp))
+            )
         }
     }
 }
@@ -294,20 +381,33 @@ internal fun AstraPrimaryButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true
 ) {
-    Button(
-        onClick = onClick,
-        modifier = modifier.defaultMinSize(minHeight = 48.dp),
-        enabled = enabled,
-        shape = RoundedCornerShape(17.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = Color(0xFF514BEE),
-            contentColor = Color.White,
-            disabledContainerColor = Color(0xFF252E45),
-            disabledContentColor = Color(0xFF8693AC)
-        ),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 18.dp, vertical = 12.dp)
+    val shape = RoundedCornerShape(17.dp)
+    Box(
+        modifier = modifier.defaultMinSize(minHeight = 48.dp)
+            .background(
+                if (enabled) Brush.horizontalGradient(listOf(Color(0xFF7650FF), Color(0xFF3F70FF), Color(0xFF08B9FF)))
+                else Brush.horizontalGradient(listOf(Color(0xFF27334D), Color(0xFF1A2941))),
+                shape
+            )
+            .border(1.dp, Color(0xFF8B9CFF).copy(alpha = if (enabled) .55f else .18f), shape),
+        contentAlignment = Alignment.Center
     ) {
-        Text(label, fontWeight = FontWeight.SemiBold)
+        Button(
+            onClick = onClick,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = enabled,
+            shape = shape,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color.Transparent,
+                contentColor = Color.White,
+                disabledContainerColor = Color.Transparent,
+                disabledContentColor = Color(0xFF8794AD)
+            ),
+            elevation = ButtonDefaults.buttonElevation(
+                defaultElevation = 0.dp, pressedElevation = 0.dp, focusedElevation = 0.dp, hoveredElevation = 0.dp
+            ),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 18.dp, vertical = 12.dp)
+        ) { Text(label, fontWeight = FontWeight.SemiBold) }
     }
 }
 
@@ -363,13 +463,40 @@ private fun AstraFeatureCard(
 }
 
 @Composable
+private fun AstraQuickAction(
+    title: String,
+    icon: String,
+    tint: Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Card(
+        onClick = onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(15.dp),
+        border = BorderStroke(1.dp, tint.copy(alpha = .45f)),
+        colors = CardDefaults.cardColors(containerColor = tint.copy(alpha = .08f))
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().height(74.dp).padding(horizontal = 3.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            AstraIcon(icon, size = 24.dp, description = null)
+            Text(title, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        }
+    }
+}
+
+@Composable
 internal fun HomeDashboardScreen(
     onOpenProjects: () -> Unit,
     onOpenChat: () -> Unit,
     onOpenTerminal: () -> Unit,
     onOpenBuild: () -> Unit,
     onCreateProject: () -> Unit,
-    onOpenExecution: () -> Unit
+    onOpenExecution: () -> Unit,
+    onOpenGit: () -> Unit
 ) {
     val context = LocalContext.current
     val workspace = remember(context) { WorkspaceRepository(context.applicationContext).savedTreeUri() }
@@ -392,15 +519,13 @@ internal fun HomeDashboardScreen(
             AstraFeatureCard("Build & Run", "Build status & targets", "build", AstraGold, Modifier.weight(1f), onOpenBuild)
         }
         AstraPanel(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
-                AstraSectionTitle("Quick actions")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AstraFeatureCard("Create file", "New source file", "file", AstraBlue, Modifier.weight(1f), onOpenProjects)
-                    AstraFeatureCard("Create folder", "Add workspace folder", "files", AstraCyan, Modifier.weight(1f), onOpenProjects)
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AstraFeatureCard("Open project", "Browse workspace", "folder", AstraPurple, Modifier.weight(1f), onOpenProjects)
-                    AstraFeatureCard("AI execution", "Review task status", "execution", AstraPink, Modifier.weight(1f), onOpenExecution)
+            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                AstraSectionTitle("Quick Actions")
+                Row(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
+                    AstraQuickAction("Create file", "code", AstraBlue, Modifier.weight(1f), onOpenProjects)
+                    AstraQuickAction("Create folder", "files", AstraCyan, Modifier.weight(1f), onOpenProjects)
+                    AstraQuickAction("Open project", "files", AstraPurple, Modifier.weight(1f), onOpenProjects)
+                    AstraQuickAction("Clone from Git", "git", AstraPink, Modifier.weight(1f), onOpenGit)
                 }
             }
         }
