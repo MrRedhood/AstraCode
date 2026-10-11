@@ -28,7 +28,8 @@ class AstraCodeSmokeTest {
 
     @Test
     fun shellShowsBrandAndPrimaryDestinations() {
-        composeRule.onNodeWithText("ASTRACODE").assertIsDisplayed()
+        composeRule.onNodeWithText("Astra").assertIsDisplayed()
+        composeRule.onNodeWithText("Code").assertIsDisplayed()
         listOf("Home", "Projects", "AI", "Terminal", "More").forEach { label ->
             composeRule.onNodeWithText(label).assertIsDisplayed()
         }

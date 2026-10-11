@@ -63,3 +63,8 @@ The shared header shows the AstraCode wordmark and current destination. Its sear
 ## Reference visual foundation and animated mascot
 
 The shared hero banner uses a bundled cosmic background, a navy scrim, rounded neon edges and a native Astra robot. The robot gently floats and tilts and blinks its cyan eyes (including a quick double blink) using Compose animation. It does not play video or load a remote image. Primary actions use a violet-to-blue-to-cyan gradient. Home Quick Actions open the real workspace or Git & GitHub entry; no file is created and no clone is performed simply by tapping these navigation tiles. The app has no profile screen or profile control.
+
+
+## Mobile shell and navigation
+
+The shell places the local cosmic background below a dark navy readability scrim and uses compact phone margins. Bottom navigation emphasizes the AI action with a gradient plus; global navigation hides while AI Chat is open to preserve space for messages and the composer. The hamburger menu opens primary destinations and tool sections, while the overflow menu routes to settings, AI models, project creation, AI Execution, Git & GitHub, Build & Run and Help & Guide. No profile screen or profile control is present.

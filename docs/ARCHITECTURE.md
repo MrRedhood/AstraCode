@@ -71,3 +71,6 @@ The shared mobile header keeps destination context visible while exposing naviga
 ## Reference-inspired banners and animated Astra mascot
 
 Page heroes use a local cosmic background and a dark scrim under accessible Compose foreground content. The Astra robot is a lightweight Compose illustration animated with low-amplitude translation/rotation and a delayed blink sequence. No remote resources or video decoding are used. Quick-action surfaces are navigation affordances only; they route to the existing workspace/Git entry and do not bypass workspace permissions or report unsupported actions as completed.
+
+
+The app shell uses a low-opacity local cosmic background beneath a high-contrast navy scrim and transparent scaffolds. Menus and toolbar buttons route to the same destination state and do not create new permissions or imply unavailable actions. Mobile navigation emphasizes the AI destination and is hidden during chat to reserve content space. Profile UI is intentionally omitted.

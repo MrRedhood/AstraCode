@@ -378,3 +378,10 @@
 - Standardized shared hero banners around the bundled cosmic artwork, dark contrast overlay, rounded neon border, compact responsive foreground layout and floating mascot. Primary CTAs use a violet-to-blue-to-cyan gradient.
 - Rebuilt Home Quick Actions as four equal-width compact tiles (Create file, Create folder, Open project, Clone from Git). The Git tile routes to the repository entry instead of pretending to clone; file/folder tiles route to the real workspace where their safe actions live.
 - Validation caveat: source was edited directly on main; Android build and emulator screenshot comparison have not been run here. Pixel-identical parity is not claimed until verified on-device.
+
+
+## 2026-10-11 — Mobile navigation and branded shell
+
+- Added a compact hamburger destination menu and overflow navigation for Create Project, AI Execution, Git & GitHub, Build & Run, Settings, AI & Models, Help & Guide and About AstraCode. Desktop keeps the Git shortcut visible; compact phones use the overflow menu for less-frequent actions.
+- Updated the app shell to place the local cosmic art beneath a dark readability scrim and transparent screen scaffolds. Mobile margins are tighter and the AI destination uses a gradient central action while hiding global bottom navigation when chat is open.
+- Kept the profile UI omitted. Updated UI smoke-test expectations for the split AstraCode wordmark. No unverified build/test result is claimed.
