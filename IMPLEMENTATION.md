@@ -450,3 +450,8 @@
 
 - Changed the compact bottom bar to Home, Projects, a central gradient Create (+) action, contextual Tools/Terminal/Build/More, and a separate AI Chat destination. The central plus opens Create Project rather than AI Chat; AI Chat now has its own right-side navigation item and its own focused header.
 - The context label and icon for the fourth item reflect Terminal, Build & Run, a More detail or Tools. The global menu remains the entry to the More hub and its settings sections.
+
+
+## 2026-10-11 — Mobile layout integration cleanup
+
+- Added the explicit Compose layout imports used by AI Chat's focused toolbar and attachment menu, and by the workspace's owned scroll container. This prevents unresolved symbols introduced by the reference-style UI pass.
