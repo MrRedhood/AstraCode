@@ -2,6 +2,8 @@ package com.mrredhood.astracode
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
@@ -17,6 +19,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -32,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -292,28 +299,92 @@ fun AiChatScreen(
         job.start()
     }
 
+    var attachMenuExpanded by remember { mutableStateOf(false) }
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Column(
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            AstraRobotIllustration(Modifier.size(46.dp))
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("AI Chat", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("Your Coding Assistant", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    if (isConfigured) configuration.providerId.displayName + " · " + configuration.modelId
+                    else "Choose a cloud model to start",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1
+                )
+            }
+            IconButton(onClick = onOpenAiSettings, enabled = !isSending && pendingToolProposal == null && !isExecutingTool) {
+                AstraIcon("settings", size = 22.dp, description = "AI settings")
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            FilterChip(selected = !showHistory, onClick = { showHistory = false }, label = { Text("Chat") })
+            FilterChip(selected = false, onClick = {
+                statusMessage = "Workspace tools: list files, read small text/code files, create new files, and move items. Writes and moves require your approval."
+                statusIsError = false
+            }, label = { Text("Tools") })
+            FilterChip(selected = false, onClick = { attachmentPicker.launch(arrayOf("*/*")) }, label = { Text("Files") })
+            FilterChip(selected = false, onClick = { attachmentPicker.launch(arrayOf("image/*")) }, label = { Text("Images") })
+            FilterChip(selected = false, onClick = {
+                statusMessage = "Web browsing is not connected in this build. AstraCode will not claim it fetched pages."
+                statusIsError = true
+            }, label = { Text("Web") })
+            FilterChip(selected = false, onClick = {
+                if (prompt.isBlank()) prompt = "Help me write or review code for: "
+            }, label = { Text("Code") })
+        }
+        if (!showHistory && messages.isEmpty() && isSessionReady) {
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                listOf(
+                    "Create a project" to "Help me create a project. Ask for requirements and framework first.",
+                    "Explain code" to "Explain this code clearly: ",
+                    "Fix errors" to "Help diagnose and fix these errors: ",
+                    "Add a feature" to "Help plan and implement this feature: "
+                ).forEach { (title, suggestedPrompt) ->
+                    Card(
+                        onClick = { prompt = suggestedPrompt },
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                        colors = androidx.compose.material3.CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Text(title, modifier = Modifier.padding(horizontal = 11.dp, vertical = 10.dp), style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                if (isConfigured) configuration.providerId.displayName else "Cloud AI not configured",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold
+                if (isConfigured) "Connected · ready to send" else "Cloud AI not configured",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = if (isConfigured) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
             )
+            Spacer(modifier = Modifier.weight(1f))
             Text(
-                if (isConfigured) "Connected · model selected automatically" else "Add an API key to start",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                "Conversation: " + (sessions.firstOrNull { it.id == activeSessionId }?.title ?: "Loading history…"),
+                sessions.firstOrNull { it.id == activeSessionId }?.title ?: "Loading history…",
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
             )
         }
         Row(
@@ -736,8 +807,8 @@ fun AiChatScreen(
                 value = prompt,
                 onValueChange = { if (it.length <= MAX_PROMPT_CHARS) prompt = it },
                 modifier = Modifier.weight(1f),
-                label = { Text("Message AstraCode") },
-                placeholder = { Text("Ask about code…") },
+                label = { Text("Ask me anything…") },
+                placeholder = { Text("Write a message, ask about code, or attach files…") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
                 minLines = 1,
                 maxLines = 4,
@@ -767,23 +838,41 @@ private fun ChatMessageBubble(message: AiChatMessage) {
     val isUser = message.role == AiMessageRole.USER
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.Top
     ) {
-        Card(modifier = Modifier.fillMaxWidth(0.94f)) {
-            Column(
-                modifier = Modifier.padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
+        if (!isUser) AstraRobotIllustration(Modifier.size(38.dp))
+        Card(
+            modifier = Modifier.fillMaxWidth(if (isUser) 0.88f else 0.84f).padding(bottom = 3.dp),
+            shape = RoundedCornerShape(
+                topStart = 18.dp,
+                topEnd = 18.dp,
+                bottomEnd = if (isUser) 5.dp else 18.dp,
+                bottomStart = if (isUser) 18.dp else 5.dp
+            ),
+            border = BorderStroke(1.dp, if (isUser) Color(0xFF5E7FFF).copy(alpha = .7f) else MaterialTheme.colorScheme.outline.copy(alpha = .75f)),
+            colors = androidx.compose.material3.CardDefaults.cardColors(
+                containerColor = if (isUser) Color(0xFF202B75) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .97f)
+            )
+        ) {
+            Column(modifier = Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
                     if (isUser) "You"
                     else if (message.content.startsWith("AstraCode workspace tool result")) "Workspace tool · execution record"
                     else if (message.content.startsWith("AstraCode workspace tool approval")) "Workspace tool · approval audit"
-                    else "AstraCode AI",
+                    else "Astra",
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = if (isUser) Color(0xFFB8D8FF) else MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(message.displayContent ?: message.content, style = MaterialTheme.typography.bodyMedium)
+                if (message.attachments.isNotEmpty()) {
+                    Text(
+                        message.attachments.joinToString(" · ") { it.name },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }

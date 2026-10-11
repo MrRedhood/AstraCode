@@ -74,3 +74,8 @@ Page heroes use a local cosmic background and a dark scrim under accessible Comp
 
 
 The app shell uses a low-opacity local cosmic background beneath a high-contrast navy scrim and transparent scaffolds. Menus and toolbar buttons route to the same destination state and do not create new permissions or imply unavailable actions. Mobile navigation emphasizes the AI destination and is hidden during chat to reserve content space. Profile UI is intentionally omitted.
+
+
+## AI Chat layout
+
+AI Chat adds a compact model-aware header with the reusable animated Astra mascot, starter prompt cards, capability chips and role-specific message bubbles. File/Image controls call the existing system picker, tools remain approval-gated, and unavailable browsing is surfaced as unavailable. Layout changes must preserve provider routing, local session persistence, request cancellation, attachment limits and approval audit ordering.

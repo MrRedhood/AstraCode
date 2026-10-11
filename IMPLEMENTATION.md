@@ -385,3 +385,11 @@
 - Added a compact hamburger destination menu and overflow navigation for Create Project, AI Execution, Git & GitHub, Build & Run, Settings, AI & Models, Help & Guide and About AstraCode. Desktop keeps the Git shortcut visible; compact phones use the overflow menu for less-frequent actions.
 - Updated the app shell to place the local cosmic art beneath a dark readability scrim and transparent screen scaffolds. Mobile margins are tighter and the AI destination uses a gradient central action while hiding global bottom navigation when chat is open.
 - Kept the profile UI omitted. Updated UI smoke-test expectations for the split AstraCode wordmark. No unverified build/test result is claimed.
+
+
+## 2026-10-11 — Reference-inspired AI Chat
+
+- Reworked the AI conversation header around the animated Astra mascot, assistant subtitle, configured provider/model and direct settings access.
+- Added horizontally scrollable Chat/Tools/Files/Images/Web/Code controls. Files and Images launch the actual system picker; Tools explains the limited approval-gated workspace actions; Web reports that external browsing is not integrated; Code inserts a practical prompt starter.
+- Added first-turn prompt cards for project creation, code explanation, error repair and feature planning. Redesigned user/assistant message bubbles with distinct color/shape treatment and animated bot avatars for assistant messages. Composer copy now follows the reference's "Ask me anything" pattern.
+- These are presentation changes over the existing safe provider/session/approval layer; web browsing and unsupported agent/file creation operations are not simulated.

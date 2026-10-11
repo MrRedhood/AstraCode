@@ -68,3 +68,8 @@ The shared hero banner uses a bundled cosmic background, a navy scrim, rounded n
 ## Mobile shell and navigation
 
 The shell places the local cosmic background below a dark navy readability scrim and uses compact phone margins. Bottom navigation emphasizes the AI action with a gradient plus; global navigation hides while AI Chat is open to preserve space for messages and the composer. The hamburger menu opens primary destinations and tool sections, while the overflow menu routes to settings, AI models, project creation, AI Execution, Git & GitHub, Build & Run and Help & Guide. No profile screen or profile control is present.
+
+
+## AI Chat presentation
+
+AI Chat uses the animated Astra mascot, provider/model status, a settings shortcut, horizontally scrollable capability chips, and starter prompts for project creation, explanation, error repair and feature planning. The Files and Images chips open Android's system picker. Tools explains the supported approval-gated workspace operations; Web explicitly states that browsing is not connected in this version. Chat content continues to use the existing local history, selected provider and approval flow. Do not treat the visible design or a model's response as proof of a file operation.
