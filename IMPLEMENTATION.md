@@ -482,3 +482,10 @@
 - Updated the chat smoke test to assert that the assistant welcome and a suggested action are visible in the empty conversation state.
 - Updated the Build & Run smoke test to assert the build-output section and Artifacts tab are present while the runner remains unavailable.
 - Test source was updated; the emulator workflow has not been run here and no passing result is claimed.
+
+
+## 2026-10-11 — Android CI import repair
+
+- Inspected failed Android CI run [38107764704](https://github.com/MrRedhood/AstraCode/actions/runs/38107764704). Kotlin compilation failed because `AstraCodeScreens.kt` used `BoxWithConstraints` without importing it and `MainActivity.kt` used the Compose `border` modifier without importing it.
+- Added the missing `androidx.compose.foundation.layout.BoxWithConstraints` and `androidx.compose.foundation.border` imports. The unresolved `maxWidth`/`maxHeight` and composable-context errors were downstream effects of the missing `BoxWithConstraints` import.
+- This is a source-level repair committed to `main`. The follow-up CI run has not been checked, and no green status is claimed.
