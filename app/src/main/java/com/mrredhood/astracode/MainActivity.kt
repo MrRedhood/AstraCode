@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
@@ -30,8 +31,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -44,6 +47,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -151,24 +156,51 @@ private fun AstraCodeApp(showStartupSplashOnLaunch: Boolean) {
     }
 
     AstraCodeTheme(mode = themeMode, accent = accentName) {
-        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Surface(modifier = Modifier.fillMaxSize(), color = Color.Transparent) {
             Box(modifier = Modifier.fillMaxSize()) {
+                Image(
+                    painter = painterResource(id = R.drawable.astracode_splash_background),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize().alpha(0.24f)
+                )
+                Box(
+                    modifier = Modifier.fillMaxSize().background(
+                        Brush.verticalGradient(
+                            listOf(Color(0xE8050B18), Color(0xF4071020), Color(0xF9050915))
+                        )
+                    )
+                )
                 BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                 val compact = AstraCodeLayoutPolicy.usesBottomNavigation(maxWidth.value)
                 if (compact) {
                     Scaffold(
+                        containerColor = Color.Transparent,
                         bottomBar = {
-                            NavigationBar {
+                            if (selected != PrimaryDestination.AI) NavigationBar(
+                                containerColor = Color(0xE6071020),
+                                contentColor = MaterialTheme.colorScheme.onBackground
+                            ) {
                                 PrimaryDestination.values().forEach { destination ->
                                     NavigationBarItem(
                                         selected = selected == destination,
                                         onClick = { selectDestination(destination) },
                                         icon = {
-                                            AstraIcon(
-                                                destination.icon,
-                                                size = 26.dp,
-                                                description = null
-                                            )
+                                            if (destination == PrimaryDestination.AI) {
+                                                Box(
+                                                    modifier = Modifier.size(46.dp).background(
+                                                        Brush.horizontalGradient(
+                                                            listOf(Color(0xFF8050FF), Color(0xFF3678FF), Color(0xFF12C8FF))
+                                                        ),
+                                                        CircleShape
+                                                    ).border(1.dp, Color(0xFF93A7FF), CircleShape),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Text("＋", fontSize = 27.sp, fontWeight = FontWeight.Medium, color = Color.White)
+                                                }
+                                            } else {
+                                                AstraIcon(destination.icon, size = 23.dp, description = null)
+                                            }
                                         },
                                         label = { Text(destination.label) }
                                     )
@@ -196,7 +228,10 @@ private fun AstraCodeApp(showStartupSplashOnLaunch: Boolean) {
                     }
                 } else {
                     Row(modifier = Modifier.fillMaxSize()) {
-                        NavigationRail {
+                        NavigationRail(
+                            containerColor = Color(0xE6071020),
+                            contentColor = MaterialTheme.colorScheme.onBackground
+                        ) {
                             PrimaryDestination.values().forEach { destination ->
                                 NavigationRailItem(
                                     selected = selected == destination,
@@ -212,7 +247,7 @@ private fun AstraCodeApp(showStartupSplashOnLaunch: Boolean) {
                                 )
                             }
                         }
-                        Scaffold(modifier = Modifier.weight(1f)) { innerPadding ->
+                        Scaffold(modifier = Modifier.weight(1f), containerColor = Color.Transparent) { innerPadding ->
                             DestinationScreen(
                                 destination = selected,
                                 selectedMoreEntry = selectedMoreEntry,
@@ -532,8 +567,8 @@ private fun DestinationScreen(
                 if (destination == PrimaryDestination.AI) Modifier
                 else Modifier.verticalScroll(rememberScrollState())
             )
-            .padding(horizontal = if (compact) 20.dp else 36.dp, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
+            .padding(horizontal = if (compact) 12.dp else 22.dp, vertical = if (compact) 8.dp else 18.dp),
+        verticalArrangement = Arrangement.spacedBy(if (compact) 12.dp else 16.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
