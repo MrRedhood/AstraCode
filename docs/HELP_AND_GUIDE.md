@@ -83,3 +83,8 @@ Home uses the cosmic hero with a New Project action, colored AI/Terminal/Project
 ## Project creation, build, AI execution and settings UI
 
 Create Project presents framework and template selections as compact cards with selected-state styling. The location action opens the existing SAF workspace selector. Project generation remains disabled and no files are created from the screen yet. Build & Run uses compact selectable target tiles; build execution is not connected. AI Execution now shows an idle task state, the six-stage lifecycle, empty generated-file/log sections and disabled Pause/Stop controls until a real execution engine exists. Settings includes Project Settings and Advanced Settings categories in addition to the implemented appearance/editor/provider/storage/security settings.
+
+
+## Terminal layout
+
+The Terminal screen uses tab-style chips for bash, Flutter, Git and Python, shows the selected SAF workspace state, and includes a Quick Commands grid. The only executable commands remain `help`, `pwd`, `ls` and `clear`; quick tiles populate the input and require the user to tap Run built-in. Flutter, Git, Python, package-manager and build commands remain unavailable and are refused without starting a shell process.

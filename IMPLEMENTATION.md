@@ -414,3 +414,9 @@
 - Changed Build & Run target selection to the reference-style 2×2 set of compact tiles, retaining honest state that no build runner is connected.
 - Reworked AI Execution into a task header, horizontal six-stage stepper, current-step panel, empty Generated Files and Execution Logs sections, and visibly disabled Pause/Stop controls when no engine is available. No fake running percentage, files or logs are shown.
 - Completed the Settings category list with Project Settings and Advanced Settings, alongside existing Appearance, Editor, AI, Terminal, Build & Run, File & Storage, Security and About.
+
+
+## 2026-10-11 — Reference-style safe terminal screen
+
+- Added terminal tabs styled for bash, Flutter, Git and Python. Only bash-style built-ins use the existing safe handler; Flutter, Git and Python tabs visibly explain that arbitrary execution is unavailable and never start a process.
+- Added the selected-workspace status strip and a compact Quick Commands tile grid. Runnable tiles only populate the input; the user still presses Run built-in. Unsupported sample commands surface a warning and are refused by the existing dispatcher.

@@ -868,10 +868,38 @@ internal fun TerminalScreen() {
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        AstraPageHero("Terminal", "A scoped workspace console with safe built-in commands.", "terminal")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
-            listOf("help", "pwd", "ls", "clear", "flutter run").forEach { command ->
-                FilterChip(selected = false, onClick = { prompt = command }, label = { Text(command, fontFamily = AstraCodeTypography.CodeFont) })
+        AstraPageHero("Terminal", "Run workspace commands from your phone.", "terminal", mascot = true)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+        ) {
+            FilterChip(selected = true, onClick = { prompt = "" }, label = { Text("▣  bash") })
+            FilterChip(selected = false, onClick = {
+                prompt = "flutter run"
+                error = "Flutter execution is not enabled. No shell process was started."
+            }, label = { Text("▶  flutter run") })
+            FilterChip(selected = false, onClick = {
+                prompt = "git status"
+                error = "Git commands are not enabled in this terminal. No process was started."
+            }, label = { Text("⑂  git") })
+            FilterChip(selected = false, onClick = {
+                prompt = "python"
+                error = "Python execution is not enabled. No process was started."
+            }, label = { Text("Py  python") })
+        }
+        AstraPanel(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    AstraIcon("folder", size = 18.dp, description = null)
+                    Text("Working directory", style = MaterialTheme.typography.labelMedium)
+                    Spacer(Modifier.weight(1f))
+                    Text("SAF workspace", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text(
+                    if (repository.savedTreeUri() == null) "No workspace selected" else "Selected project root",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
         AstraPanel(modifier = Modifier.fillMaxWidth()) {
@@ -912,6 +940,47 @@ internal fun TerminalScreen() {
                     "AstraCode does not launch an unrestricted shell. Flutter, Git, Python and build commands remain disabled until a scoped execution and approval design is implemented.",
                     isError = false
                 )
+            }
+        }
+        AstraPanel(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth().padding(11.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                AstraSectionTitle("Quick Commands", trailing = "View all ›", onTrailing = { prompt = "help" })
+                listOf(
+                    Triple("pwd", "Show workspace", "files"),
+                    Triple("ls", "List root items", "files"),
+                    Triple("help", "Command guide", "code"),
+                    Triple("clear", "Clear output", "more"),
+                    Triple("flutter build apk", "Build debug APK · unavailable", "build"),
+                    Triple("git status", "Check Git · unavailable", "git")
+                ).chunked(3).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
+                        row.forEach { (command, label, icon) ->
+                            Card(
+                                onClick = {
+                                    prompt = command
+                                    if (command == "flutter build apk" || command == "git status") {
+                                        error = "$command is not enabled in this build. It will be refused without launching a shell."
+                                    } else error = null
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(14.dp),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = .8f)),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = .88f))
+                            ) {
+                                Column(
+                                    Modifier.fillMaxWidth().height(78.dp).padding(7.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(5.dp)
+                                ) {
+                                    AstraIcon(icon, size = 22.dp, description = null)
+                                    Text(command, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                        }
+                        if (row.size < 3) repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
             }
         }
         if (error != null) Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)

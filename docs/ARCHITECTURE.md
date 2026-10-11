@@ -85,3 +85,6 @@ Home Recent Projects are backed by a bounded four-entry local history of SAF wor
 
 
 Project, build and task screens use selected-state tiles and bounded horizontal progress stages patterned after the supplied design. UI-only selection must be separate from actual generation/build/execution state. If the relevant engine is absent, the interface displays an explicit idle/unavailable state; it must not animate fake task progress or invent generated files/logs.
+
+
+Terminal-style tabs and quick command cards are presentation only. The command dispatcher remains allow-listed to `help`, `pwd`, `ls` and `clear`; other commands must be rejected before process launch and must not be reported as run.
