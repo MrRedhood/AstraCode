@@ -94,3 +94,6 @@ The Projects destination is exempt from the shell's outer vertical scroll wrappe
 
 
 Editor tool windows expose truthful integration state. Until an analyzer, build output stream or device debugger is connected, the corresponding panel displays unavailability instead of simulated results. The workspace/editor owns its scrolling; the source text field is bounded vertically and maintains internal text scrolling.
+
+
+About AstraCode external actions use Android ACTION_VIEW for the public releases, license and issue-creation pages. These are navigation only; they do not silently download/install updates or submit issue content. Settings category cards route only into implemented destinations.

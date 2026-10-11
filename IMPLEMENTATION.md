@@ -432,3 +432,9 @@
 
 - The workspace now owns its vertical scrolling rather than inheriting a shell-level scroll container. The source editing field has a bounded display height and keeps its own text scrolling, while editor controls remain reachable below it on small phones.
 - Added Terminal, Problems, Output and Debug tabs under the editor. These are explicit status panels: Terminal points to the existing allow-listed command screen; Problems/Output/Debug say when analyzers, build output or a device debugger are not connected instead of inventing diagnostics or logs.
+
+
+## 2026-10-11 — Settings and About alignment
+
+- Aligned Settings category names with the reference: Editor Preferences, AI Settings, Terminal Settings, Build & Run Settings, Project Settings, File & Storage, Security & Privacy and Advanced Settings.
+- Rebuilt About AstraCode around the exact bundled app logo, wordmark, version and license and added working external navigation to the repository releases page, Apache license, and new GitHub issue form. These buttons open the official pages rather than claiming an in-app update or report was completed.

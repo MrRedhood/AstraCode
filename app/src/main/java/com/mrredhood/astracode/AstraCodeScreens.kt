@@ -1,6 +1,8 @@
 package com.mrredhood.astracode
 
 import android.app.Activity
+import android.content.Intent
+import android.net.Uri
 import android.view.View
 
 import androidx.compose.animation.core.Animatable
@@ -1173,6 +1175,12 @@ internal fun AstraSettingsScreen(
     onOpenBuild: () -> Unit
 ) {
     val accents = listOf("Cyan", "Blue", "Purple", "Pink", "Gold", "Green")
+    val context = LocalContext.current
+    fun openExternal(url: String) {
+        runCatching {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        }
+    }
     Column(verticalArrangement = Arrangement.spacedBy(15.dp)) {
         AstraPageHero("Settings", "Tune AstraCode's appearance and coding workflow.", "settings")
         AstraPanel(modifier = Modifier.fillMaxWidth()) {
@@ -1222,24 +1230,83 @@ internal fun AstraSettingsScreen(
             }
         }
         SettingsSection(
-            "Editor workspace",
-            "File tabs, autosave, find/replace, snapshots and code inspection.",
+            "Editor Preferences",
+            "Font size, line numbers, tabs, autosave, find/replace and code inspection.",
             "code",
             onOpenProjects
         )
-        SettingsSection("AI providers", "Cloud models, encrypted API keys and connection tests.", "chat", onOpenAiSettings)
-        SettingsSection("Terminal", "Scoped folder listing and built-in commands only.", "terminal", onOpenTerminal)
-        SettingsSection("Build & Run", "Build targets and status; execution remains unavailable.", "build", onOpenBuild)
-        SettingsSection("Project Settings", "Default workspace and project templates.", "files", onOpenProjects)
-        SettingsSection("Advanced Settings", "Experimental preferences and app diagnostics.", "more")
-        SettingsSection("File & storage", "Attachments: up to 10 per message, 25 MiB each, 100 MiB per request; private storage quota 1 GiB.", "storage")
-        SettingsSection("Security & privacy", "SAF workspace scope, approval audit, credential encryption and backup exclusions.", "approval")
+        SettingsSection("AI Settings", "Cloud provider, model, context and execution preferences.", "chat", onOpenAiSettings)
+        SettingsSection("Terminal Settings", "Shell appearance, workspace and allow-listed commands.", "terminal", onOpenTerminal)
+        SettingsSection("Build & Run Settings", "Build configuration and device options; build runner not connected.", "build", onOpenBuild)
+        SettingsSection("Project Settings", "Default workspace, framework templates and package managers.", "files", onOpenProjects)
+        SettingsSection("File & Storage", "Up to 10 attachments, 25 MiB each, 100 MiB per request and 1 GiB private storage.", "storage")
+        SettingsSection("Security & Privacy", "Workspace access, approvals, credential encryption and backup exclusions.", "approval")
+        SettingsSection("Advanced Settings", "Experimental preferences and developer options.", "more")
         AstraPanel(modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("About AstraCode", style = MaterialTheme.typography.titleMedium)
-                Text("A mobile-first, cloud-AI coding environment.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Apache License 2.0 · Designed for Android", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("The supplied font pack defines Space Grotesk, Inter, and JetBrains Mono, but contains no font binaries. This build uses Android system sans-serif/monospace fallbacks until licensed TTF files are added.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
+                AstraSectionTitle("About AstraCode")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.astracode_logo),
+                        contentDescription = "AstraCode logo",
+                        modifier = Modifier.size(72.dp)
+                    )
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Astra", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onBackground)
+                            Text(
+                                "Code",
+                                style = androidx.compose.ui.text.TextStyle(
+                                    brush = Brush.horizontalGradient(listOf(Color(0xFF29BFFF), Color(0xFF625BFF), Color(0xFFEF42D8))),
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                            )
+                        }
+                        Text("Version 0.1.0", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Built for mobile developers", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Apache License 2.0", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Text(
+                    "Check the public releases page for new builds, read the license, or open a bug report on GitHub.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedButton(
+                    onClick = { openExternal("https://github.com/MrRedhood/AstraCode/releases") },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    AstraIcon("preview", size = 18.dp, description = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Check for Updates")
+                    Spacer(Modifier.weight(1f))
+                    Text("↗")
+                }
+                OutlinedButton(
+                    onClick = { openExternal("https://github.com/MrRedhood/AstraCode/blob/main/LICENSE") },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    AstraIcon("code", size = 18.dp, description = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("View License")
+                    Spacer(Modifier.weight(1f))
+                    Text("↗")
+                }
+                OutlinedButton(
+                    onClick = { openExternal("https://github.com/MrRedhood/AstraCode/issues/new") },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    AstraIcon("approval", size = 18.dp, description = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Report a Bug")
+                    Spacer(Modifier.weight(1f))
+                    Text("↗")
+                }
             }
         }
     }

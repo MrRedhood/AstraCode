@@ -98,3 +98,8 @@ The Projects screen has a contextual header showing the open file or Project Fil
 ## Editor tool windows
 
 The editor has Terminal, Problems, Output and Debug tabs styled as a compact tool-window strip. Terminal directs users to the separate safe terminal destination, which only runs `help`, `pwd`, `ls` and `clear`. The Problems, Output and Debug tabs explicitly state when no compiler diagnostics, build output or debugger session is connected. The editor has its own bounded scrolling so source text scrolls inside its field and the remaining controls remain reachable below it.
+
+
+## Settings and About
+
+Settings categories are grouped as Editor Preferences, AI Settings, Terminal Settings, Build & Run Settings, Project Settings, File & Storage, Security & Privacy and Advanced Settings. About AstraCode shows the bundled logo, version 0.1.0 and Apache License 2.0. Check for Updates opens the repository releases page, View License opens the LICENSE file, and Report a Bug opens GitHub's new issue form. These are external navigation actions; the app does not claim to install updates automatically or submit a bug report without the user completing the external form.
