@@ -154,6 +154,9 @@ private fun AstraCodeApp(showStartupSplashOnLaunch: Boolean) {
         selectedName = destination.name
         if (destination != PrimaryDestination.More) selectedMoreEntry = null
     }
+    BackHandler(enabled = selected == PrimaryDestination.AI) {
+        selectDestination(PrimaryDestination.Home)
+    }
 
     AstraCodeTheme(mode = themeMode, accent = accentName) {
         Surface(modifier = Modifier.fillMaxSize(), color = Color.Transparent) {
@@ -572,86 +575,88 @@ private fun DestinationScreen(
             .padding(horizontal = if (compact) 12.dp else 22.dp, vertical = if (compact) 8.dp else 18.dp),
         verticalArrangement = Arrangement.spacedBy(if (compact) 12.dp else 16.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 8.dp)
-        ) {
-            Box {
-                IconButton(onClick = { destinationMenuExpanded = true }, modifier = Modifier.size(if (compact) 32.dp else 40.dp)) {
-                    Text("☰", fontSize = 21.sp, color = MaterialTheme.colorScheme.onBackground)
-                }
-                DropdownMenu(expanded = destinationMenuExpanded, onDismissRequest = { destinationMenuExpanded = false }) {
-                    PrimaryDestination.values().forEach { destinationItem ->
-                        DropdownMenuItem(
-                            text = { Text(if (destinationItem == PrimaryDestination.AI) "AI Chat" else destinationItem.label) },
-                            onClick = {
+        if (destination != PrimaryDestination.AI) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 8.dp)
+            ) {
+                Box {
+                    IconButton(onClick = { destinationMenuExpanded = true }, modifier = Modifier.size(if (compact) 32.dp else 40.dp)) {
+                        Text("☰", fontSize = 21.sp, color = MaterialTheme.colorScheme.onBackground)
+                    }
+                    DropdownMenu(expanded = destinationMenuExpanded, onDismissRequest = { destinationMenuExpanded = false }) {
+                        PrimaryDestination.values().forEach { destinationItem ->
+                            DropdownMenuItem(
+                                text = { Text(if (destinationItem == PrimaryDestination.AI) "AI Chat" else destinationItem.label) },
+                                onClick = {
+                                    destinationMenuExpanded = false
+                                    onSelectDestination(destinationItem)
+                                }
+                            )
+                        }
+                        listOf("Create Project", "AI Execution", "Git & GitHub", "Build & Run", "Settings", "AI & Models", "Help & Guide").forEach { entry ->
+                            DropdownMenuItem(text = { Text(entry) }, onClick = {
                                 destinationMenuExpanded = false
-                                onSelectDestination(destinationItem)
-                            }
-                        )
-                    }
-                    listOf("Create Project", "AI Execution", "Git & GitHub", "Build & Run", "Settings", "AI & Models", "Help & Guide").forEach { entry ->
-                        DropdownMenuItem(text = { Text(entry) }, onClick = {
-                            destinationMenuExpanded = false
-                            onSelectDestination(PrimaryDestination.More)
-                            onOpenMoreEntry(entry)
-                        })
+                                onSelectDestination(PrimaryDestination.More)
+                                onOpenMoreEntry(entry)
+                            })
+                        }
                     }
                 }
-            }
-            Image(
-                painter = painterResource(id = R.drawable.astracode_logo),
-                contentDescription = "AstraCode logo",
-                modifier = Modifier.size(if (compact) 34.dp else 40.dp)
-            )
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Astra", color = MaterialTheme.colorScheme.onBackground, fontSize = if (compact) 19.sp else 21.sp, fontWeight = FontWeight.ExtraBold)
-                    Text(
-                        "Code",
-                        style = TextStyle(
-                            brush = Brush.horizontalGradient(listOf(Color(0xFF29BFFF), Color(0xFF625BFF), Color(0xFFEF42D8))),
-                            fontSize = if (compact) 19.sp else 21.sp,
-                            fontWeight = FontWeight.ExtraBold
+                Image(
+                    painter = painterResource(id = R.drawable.astracode_logo),
+                    contentDescription = "AstraCode logo",
+                    modifier = Modifier.size(if (compact) 34.dp else 40.dp)
+                )
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Astra", color = MaterialTheme.colorScheme.onBackground, fontSize = if (compact) 19.sp else 21.sp, fontWeight = FontWeight.ExtraBold)
+                        Text(
+                            "Code",
+                            style = TextStyle(
+                                brush = Brush.horizontalGradient(listOf(Color(0xFF29BFFF), Color(0xFF625BFF), Color(0xFFEF42D8))),
+                                fontSize = if (compact) 19.sp else 21.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
                         )
+                    }
+                    Text(
+                        if (destination == PrimaryDestination.More && selectedMoreEntry != null) selectedMoreEntry
+                        else destination.title,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1
                     )
                 }
-                Text(
-                    if (destination == PrimaryDestination.More && selectedMoreEntry != null) selectedMoreEntry
-                    else destination.title,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1
-                )
-            }
-            IconButton(onClick = { onSelectDestination(PrimaryDestination.Projects) }, modifier = Modifier.size(if (compact) 32.dp else 40.dp)) {
-                AstraIcon("search", size = 22.dp, description = "Open projects and search")
-            }
-            if (!compact) {
-                IconButton(onClick = { onSelectDestination(PrimaryDestination.More); onOpenMoreEntry("Git & GitHub") }, modifier = Modifier.size(40.dp)) {
-                    AstraIcon("git", size = 22.dp, description = "Git and GitHub")
+                IconButton(onClick = { onSelectDestination(PrimaryDestination.Projects) }, modifier = Modifier.size(if (compact) 32.dp else 40.dp)) {
+                    AstraIcon("search", size = 22.dp, description = "Open projects and search")
                 }
-            }
-            IconButton(onClick = { onSelectDestination(PrimaryDestination.More); onOpenMoreEntry("Build & Run") }, modifier = Modifier.size(if (compact) 32.dp else 40.dp)) {
-                AstraIcon("run", size = 22.dp, description = "Build and run")
-            }
-            if (!compact) {
-                IconButton(onClick = { onSelectDestination(PrimaryDestination.More); onOpenMoreEntry("Settings") }, modifier = Modifier.size(40.dp)) {
-                    AstraIcon("settings", size = 22.dp, description = "Settings")
+                if (!compact) {
+                    IconButton(onClick = { onSelectDestination(PrimaryDestination.More); onOpenMoreEntry("Git & GitHub") }, modifier = Modifier.size(40.dp)) {
+                        AstraIcon("git", size = 22.dp, description = "Git and GitHub")
+                    }
                 }
-            }
-            Box {
-                IconButton(onClick = { overflowMenuExpanded = true }, modifier = Modifier.size(if (compact) 32.dp else 40.dp)) {
-                    Text("⋮", fontSize = 23.sp, color = MaterialTheme.colorScheme.onBackground)
+                IconButton(onClick = { onSelectDestination(PrimaryDestination.More); onOpenMoreEntry("Build & Run") }, modifier = Modifier.size(if (compact) 32.dp else 40.dp)) {
+                    AstraIcon("run", size = 22.dp, description = "Build and run")
                 }
-                DropdownMenu(expanded = overflowMenuExpanded, onDismissRequest = { overflowMenuExpanded = false }) {
-                    listOf("Settings", "AI & Models", "Create Project", "AI Execution", "Build & Run", "Git & GitHub", "Help & Guide", "About AstraCode").forEach { entry ->
-                        DropdownMenuItem(text = { Text(entry) }, onClick = {
-                            overflowMenuExpanded = false
-                            onSelectDestination(PrimaryDestination.More)
-                            onOpenMoreEntry(entry)
-                        })
+                if (!compact) {
+                    IconButton(onClick = { onSelectDestination(PrimaryDestination.More); onOpenMoreEntry("Settings") }, modifier = Modifier.size(40.dp)) {
+                        AstraIcon("settings", size = 22.dp, description = "Settings")
+                    }
+                }
+                Box {
+                    IconButton(onClick = { overflowMenuExpanded = true }, modifier = Modifier.size(if (compact) 32.dp else 40.dp)) {
+                        Text("⋮", fontSize = 23.sp, color = MaterialTheme.colorScheme.onBackground)
+                    }
+                    DropdownMenu(expanded = overflowMenuExpanded, onDismissRequest = { overflowMenuExpanded = false }) {
+                        listOf("Settings", "AI & Models", "Create Project", "AI Execution", "Build & Run", "Git & GitHub", "Help & Guide", "About AstraCode").forEach { entry ->
+                            DropdownMenuItem(text = { Text(entry) }, onClick = {
+                                overflowMenuExpanded = false
+                                onSelectDestination(PrimaryDestination.More)
+                                onOpenMoreEntry(entry)
+                            })
+                        }
                     }
                 }
             }
@@ -712,6 +717,7 @@ private fun DestinationScreen(
                     onSelectDestination(PrimaryDestination.More)
                     onOpenMoreEntry("AI & Models")
                 },
+                onBack = { onSelectDestination(PrimaryDestination.Home) },
                 modifier = Modifier.weight(1f).fillMaxWidth()
             )
         } else if (destination == PrimaryDestination.Terminal) {

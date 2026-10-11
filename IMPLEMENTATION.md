@@ -438,3 +438,9 @@
 
 - Aligned Settings category names with the reference: Editor Preferences, AI Settings, Terminal Settings, Build & Run Settings, Project Settings, File & Storage, Security & Privacy and Advanced Settings.
 - Rebuilt About AstraCode around the exact bundled app logo, wordmark, version and license and added working external navigation to the repository releases page, Apache license, and new GitHub issue form. These buttons open the official pages rather than claiming an in-app update or report was completed.
+
+
+## 2026-10-11 — AI Chat toolbar and attachment menu
+
+- AI Chat now owns its own header with a back action, animated Astra assistant, provider/model shortcut and settings shortcut. The general application header is hidden while Chat is open; Android Back returns to Home.
+- Removed the duplicated AI Settings action from the secondary toolbar. The attachment plus menu now offers File, Image, Video, Audio and Camera; supported media choices launch Android's document picker. Camera clearly reports that direct capture is not integrated and directs users to Image.

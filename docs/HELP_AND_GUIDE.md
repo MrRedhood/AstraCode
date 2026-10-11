@@ -103,3 +103,6 @@ The editor has Terminal, Problems, Output and Debug tabs styled as a compact too
 ## Settings and About
 
 Settings categories are grouped as Editor Preferences, AI Settings, Terminal Settings, Build & Run Settings, Project Settings, File & Storage, Security & Privacy and Advanced Settings. About AstraCode shows the bundled logo, version 0.1.0 and Apache License 2.0. Check for Updates opens the repository releases page, View License opens the LICENSE file, and Report a Bug opens GitHub's new issue form. These are external navigation actions; the app does not claim to install updates automatically or submit a bug report without the user completing the external form.
+
+
+AI Chat is a focused screen with its own back/model/settings header; the global application header is hidden while the conversation is open. Back returns to Home. The attachment menu offers File, Image, Video, Audio and Camera; the first four use Android's document picker with the selected MIME filter. Camera is shown for layout parity but currently reports that capture is not connected.

@@ -97,3 +97,6 @@ Editor tool windows expose truthful integration state. Until an analyzer, build 
 
 
 About AstraCode external actions use Android ACTION_VIEW for the public releases, license and issue-creation pages. These are navigation only; they do not silently download/install updates or submit issue content. Settings category cards route only into implemented destinations.
+
+
+AI Chat temporarily owns its header and system-back handling so the global app toolbar is not duplicated on the conversation screen. Attachment menu options route into MIME-filtered system pickers for supported document and media selection. Camera remains an explicit unavailable state until a real capture flow is implemented.

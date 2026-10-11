@@ -9,6 +9,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -43,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
@@ -56,7 +58,8 @@ import java.util.Date
 @Composable
 fun AiChatScreen(
     onOpenAiSettings: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onBack: () -> Unit = {}
 ) {
     val context = LocalContext.current.applicationContext
     val repository = remember(context) { AiProviderSettingsRepository(context) }
@@ -309,20 +312,30 @@ fun AiChatScreen(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            AstraRobotIllustration(Modifier.size(46.dp))
+            IconButton(onClick = onBack, modifier = Modifier.size(30.dp)) {
+                Text("‹", fontSize = 31.sp, color = MaterialTheme.colorScheme.onBackground)
+            }
+            AstraRobotIllustration(Modifier.size(42.dp))
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text("AI Chat", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text("Your Coding Assistant", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(
-                    if (isConfigured) configuration.providerId.displayName + " · " + configuration.modelId
-                    else "Choose a cloud model to start",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1
-                )
             }
-            IconButton(onClick = onOpenAiSettings, enabled = !isSending && pendingToolProposal == null && !isExecutingTool) {
-                AstraIcon("settings", size = 22.dp, description = "AI settings")
+            OutlinedButton(
+                onClick = onOpenAiSettings,
+                enabled = !isSending && pendingToolProposal == null && !isExecutingTool,
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 7.dp, vertical = 5.dp),
+                modifier = Modifier.width(100.dp)
+            ) {
+                Text(
+                    if (isConfigured) configuration.providerId.displayName.take(8) else "Choose model",
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+                Text("⌄")
+            }
+            IconButton(onClick = onOpenAiSettings, enabled = !isSending && pendingToolProposal == null && !isExecutingTool, modifier = Modifier.size(30.dp)) {
+                AstraIcon("settings", size = 21.dp, description = "AI settings")
             }
         }
         Row(
@@ -392,9 +405,6 @@ fun AiChatScreen(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            OutlinedButton(onClick = onOpenAiSettings, enabled = !isSending && pendingToolProposal == null && !isExecutingTool) {
-                Text("AI settings")
-            }
             OutlinedButton(
                 onClick = {
                     if (!isSending && isSessionReady) {
@@ -752,11 +762,39 @@ fun AiChatScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedButton(
-                    onClick = { attachmentPicker.launch(arrayOf("*/*")) },
-                    enabled = !isSending && pendingToolProposal == null && !isExecutingTool && !isLoadingAttachments &&
-                        attachments.size < AiChatAttachmentPolicy.MAX_ATTACHMENTS
-                ) { Text(if (isLoadingAttachments) "Copying files…" else "Attach files") }
+                Box {
+                    OutlinedButton(
+                        onClick = { attachMenuExpanded = true },
+                        enabled = !isSending && pendingToolProposal == null && !isExecutingTool && !isLoadingAttachments &&
+                            attachments.size < AiChatAttachmentPolicy.MAX_ATTACHMENTS
+                    ) { Text(if (isLoadingAttachments) "Copying…" else "＋") }
+                    DropdownMenu(expanded = attachMenuExpanded, onDismissRequest = { attachMenuExpanded = false }) {
+                        DropdownMenuItem(
+                            text = { Text("File") },
+                            onClick = { attachMenuExpanded = false; attachmentPicker.launch(arrayOf("*/*")) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Image") },
+                            onClick = { attachMenuExpanded = false; attachmentPicker.launch(arrayOf("image/*")) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Video") },
+                            onClick = { attachMenuExpanded = false; attachmentPicker.launch(arrayOf("video/*")) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Audio") },
+                            onClick = { attachMenuExpanded = false; attachmentPicker.launch(arrayOf("audio/*")) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Camera") },
+                            onClick = {
+                                attachMenuExpanded = false
+                                statusMessage = "Camera capture is not connected in this build. Choose Image to attach an existing photo."
+                                statusIsError = true
+                            }
+                        )
+                    }
+                }
                 Text(
                     attachments.size.toString() + "/" + AiChatAttachmentPolicy.MAX_ATTACHMENTS +
                         " attached · 25 MiB/file · 100 MiB/request",
