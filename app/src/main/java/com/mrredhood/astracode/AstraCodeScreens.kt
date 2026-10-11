@@ -7,6 +7,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -50,6 +51,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -167,6 +170,22 @@ internal fun AstraPageHero(
         modifier = Modifier.fillMaxWidth(),
         gradient = true
     ) {
+        // Reuse bundled cosmic artwork as a cropped, decorative hero backdrop.
+        Image(
+            painter = painterResource(id = R.drawable.astracode_splash_background),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxWidth().height(154.dp)
+        )
+        Box(
+            modifier = Modifier.fillMaxWidth().height(154.dp)
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(Color(0xE8050B18), Color(0xAA07132A), Color(0x3320144A))
+                    ),
+                    RoundedCornerShape(22.dp)
+                )
+        )
         Row(
             modifier = Modifier.fillMaxWidth().padding(18.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -373,6 +392,19 @@ internal fun HomeDashboardScreen(
             AstraFeatureCard("Build & Run", "Build status & targets", "build", AstraGold, Modifier.weight(1f), onOpenBuild)
         }
         AstraPanel(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
+                AstraSectionTitle("Quick actions")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AstraFeatureCard("Create file", "New source file", "file", AstraBlue, Modifier.weight(1f), onOpenProjects)
+                    AstraFeatureCard("Create folder", "Add workspace folder", "files", AstraCyan, Modifier.weight(1f), onOpenProjects)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AstraFeatureCard("Open project", "Browse workspace", "folder", AstraPurple, Modifier.weight(1f), onOpenProjects)
+                    AstraFeatureCard("AI execution", "Review task status", "execution", AstraPink, Modifier.weight(1f), onOpenExecution)
+                }
+            }
+        }
+        AstraPanel(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 AstraSectionTitle("Workspace")
                 if (workspace == null) {
@@ -424,9 +456,13 @@ internal fun CreateProjectScreen(
     var template by rememberSaveable { mutableStateOf("Basic app") }
     var includeExample by rememberSaveable { mutableStateOf(true) }
     var initializeGit by rememberSaveable { mutableStateOf(true) }
+    var configureLints by rememberSaveable { mutableStateOf(true) }
+    var useMaterialTheme by rememberSaveable { mutableStateOf(true) }
+    var addRecommendedPackages by rememberSaveable { mutableStateOf(true) }
+    var createReadme by rememberSaveable { mutableStateOf(true) }
     var message by rememberSaveable { mutableStateOf<String?>(null) }
-    val frameworks = listOf("Flutter", "Android", "Compose", "Web", "Node.js", "Python", "Java", "Empty")
-    val templates = listOf("Basic app", "Bottom navigation", "API starter")
+    val frameworks = listOf("Flutter", "Android", "React Native", "Web (HTML)", "Next.js", "Node.js", "Python", "Java", "Empty")
+    val templates = listOf("Basic app", "Bottom navigation", "State management", "API starter")
     Column(verticalArrangement = Arrangement.spacedBy(15.dp)) {
         AstraPageHero("Create a new project", "Choose a starter direction and configure your project details.", "build", mascot = true)
         AstraPanel(modifier = Modifier.fillMaxWidth()) {
@@ -503,7 +539,11 @@ internal fun CreateProjectScreen(
             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 AstraSectionTitle("4 · Additional options")
                 SettingToggle("Include example code", "Starter examples when a generator is available", includeExample) { includeExample = it }
+                SettingToggle("Configure lints", "Add framework lint defaults when supported", configureLints) { configureLints = it }
                 SettingToggle("Initialize Git", "Create a local repository when supported", initializeGit) { initializeGit = it }
+                SettingToggle("Set up theme", "Use Material 3 where the framework supports it", useMaterialTheme) { useMaterialTheme = it }
+                SettingToggle("Add recommended packages", "Include starter dependencies when a generator is available", addRecommendedPackages) { addRecommendedPackages = it }
+                SettingToggle("Create README", "Prepare a project overview when generation is supported", createReadme) { createReadme = it }
             }
         }
         if (message != null) {

@@ -356,3 +356,11 @@
 
 - Fixed a missing Compose container-closing brace in `MainActivity.kt` that caused Kotlin to interpret subsequent top-level composables as local functions and report cascading unresolved references. The splash overlay now sits as a sibling over the responsive content container.
 - Validation note: the failure was reproduced from Android CI run 38101170148; verify the new commit's CI result before claiming green status.
+
+
+## 2026-10-11 — Reference-screen UI refinement
+
+- Updated the shared page hero to use the bundled cosmic artwork as a cropped background while retaining native Compose text and controls. No profile page or profile control was introduced.
+- Expanded Create Project framework/template selections and configuration toggles to align with the supplied reference layout. These remain UI configuration only; no project files are generated, and the screen continues to state that honestly.
+- Added Home quick-action cards for file/folder creation, project workspace access and AI Execution. Actions route only to existing safe destinations; no shell, Git clone, build, or project-generation capability is implied.
+- Validation caveat: repository changes were prepared against the inspected main HEAD; Android compilation and emulator screenshot comparison must be run by the repository workflows before claiming pixel-level parity or build success.

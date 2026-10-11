@@ -58,3 +58,8 @@ The shell uses a dark-first AstraCode Compose theme with cyan, blue, violet, pin
 Primary destinations are Home, Projects, AI, Terminal and More, with responsive bottom navigation on compact widths and a navigation rail at wider widths. Home links to existing workspace/chat behavior and to the new focused screen shells. Projects continues to host the SAF workspace/editor rather than duplicating its file mutation logic.
 
 Capability boundaries are reflected in the UI. Terminal supports only `help`, `pwd`, `ls` and `clear`; it never launches arbitrary shell commands. Build & Run and Create Project currently expose configuration UI but do not run a build or write a generated project. AI Execution is a truthful lifecycle/status view and does not simulate active work. These are deliberate guardrails while approval-gated execution, project generation, and build integrations remain unimplemented.
+
+
+## Reference-screen styling
+
+Shared page hero cards reuse the bundled cosmic artwork with a dark gradient overlay and native Compose foreground controls. This is a decorative local resource; no network image request is made. Create Project options describe future generator configuration and must not be treated as proof that project files, Git initialization, packages or lint files were created. The Home quick actions route to the existing workspace and AI Execution destinations without bypassing workspace grants or approval boundaries.

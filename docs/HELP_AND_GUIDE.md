@@ -50,3 +50,8 @@ Include app/Android version, steps, expected and actual behavior, and sanitized 
 
 ## Navigation and launcher
 Phones use bottom navigation; wider layouts use a navigation rail. More includes search and Help & Guide. The launcher uses the exact `app/src/main/res/drawable-nodpi/astracode_logo.png`; manifest references `@drawable/astracode_logo`. The old vector is retained with a distinct resource name.
+
+
+## Reference-matched screen layout update — 2026-10-11
+
+The shared page hero now uses the bundled cosmic artwork as a cropped decorative background behind native, accessible Compose text and controls. Create Project includes framework choices for Flutter, Android, React Native, HTML, Next.js, Node.js, Python, Java and Empty Project, plus reference-style template and additional-option switches. These are configuration choices only: project creation remains explicitly unavailable until a verified generator exists. Home includes quick-action cards for file/folder creation, project workspace access and AI Execution. The file/folder shortcuts open Projects, where the existing workspace tools are available; they do not create files automatically. No profile screen or profile control is added.
