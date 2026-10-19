@@ -25,6 +25,17 @@ class MainActivityUiTest {
     @Before
     fun resetWorkspace() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
+        context.getSharedPreferences("astracode_workspace", android.content.Context.MODE_PRIVATE)
+            .edit().clear().commit()
+        context.contentResolver.persistedUriPermissions.forEach { permission ->
+            runCatching {
+                context.contentResolver.releasePersistableUriPermission(
+                    permission.uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+            }
+        }
         val workspace = context.filesDir.toPath().resolve("workspace")
         if (Files.exists(workspace)) {
             Files.walk(workspace).use { paths ->
@@ -39,6 +50,7 @@ class MainActivityUiTest {
     @Test
     fun canCreateEditSaveAndReopenAWorkspaceFile() {
         composeRule.onNodeWithText("AstraCode").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Choose workspace folder").assertIsDisplayed()
         composeRule.onNodeWithText("New file").performClick()
         composeRule.onNodeWithTag("new-file-name-input").performTextInput("Hello.kt")
         composeRule.onNodeWithText("Create file").performClick()
@@ -55,6 +67,12 @@ class MainActivityUiTest {
         composeRule.onNodeWithText("Hello.kt").performClick()
         composeRule.onNodeWithTag("file-editor-input").assertIsDisplayed()
         composeRule.onNodeWithTag("file-editor-input").assertTextContains("fun main() = println(\"AstraCode\")")
+    }
+
+    @Test
+    fun workspacePickerAndPrivateWorkspaceEntryAreAvailable() {
+        composeRule.onNodeWithContentDescription("Choose workspace folder").assertIsDisplayed()
+        composeRule.onNodeWithText("Private app workspace").assertIsDisplayed()
     }
 
     @Test

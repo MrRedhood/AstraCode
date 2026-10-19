@@ -1,7 +1,11 @@
 package com.astracode.app
 
 import android.os.Bundle
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -71,6 +75,9 @@ import androidx.compose.ui.unit.sp
 import com.astracode.filesystem.FileEntry
 import com.astracode.filesystem.FileEntryType
 import com.astracode.filesystem.FileManagementSystem
+import com.astracode.filesystem.WorkspaceStorage
+import com.astracode.filesystem.WorkspaceStorageType
+import com.astracode.app.storage.SafWorkspaceStorage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -99,35 +106,96 @@ private val AstraColorScheme = darkColorScheme(
 )
 
 class MainActivity : ComponentActivity() {
-    private var fileSystem: FileManagementSystem? = null
+    private var activeStorage: WorkspaceStorage? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val workspace = filesDir.toPath().resolve("workspace")
-        val manager = FileManagementSystem(workspace)
-        fileSystem = manager
+        val preferences = getSharedPreferences("astracode_workspace", MODE_PRIVATE)
+        var restoreNotice: String? = null
+        val savedTreeUri = preferences.getString("tree_uri", null)
+        val initialStorage = if (savedTreeUri.isNullOrBlank()) {
+            createPrivateWorkspace()
+        } else {
+            try {
+                SafWorkspaceStorage(applicationContext, Uri.parse(savedTreeUri))
+            } catch (_: Exception) {
+                preferences.edit().remove("tree_uri").apply()
+                restoreNotice = "The saved external folder is no longer accessible. Choose it again."
+                createPrivateWorkspace()
+            }
+        }
+        activeStorage = initialStorage
 
         setContent {
+            var storage by remember { mutableStateOf(initialStorage) }
+            var workspaceNotice by remember { mutableStateOf(restoreNotice) }
+
+            val chooseFolder = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.OpenDocumentTree(),
+            ) { uri ->
+                if (uri != null) {
+                    runCatching {
+                        contentResolver.takePersistableUriPermission(
+                            uri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                        )
+                        SafWorkspaceStorage(applicationContext, uri)
+                    }.onSuccess { nextStorage ->
+                        val previous = storage
+                        storage = nextStorage
+                        activeStorage = nextStorage
+                        previous.close()
+                        preferences.edit()
+                            .putString("tree_uri", uri.toString())
+                            .apply()
+                        workspaceNotice = "Opened " + nextStorage.displayName
+                    }.onFailure { error ->
+                        workspaceNotice = "Could not open folder: " + (error.message ?: "permission denied")
+                    }
+                }
+            }
+
             MaterialTheme(colorScheme = AstraColorScheme) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    FileManagementScreen(fileSystem = manager)
+                    FileManagementScreen(
+                        storage = storage,
+                        externalMessage = workspaceNotice,
+                        onChooseWorkspace = { chooseFolder.launch(null) },
+                        onUsePrivateWorkspace = {
+                            val nextStorage = createPrivateWorkspace()
+                            val previous = storage
+                            storage = nextStorage
+                            activeStorage = nextStorage
+                            previous.close()
+                            preferences.edit().remove("tree_uri").apply()
+                            workspaceNotice = "Using the private workspace."
+                        },
+                    )
                 }
             }
         }
     }
 
+    private fun createPrivateWorkspace(): FileManagementSystem =
+        FileManagementSystem(filesDir.toPath().resolve("workspace"))
+
     override fun onDestroy() {
-        fileSystem?.close()
-        fileSystem = null
+        activeStorage?.close()
+        activeStorage = null
         super.onDestroy()
     }
 }
 
 @Composable
-private fun FileManagementScreen(fileSystem: FileManagementSystem) {
+private fun FileManagementScreen(
+    storage: WorkspaceStorage,
+    externalMessage: String?,
+    onChooseWorkspace: () -> Unit,
+    onUsePrivateWorkspace: () -> Unit,
+) {
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -162,7 +230,7 @@ private fun FileManagementScreen(fileSystem: FileManagementSystem) {
     fun openFile(path: String) {
         scope.launch {
             val result = runCatching {
-                withContext(Dispatchers.IO) { fileSystem.readText(path) }
+                withContext(Dispatchers.IO) { storage.readText(path) }
             }
             result.onSuccess { snapshot ->
                 openedFile = snapshot.path
@@ -186,7 +254,7 @@ private fun FileManagementScreen(fileSystem: FileManagementSystem) {
         val content = editorText
         scope.launch {
             val result = runCatching {
-                withContext(Dispatchers.IO) { fileSystem.writeText(path, content) }
+                withContext(Dispatchers.IO) { storage.writeText(path, content) }
             }
             result.onSuccess { saved ->
                 editorText = saved.persistedText
@@ -205,12 +273,28 @@ private fun FileManagementScreen(fileSystem: FileManagementSystem) {
         }
     }
 
-    LaunchedEffect(currentDirectory, refreshKey) {
+    LaunchedEffect(storage, currentDirectory, refreshKey) {
         val result = runCatching {
-            withContext(Dispatchers.IO) { fileSystem.listDirectory(currentDirectory) }
+            withContext(Dispatchers.IO) { storage.listDirectory(currentDirectory) }
         }
         result.onSuccess { entries = it }
             .onFailure { error -> notify("Could not load folder: " + (error.message ?: "unknown error")) }
+    }
+
+    LaunchedEffect(storage) {
+        currentDirectory = ""
+        openedFile = null
+        editorText = ""
+        savedText = ""
+        entries = emptyList()
+        pendingNavigation = null
+        showDiscardDialog = false
+        refreshKey++
+    }
+
+    LaunchedEffect(externalMessage) {
+        val message = externalMessage ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(message)
     }
 
     LaunchedEffect(statusMessage) {
@@ -259,7 +343,11 @@ private fun FileManagementScreen(fileSystem: FileManagementSystem) {
             } else {
                 WorkspacePanel(
                     currentDirectory = currentDirectory,
+                    rootName = storage.displayName,
+                    storageType = storage.storageType,
                     entries = entries,
+                    onChooseWorkspace = { requestNavigation(onChooseWorkspace) },
+                    onUsePrivateWorkspace = { requestNavigation(onUsePrivateWorkspace) },
                     onOpenEntry = { entry ->
                         when (entry.type) {
                             FileEntryType.DIRECTORY -> requestNavigation {
@@ -342,7 +430,7 @@ private fun FileManagementScreen(fileSystem: FileManagementSystem) {
                     val path = joinPath(currentDirectory, name)
                     scope.launch {
                         val result = runCatching {
-                            withContext(Dispatchers.IO) { fileSystem.createDirectory(path) }
+                            withContext(Dispatchers.IO) { storage.createDirectory(path) }
                         }
                         result.onSuccess {
                             showNewFolderDialog = false
@@ -367,7 +455,7 @@ private fun FileManagementScreen(fileSystem: FileManagementSystem) {
                     onClick = {
                         scope.launch {
                             val result = runCatching {
-                                withContext(Dispatchers.IO) { fileSystem.delete(path) }
+                                withContext(Dispatchers.IO) { storage.delete(path) }
                             }
                             result.onSuccess {
                                 pendingDeletePath = null
@@ -483,7 +571,11 @@ private fun AppTopBar(
 @Composable
 private fun WorkspacePanel(
     currentDirectory: String,
+    rootName: String,
+    storageType: WorkspaceStorageType,
     entries: List<FileEntry>,
+    onChooseWorkspace: () -> Unit,
+    onUsePrivateWorkspace: () -> Unit,
     onOpenEntry: (FileEntry) -> Unit,
     onNewFile: () -> Unit,
     onNewFolder: () -> Unit,
@@ -507,7 +599,7 @@ private fun WorkspacePanel(
                 )
                 Spacer(Modifier.height(5.dp))
                 Text(
-                    if (currentDirectory.isEmpty()) "Local files" else currentDirectory,
+                    if (currentDirectory.isEmpty()) rootName else currentDirectory.substringAfterLast('/'),
                     color = PrimaryText,
                     fontSize = 24.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -515,10 +607,28 @@ private fun WorkspacePanel(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    "Private app workspace",
+                    if (storageType == WorkspaceStorageType.DOCUMENT_TREE) {
+                        "External folder • Android permission"
+                    } else {
+                        "Private app workspace"
+                    },
                     color = MutedText,
                     fontSize = 12.sp,
                 )
+            }
+            IconButton(
+                onClick = onChooseWorkspace,
+                modifier = Modifier.testTag("choose-workspace-button"),
+            ) {
+                Icon(Icons.Filled.FolderOpen, contentDescription = "Choose workspace folder", tint = Mint)
+            }
+            if (storageType == WorkspaceStorageType.DOCUMENT_TREE) {
+                IconButton(
+                    onClick = onUsePrivateWorkspace,
+                    modifier = Modifier.testTag("private-workspace-button"),
+                ) {
+                    Icon(Icons.Filled.Folder, contentDescription = "Use private workspace", tint = MutedText)
+                }
             }
             IconButton(
                 onClick = onNewFolder,
@@ -548,7 +658,7 @@ private fun WorkspacePanel(
             Icon(Icons.Filled.FolderOpen, contentDescription = null, tint = MutedText, modifier = Modifier.size(17.dp))
             Spacer(Modifier.width(8.dp))
             Text(
-                if (currentDirectory.isEmpty()) "workspace" else "workspace / " + currentDirectory,
+                if (currentDirectory.isEmpty()) rootName else rootName + " / " + currentDirectory,
                 color = MutedText,
                 fontSize = 12.sp,
                 maxLines = 1,
@@ -745,7 +855,7 @@ private fun EditorPanel(
         )
         Spacer(Modifier.height(10.dp))
         Text(
-            "Saved files use repaired UTF-8 and safe workspace paths.",
+            "UTF-8 text • save guarantees depend on the selected storage provider.",
             color = MutedText,
             fontSize = 11.sp,
         )
