@@ -47,6 +47,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -623,6 +624,10 @@ private fun FileManagementScreen(
     var syncEntry by remember { mutableStateOf<FileEntry?>(null) }
     var syncExternalUri by remember { mutableStateOf("") }
     var syncLinks by remember(context) { mutableStateOf(loadWorkspaceSyncLinks(context)) }
+    var selectionMode by remember { mutableStateOf(false) }
+    var selectedPaths by remember { mutableStateOf(emptySet<String>()) }
+    var bulkActionKind by remember { mutableStateOf<String?>(null) }
+    var bulkInput by remember { mutableStateOf("") }
     var pendingNavigation by remember { mutableStateOf<(() -> Unit)?>(null) }
     var showDiscardDialog by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
@@ -671,9 +676,130 @@ private fun FileManagementScreen(
         operationInput = when (kind) {
             "rename" -> entry.name
             "copy" -> "copy-" + entry.name
+            "extract" -> joinPath(parentPath(entry.path), entry.name.replace(Regex("(?i)\\.zip$"), ""))
             else -> entry.path
         }
         actionEntry = null
+    }
+
+    fun startBulkAction(kind: String) {
+        val paths = selectedPaths.toList().sortedBy { it.count { ch -> ch == '/' } }
+        if (paths.isEmpty()) {
+            notify("Select at least one file or folder.")
+            return
+        }
+        val input = bulkInput.trim()
+        val archiveName = if (kind == "zip") {
+            when {
+                input.isBlank() -> {
+                    notify("Enter a name for the ZIP file.")
+                    return
+                }
+                input.endsWith(".zip", ignoreCase = true) -> input
+                else -> "$input.zip"
+            }
+        } else ""
+        if (kind == "zip" && !isSimpleName(archiveName)) {
+            notify("Enter a ZIP file name without folder paths.")
+            return
+        }
+        if (kind in setOf("copy", "move") && !isSafeWorkspaceRelativePath(input, allowEmpty = true)) {
+            notify("Enter a valid destination folder path.")
+            return
+        }
+
+        scope.launch {
+            var completed = 0
+            try {
+                when (kind) {
+                    "zip" -> {
+                        val outputPath = joinPath(currentDirectory, archiveName)
+                        withContext(Dispatchers.IO) {
+                            WorkspaceArchive.createZip(storage, paths, outputPath, currentDirectory)
+                        }
+                        completed = 1
+                        syncLinks = propagateChangedPath(outputPath)
+                        notify("Created $archiveName")
+                    }
+                    "delete" -> {
+                        for (path in paths.sortedByDescending { it.count { ch -> ch == '/' } }) {
+                            val item = withContext(Dispatchers.IO) {
+                                findWorkspaceEntry(storage, path)
+                                    ?: throw IllegalArgumentException("Selected item no longer exists: $path")
+                            }
+                            withContext(Dispatchers.IO) {
+                                storage.delete(path, recursive = item.type == FileEntryType.DIRECTORY)
+                            }
+                            completed++
+                            syncLinks = propagateChangedPath(path, deleted = true)
+                        }
+                        notify("Deleted $completed item(s)")
+                    }
+                    "copy", "move" -> {
+                        val destinationFolder = input
+                        val targetPaths = withContext(Dispatchers.IO) {
+                            if (destinationFolder.isNotEmpty()) {
+                                val folder = findWorkspaceEntry(storage, destinationFolder)
+                                    ?: throw IllegalArgumentException("Destination folder does not exist: $destinationFolder")
+                                if (folder.type != FileEntryType.DIRECTORY) {
+                                    throw IllegalArgumentException("Destination is not a folder: $destinationFolder")
+                                }
+                            } else {
+                                storage.listDirectory("")
+                            }
+                            paths.map { sourcePath ->
+                                val source = findWorkspaceEntry(storage, sourcePath)
+                                    ?: throw IllegalArgumentException("Selected item no longer exists: $sourcePath")
+                                val destinationPath = joinPath(destinationFolder, fileName(sourcePath))
+                                if (destinationPath == sourcePath) {
+                                    throw IllegalArgumentException("The destination is the same as the original path.")
+                                }
+                                if (source.type == FileEntryType.DIRECTORY &&
+                                    isSameOrChildPath(destinationPath, sourcePath)) {
+                                    throw IllegalArgumentException("A folder cannot be copied or moved into itself.")
+                                }
+                                if (storage.exists(destinationPath)) {
+                                    throw IllegalArgumentException("Destination already exists: $destinationPath")
+                                }
+                                destinationPath
+                            }
+                        }
+                        paths.zip(targetPaths).forEach { (sourcePath, destinationPath) ->
+                            withContext(Dispatchers.IO) {
+                                if (kind == "move") {
+                                    storage.move(sourcePath, destinationPath, replaceExisting = false)
+                                } else {
+                                    syncWorkspaceEntry(
+                                        storage,
+                                        sourcePath,
+                                        storage,
+                                        destinationPath,
+                                        overwriteExisting = false,
+                                    )
+                                }
+                            }
+                            completed++
+                            syncLinks = if (kind == "move") {
+                                propagateChangedPath(sourcePath, movedTo = destinationPath)
+                            } else {
+                                propagateChangedPath(destinationPath)
+                            }
+                        }
+                        notify((if (kind == "move") "Moved " else "Copied ") + completed + " item(s)")
+                    }
+                    else -> throw IllegalArgumentException("Unknown bulk action.")
+                }
+            } catch (error: Exception) {
+                syncLinks = loadWorkspaceSyncLinks(context)
+                val partial = if (completed > 0) "$completed item(s) completed. " else ""
+                notify(partial + "Could not complete the action: " + (error.message ?: "unknown error"))
+            } finally {
+                bulkActionKind = null
+                selectionMode = false
+                selectedPaths = emptySet()
+                refreshKey++
+            }
+        }
     }
 
     fun openFile(path: String) {
@@ -793,6 +919,8 @@ private fun FileManagementScreen(
         savedText = ""
         entries = emptyList()
         folderCounts = emptyMap()
+        selectionMode = false
+        selectedPaths = emptySet()
         pendingNavigation = null
         showDiscardDialog = false
         standaloneDocumentLoading = selectedDocument != null
@@ -886,6 +1014,23 @@ private fun FileManagementScreen(
                     folderCounts = folderCounts,
                     savedWorkspaceFolders = savedWorkspaceFolders,
                     activeWorkspaceId = activeWorkspaceId,
+                    selectionMode = selectionMode,
+                    selectedPaths = selectedPaths,
+                    onSelectionModeChanged = { enabled ->
+                        selectionMode = enabled
+                        if (!enabled) selectedPaths = emptySet()
+                    },
+                    onToggleSelection = { path ->
+                        selectedPaths = if (path in selectedPaths) selectedPaths - path else selectedPaths + path
+                    },
+                    onBulkAction = { kind ->
+                        bulkActionKind = kind
+                        bulkInput = when (kind) {
+                            "zip" -> "archive.zip"
+                            "copy", "move" -> parentPath(currentDirectory)
+                            else -> ""
+                        }
+                    },
                     onAddWorkspace = { requestNavigation(onAddWorkspace) },
                     onOpenStandaloneFile = { requestNavigation(onOpenStandaloneFile) },
                     onManageSavedDocuments = { showSavedDocuments = true },
@@ -928,6 +1073,8 @@ private fun FileManagementScreen(
                     },
                     onGoUp = {
                         requestNavigation {
+                            selectionMode = false
+                            selectedPaths = emptySet()
                             currentDirectory = parentPath(currentDirectory)
                             refreshKey++
                         }
@@ -1065,6 +1212,25 @@ private fun FileManagementScreen(
             title = { Text(entry.name + " options") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    TextButton(
+                        onClick = {
+                            selectedPaths = setOf(entry.path)
+                            bulkActionKind = "zip"
+                            bulkInput = if (entry.name.endsWith(".zip", ignoreCase = true)) {
+                                entry.name.dropLast(4) + "-copy.zip"
+                            } else {
+                                entry.name + ".zip"
+                            }
+                            actionEntry = null
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("workspace-action-zip"),
+                    ) { Text("Create ZIP") }
+                    if (entry.type == FileEntryType.FILE && entry.name.endsWith(".zip", ignoreCase = true)) {
+                        TextButton(
+                            onClick = { showOperationDialog(entry, "extract") },
+                            modifier = Modifier.fillMaxWidth().testTag("workspace-action-extract"),
+                        ) { Text("Extract ZIP") }
+                    }
                     TextButton(
                         onClick = { syncEntry = entry; actionEntry = null },
                         modifier = Modifier.fillMaxWidth().testTag("workspace-action-sync"),
@@ -1295,6 +1461,56 @@ private fun FileManagementScreen(
         )
     }
 
+
+    bulkActionKind?.let { kind ->
+        val selected = selectedPaths.size
+        AlertDialog(
+            onDismissRequest = { bulkActionKind = null },
+            title = {
+                Text(when (kind) {
+                    "zip" -> "Create ZIP from $selected item(s)"
+                    "copy" -> "Copy $selected item(s)"
+                    "move" -> "Move $selected item(s)"
+                    else -> "Delete $selected item(s)?"
+                })
+            },
+            text = {
+                Column {
+                    Text(when (kind) {
+                        "zip" -> "Create one ZIP file containing the selected items. File contents stay in their original format."
+                        "copy" -> "Copy all selected items into a destination folder that already exists."
+                        "move" -> "Move all selected items into a destination folder that already exists. Synced copies are moved too."
+                        else -> "Delete all selected items and their contents. Synced copies are deleted where linked."
+                    })
+                    if (kind != "delete") {
+                        OutlinedTextField(
+                            value = bulkInput,
+                            onValueChange = { bulkInput = it },
+                            label = { Text(if (kind == "zip") "ZIP file name" else "Destination folder path") },
+                            modifier = Modifier.fillMaxWidth().testTag("workspace-bulk-input"),
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { startBulkAction(kind) },
+                    modifier = Modifier.testTag("confirm-workspace-bulk-action"),
+                ) {
+                    Text(when (kind) {
+                        "zip" -> "Create ZIP"
+                        "copy" -> "Copy"
+                        "move" -> "Move"
+                        else -> "Delete"
+                    })
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { bulkActionKind = null }) { Text("Cancel") }
+            },
+        )
+    }
+
     operationEntry?.let { entry ->
         val kind = operationKind.orEmpty()
         AlertDialog(
@@ -1303,6 +1519,7 @@ private fun FileManagementScreen(
                 Text(when (kind) {
                     "rename" -> "Rename " + entry.name
                     "copy" -> "Copy " + entry.name
+                    "extract" -> "Extract " + entry.name
                     else -> "Move " + entry.name
                 })
             },
@@ -1311,12 +1528,13 @@ private fun FileManagementScreen(
                     Text(when (kind) {
                         "rename" -> "Enter a new name for this item."
                         "copy" -> "Enter a name for the copy in this folder."
+                        "extract" -> "Choose a destination folder path relative to the workspace. Existing folders will not be overwritten."
                         else -> "Enter a destination path relative to the workspace root."
                     })
                     OutlinedTextField(
                         value = operationInput,
                         onValueChange = { operationInput = it },
-                        label = { Text(if (kind == "move") "Destination path" else "Name") },
+                        label = { Text(if (kind == "move" || kind == "extract") "Destination path" else "Name") },
                         modifier = Modifier.fillMaxWidth().testTag("workspace-operation-input"),
                     )
                 }
@@ -1325,11 +1543,17 @@ private fun FileManagementScreen(
                 TextButton(
                     onClick = {
                         val raw = operationInput.trim()
-                        if (kind != "move" && !isSimpleName(raw)) {
+                        if (kind != "move" && kind != "extract" && !isSimpleName(raw)) {
                             notify("Enter a valid name without folders or path segments.")
                             return@TextButton
                         }
-                        val destinationPath = if (kind == "move") raw else joinPath(parentPath(entry.path), raw)
+                        if ((kind == "move" || kind == "extract") &&
+                            !isSafeWorkspaceRelativePath(raw, allowEmpty = false)) {
+                            notify("Enter a valid workspace-relative destination path.")
+                            return@TextButton
+                        }
+                        val destinationPath = if (kind == "move" || kind == "extract") raw
+                            else joinPath(parentPath(entry.path), raw)
                         if (destinationPath.isBlank() || destinationPath.startsWith("/") ||
                             destinationPath.contains('\\') ||
                             destinationPath.split('/').any { it.isBlank() || it == "." || it == ".." }) {
@@ -1349,11 +1573,12 @@ private fun FileManagementScreen(
                         scope.launch {
                             val operation = runCatchingCancellable {
                                 withContext(Dispatchers.IO) {
-                                    if (kind == "copy") {
-                                        syncWorkspaceEntry(storage, entry.path, storage, destinationPath,
-                                            overwriteExisting = false)
-                                    } else {
-                                        storage.move(entry.path, destinationPath, replaceExisting = false)
+                                    when (kind) {
+                                        "copy" -> syncWorkspaceEntry(
+                                            storage, entry.path, storage, destinationPath, overwriteExisting = false,
+                                        )
+                                        "extract" -> WorkspaceArchive.extractZip(storage, entry.path, destinationPath)
+                                        else -> storage.move(entry.path, destinationPath, replaceExisting = false)
                                     }
                                 }
                             }
@@ -1361,9 +1586,7 @@ private fun FileManagementScreen(
                                 operationEntry = null
                                 operationKind = null
                                 refreshKey++
-                                if (kind == "copy") {
-                                    notify("Copied " + entry.name)
-                                } else {
+                                if (kind == "rename" || kind == "move") {
                                     val synced = runCatchingCancellable {
                                         withContext(Dispatchers.IO) {
                                             propagateWorkspaceChange(
@@ -1379,6 +1602,22 @@ private fun FileManagementScreen(
                                         notify("The item was moved, but the synced copy could not be updated: " +
                                             (error.message ?: "unknown error"))
                                     }
+                                } else {
+                                    val synced = runCatchingCancellable {
+                                        withContext(Dispatchers.IO) {
+                                            propagateWorkspaceChange(
+                                                context, activeWorkspaceId, storage, linksSnapshot,
+                                                destinationPath,
+                                            )
+                                        }
+                                    }
+                                    synced.onSuccess { updatedLinks ->
+                                        syncLinks = updatedLinks
+                                        notify((if (kind == "extract") "Extracted " else "Copied ") + entry.name)
+                                    }.onFailure { error ->
+                                        notify("The item was created locally, but the synced copy could not be updated: " +
+                                            (error.message ?: "unknown error"))
+                                    }
                                 }
                             }.onFailure { error ->
                                 notify("Could not " + kind + " item: " + (error.message ?: "unknown error"))
@@ -1386,7 +1625,7 @@ private fun FileManagementScreen(
                         }
                     },
                     modifier = Modifier.testTag("confirm-workspace-operation"),
-                ) { Text(when (kind) { "rename" -> "Rename"; "copy" -> "Copy"; else -> "Move" }) }
+                ) { Text(when (kind) { "rename" -> "Rename"; "copy" -> "Copy"; "extract" -> "Extract"; else -> "Move" }) }
             },
             dismissButton = {
                 TextButton(onClick = { operationEntry = null; operationKind = null }) { Text("Cancel") }
@@ -1536,6 +1775,11 @@ private fun WorkspacePanel(
     folderCounts: Map<String, Int?>,
     savedWorkspaceFolders: List<WorkspaceBookmark>,
     activeWorkspaceId: String,
+    selectionMode: Boolean,
+    selectedPaths: Set<String>,
+    onSelectionModeChanged: (Boolean) -> Unit,
+    onToggleSelection: (String) -> Unit,
+    onBulkAction: (String) -> Unit,
     onAddWorkspace: () -> Unit,
     onOpenStandaloneFile: () -> Unit,
     onManageSavedDocuments: () -> Unit,
@@ -1655,11 +1899,45 @@ private fun WorkspacePanel(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
+            TextButton(
+                onClick = { onSelectionModeChanged(!selectionMode) },
+                modifier = Modifier.testTag("workspace-toggle-selection"),
+            ) { Text(if (selectionMode) "Cancel" else "Select") }
             if (currentDirectory.isNotEmpty()) {
-                TextButton(onClick = onGoUp) {
+                TextButton(onClick = onGoUp, enabled = !selectionMode) {
                     Icon(Icons.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(15.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("Up")
+                }
+            }
+        }
+
+        if (selectionMode) {
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("${selectedPaths.size} selected", color = MutedText, modifier = Modifier.weight(1f))
+                    TextButton(
+                        onClick = { onBulkAction("zip") },
+                        enabled = selectedPaths.isNotEmpty(),
+                        modifier = Modifier.testTag("workspace-bulk-zip"),
+                    ) { Text("Create ZIP") }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(
+                        onClick = { onBulkAction("copy") },
+                        enabled = selectedPaths.isNotEmpty(),
+                        modifier = Modifier.testTag("workspace-bulk-copy"),
+                    ) { Text("Copy") }
+                    TextButton(
+                        onClick = { onBulkAction("move") },
+                        enabled = selectedPaths.isNotEmpty(),
+                        modifier = Modifier.testTag("workspace-bulk-move"),
+                    ) { Text("Move") }
+                    TextButton(
+                        onClick = { onBulkAction("delete") },
+                        enabled = selectedPaths.isNotEmpty(),
+                        modifier = Modifier.testTag("workspace-bulk-delete"),
+                    ) { Text("Delete") }
                 }
             }
         }
@@ -1686,9 +1964,12 @@ private fun WorkspacePanel(
                         entry = entry,
                         folderCount = folderCounts[entry.path],
                         folderCountLoaded = folderCounts.containsKey(entry.path),
-                        onClick = { onOpenEntry(entry) },
+                        selectionMode = selectionMode,
+                        selected = entry.path in selectedPaths,
+                        onToggleSelection = { onToggleSelection(entry.path) },
+                        onClick = { if (selectionMode) onToggleSelection(entry.path) else onOpenEntry(entry) },
                         onDelete = { onDelete(entry.path) },
-                        onLongClick = { onLongClick(entry) },
+                        onLongClick = { if (selectionMode) onToggleSelection(entry.path) else onLongClick(entry) },
                     )
                 }
             }
@@ -1965,6 +2246,9 @@ private fun FileEntryRow(
     entry: FileEntry,
     folderCount: Int?,
     folderCountLoaded: Boolean,
+    selectionMode: Boolean,
+    selected: Boolean,
+    onToggleSelection: () -> Unit,
     onClick: () -> Unit,
     onDelete: () -> Unit,
     onLongClick: () -> Unit,
@@ -1986,6 +2270,13 @@ private fun FileEntryRow(
                 .padding(start = 13.dp, end = 4.dp, top = 9.dp, bottom = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (selectionMode) {
+                Checkbox(
+                    checked = selected,
+                    onCheckedChange = { onToggleSelection() },
+                    modifier = Modifier.testTag("workspace-select-" + entry.name),
+                )
+            }
             Box(
                 modifier = Modifier
                     .size(44.dp)
@@ -2034,11 +2325,13 @@ private fun FileEntryRow(
                     fontSize = 12.sp,
                 )
             }
-            IconButton(
-                onClick = onDelete,
-                modifier = Modifier.size(40.dp),
-            ) {
-                Icon(Icons.Filled.DeleteOutline, contentDescription = "Delete " + entry.name, tint = MutedText)
+            if (!selectionMode) {
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier.size(40.dp),
+                ) {
+                    Icon(Icons.Filled.DeleteOutline, contentDescription = "Delete " + entry.name, tint = MutedText)
+                }
             }
         }
     }
@@ -2192,6 +2485,35 @@ private fun isSimpleName(value: String): Boolean =
         !value.contains('/') &&
         !value.contains('\\') &&
         value.none { it == '\u0000' }
+
+private fun isSafeWorkspaceRelativePath(value: String, allowEmpty: Boolean): Boolean {
+    if (value.isEmpty()) return allowEmpty
+    if (value.startsWith("/") || value.contains('\\') || value.none { it != '\u0000' }) return false
+    if (value.indexOf('\u0000') >= 0) return false
+    return value.split('/').none { it.isBlank() || it == "." || it == ".." }
+}
+
+private fun isSameOrChildPath(path: String, root: String): Boolean =
+    path == root || path.startsWith(root + "/")
+
+private fun findWorkspaceEntry(storage: WorkspaceStorage, path: String): FileEntry? {
+    if (!isSafeWorkspaceRelativePath(path, allowEmpty = false)) {
+        throw IllegalArgumentException("Invalid workspace-relative path.")
+    }
+    if (!storage.exists(path)) return null
+    val parts = path.split('/')
+    var parent = ""
+    var found: FileEntry? = null
+    parts.forEachIndexed { index, segment ->
+        val entry = storage.listDirectory(parent).firstOrNull { it.name == segment } ?: return null
+        if (index < parts.lastIndex && entry.type != FileEntryType.DIRECTORY) {
+            throw IllegalArgumentException("Not a folder: $parent")
+        }
+        found = entry
+        parent = joinPath(parent, segment)
+    }
+    return found
+}
 
 private fun joinPath(directory: String, name: String): String =
     if (directory.isBlank()) name else "$directory/$name"
