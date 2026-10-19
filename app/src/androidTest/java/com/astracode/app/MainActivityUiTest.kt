@@ -11,10 +11,13 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.longClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.nio.file.Files
 import java.util.Comparator
+import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -174,4 +177,54 @@ class MainActivityUiTest {
             workspace.resolve("app/src/.env").toFile().readText(),
         )
     }
+
+    @Test
+    fun longPressShowsActionsAndRenameCopyMoveOperateOnWorkspaceItems() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workspace = context.filesDir.toPath().resolve("workspace")
+        Files.createDirectories(workspace.resolve("folder"))
+        Files.write(workspace.resolve("sample.txt"), "original".toByteArray(Charsets.UTF_8))
+        Files.write(workspace.resolve("folder/child.txt"), "child".toByteArray(Charsets.UTF_8))
+        composeRule.activityRule.scenario.recreate()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("entry-sample.txt").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("entry-sample.txt").performTouchInput { longClick() }
+        composeRule.onNodeWithTag("workspace-action-sync").assertIsDisplayed()
+        composeRule.onNodeWithTag("workspace-action-delete").assertIsDisplayed()
+        composeRule.onNodeWithTag("workspace-action-rename").assertIsDisplayed()
+        composeRule.onNodeWithTag("workspace-action-copy").assertIsDisplayed()
+        composeRule.onNodeWithTag("workspace-action-move").assertIsDisplayed()
+        composeRule.onNodeWithTag("workspace-action-sync").performClick()
+        composeRule.onNodeWithTag("sync-app-to-external").assertIsDisplayed()
+        composeRule.onNodeWithTag("sync-external-to-app").assertIsDisplayed()
+        composeRule.onNodeWithTag("sync-add-external-folder").assertIsDisplayed()
+        composeRule.onNodeWithText("Cancel").performClick()
+
+        composeRule.onNodeWithTag("entry-sample.txt").performTouchInput { longClick() }
+        composeRule.onNodeWithTag("workspace-action-rename").performClick()
+        composeRule.onNodeWithTag("workspace-operation-input").performTextReplacement("renamed.txt")
+        composeRule.onNodeWithTag("confirm-workspace-operation").performClick()
+        val renamed = workspace.resolve("renamed.txt")
+        composeRule.waitUntil(timeoutMillis = 5_000) { Files.exists(renamed) && !Files.exists(workspace.resolve("sample.txt")) }
+
+        composeRule.onNodeWithTag("entry-renamed.txt").performTouchInput { longClick() }
+        composeRule.onNodeWithTag("workspace-action-copy").performClick()
+        composeRule.onNodeWithTag("workspace-operation-input").performTextReplacement("copy.txt")
+        composeRule.onNodeWithTag("confirm-workspace-operation").performClick()
+        val copied = workspace.resolve("copy.txt")
+        composeRule.waitUntil(timeoutMillis = 5_000) { Files.exists(copied) }
+        assertEquals("original", String(Files.readAllBytes(copied), Charsets.UTF_8))
+        assertEquals("original", String(Files.readAllBytes(renamed), Charsets.UTF_8))
+
+        composeRule.onNodeWithTag("entry-renamed.txt").performTouchInput { longClick() }
+        composeRule.onNodeWithTag("workspace-action-move").performClick()
+        composeRule.onNodeWithTag("workspace-operation-input").performTextReplacement("folder/moved.txt")
+        composeRule.onNodeWithTag("confirm-workspace-operation").performClick()
+        val moved = workspace.resolve("folder/moved.txt")
+        composeRule.waitUntil(timeoutMillis = 5_000) { Files.exists(moved) && !Files.exists(renamed) }
+        assertEquals("original", String(Files.readAllBytes(moved), Charsets.UTF_8))
+    }
+
 }
