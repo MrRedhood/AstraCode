@@ -684,20 +684,11 @@ private fun FileManagementScreen(
     }
 
     fun startBulkAction(kind: String) {
-        val requestedPaths = selectedPaths.toList().sortedBy { it.count { ch -> ch == '/' } }
-        if (requestedPaths.isEmpty()) {
+        // Selection is limited to visible children in this folder, so no storage traversal is needed here.
+        val paths = selectedPaths.toList()
+        if (paths.isEmpty()) {
             notify("Select at least one file or folder.")
             return
-        }
-        val paths = mutableListOf<String>()
-        requestedPaths.forEach { candidate ->
-            val coveredBySelectedFolder = paths.any { selectedParent ->
-                val isFolder = runCatching {
-                    findWorkspaceEntry(storage, selectedParent)?.type == FileEntryType.DIRECTORY
-                }.getOrDefault(false)
-                isFolder && isSameOrChildPath(candidate, selectedParent)
-            }
-            if (!coveredBySelectedFolder) paths += candidate
         }
         val input = bulkInput.trim()
         val archiveName = if (kind == "zip") {
@@ -2285,6 +2276,7 @@ private fun FileEntryRow(
                 Checkbox(
                     checked = selected,
                     onCheckedChange = { onToggleSelection() },
+                    enabled = isSupported,
                     modifier = Modifier.testTag("workspace-select-" + entry.name),
                 )
             }
