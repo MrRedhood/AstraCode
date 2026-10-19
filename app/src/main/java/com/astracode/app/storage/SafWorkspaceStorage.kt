@@ -16,6 +16,7 @@ import com.astracode.filesystem.TextFileWriteResult
 import com.astracode.filesystem.Utf8RepairDecoder
 import com.astracode.filesystem.WorkspaceStorage
 import com.astracode.filesystem.WorkspaceStorageType
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.time.Instant
 import java.util.concurrent.CopyOnWriteArrayList
@@ -191,6 +192,73 @@ class SafWorkspaceStorage(
             persistedText = persistedText,
             replacedUnpairedSurrogateCount = replacedCount,
         )
+    }
+
+    override fun readBytes(relativePath: String): ByteArray {
+        ensureOpen()
+        val path = normalizedPath(relativePath)
+        val document = resolve(path)
+        if (document.isDirectory || !document.isFile || document.isVirtual) {
+            throw IOException("Not a regular file: $path")
+        }
+        if (!document.canRead()) throw SecurityException("Cannot read file: $path")
+        val reportedSize = document.length().coerceAtLeast(0L)
+        if (reportedSize > options.maxFileBytes) {
+            throw FileTooLargeException(path, reportedSize, options.maxFileBytes)
+        }
+        val input = resolver.openInputStream(document.uri)
+            ?: throw IOException("The storage provider could not open '$path' for reading.")
+        val output = ByteArrayOutputStream(minOf(reportedSize, 64L * 1024L).toInt())
+        val buffer = ByteArray(options.defaultReadBufferSize)
+        var copied = 0L
+        input.use { stream ->
+            while (true) {
+                val count = stream.read(buffer)
+                if (count < 0) break
+                if (count == 0) continue
+                copied += count
+                if (copied > options.maxFileBytes) {
+                    throw FileTooLargeException(path, copied, options.maxFileBytes)
+                }
+                output.write(buffer, 0, count)
+            }
+        }
+        return output.toByteArray()
+    }
+
+    override fun writeBytes(relativePath: String, bytes: ByteArray) {
+        ensureOpen()
+        val parts = segments(relativePath)
+        if (parts.isEmpty()) throw IllegalArgumentException("A file name is required.")
+        val path = parts.joinToString("/")
+        if (bytes.size.toLong() > options.maxFileBytes) {
+            throw FileTooLargeException(path, bytes.size.toLong(), options.maxFileBytes)
+        }
+        val parent = resolveParent(parts, createParents = true)
+        var target = parent.findFile(parts.last())
+        val existed = target != null
+        if (target?.isDirectory == true || target?.isVirtual == true) {
+            throw IOException("Cannot write bytes to a directory or virtual document: $path")
+        }
+        if (target != null && !target.canWrite()) {
+            throw SecurityException("The storage provider does not allow writing '$path'.")
+        }
+        if (target == null) {
+            target = parent.createFile(mimeTypeFor(parts.last()), parts.last())
+                ?: throw IOException("The storage provider could not create '$path'.")
+        }
+        try {
+            val output = resolver.openOutputStream(target.uri, "wt")
+                ?: throw IOException("The storage provider could not open '$path' for writing.")
+            output.use { stream ->
+                stream.write(bytes)
+                stream.flush()
+            }
+        } catch (error: Exception) {
+            if (!existed) target.delete()
+            throw IOException("Could not save '$path' through the selected storage provider.", error)
+        }
+        publish(FileChangeEvent(if (existed) FileChangeType.MODIFIED else FileChangeType.CREATED, path))
     }
 
     override fun move(
