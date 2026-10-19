@@ -88,7 +88,6 @@ import com.astracode.filesystem.WorkspaceStorageType
 import com.astracode.filesystem.Utf8RepairDecoder
 import com.astracode.app.storage.SafWorkspaceStorage
 import com.astracode.app.storage.WorkspaceArchive
-import com.astracode.app.storage.WorkspaceArchive
 import com.astracode.app.storage.WorkspaceSyncLink
 import com.astracode.app.storage.loadWorkspaceSyncLinks
 import com.astracode.app.storage.mapBetweenWorkspacePaths
@@ -691,14 +690,14 @@ private fun FileManagementScreen(
             return
         }
         val paths = mutableListOf<String>()
-        requestedPaths.forEach { path ->
-            val alreadyCovered = paths.any { parentPath ->
-                parentPath == path || isSameOrChildPath(path, parentPath) &&
-                    requestedPaths.any { candidate -> candidate == parentPath } &&
-                    runCatching { findWorkspaceEntry(storage, parentPath)?.type == FileEntryType.DIRECTORY }
-                        .getOrDefault(false)
+        requestedPaths.forEach { candidate ->
+            val coveredBySelectedFolder = paths.any { selectedParent ->
+                val isFolder = runCatching {
+                    findWorkspaceEntry(storage, selectedParent)?.type == FileEntryType.DIRECTORY
+                }.getOrDefault(false)
+                isFolder && isSameOrChildPath(candidate, selectedParent)
             }
-            if (!alreadyCovered) paths += path
+            if (!coveredBySelectedFolder) paths += candidate
         }
         val input = bulkInput.trim()
         val archiveName = if (kind == "zip") {

@@ -280,4 +280,46 @@ class MainActivityUiTest {
         assertEquals(false, Files.exists(workspace.resolve("app/restored/app")))
     }
 
+    @Test
+    fun multiSelectCreatesZipAndExtractsBinaryAndSourceFiles() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workspace = context.filesDir.toPath().resolve("workspace")
+        Files.createDirectories(workspace.resolve("src"))
+        val documentBytes = byteArrayOf(0, 1, 2, 127, -1, -128, 42)
+        Files.write(workspace.resolve("Document.docx"), documentBytes)
+        Files.write(workspace.resolve("src/Main.kt"), "fun main() = Unit\\n".toByteArray(Charsets.UTF_8))
+        composeRule.activityRule.scenario.recreate()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("entry-Document.docx").assertIsDisplayed()
+                composeRule.onNodeWithTag("entry-src").assertIsDisplayed()
+            }.isSuccess
+        }
+        composeRule.onNodeWithTag("workspace-toggle-selection").performClick()
+        composeRule.onNodeWithTag("workspace-select-Document.docx").performClick()
+        composeRule.onNodeWithTag("workspace-select-src").performClick()
+        composeRule.onNodeWithTag("workspace-bulk-zip").performClick()
+        composeRule.onNodeWithTag("workspace-bulk-input").performTextReplacement("bundle.zip")
+        composeRule.onNodeWithTag("confirm-workspace-bulk-action").performClick()
+
+        val archive = workspace.resolve("bundle.zip")
+        composeRule.waitUntil(timeoutMillis = 10_000) { Files.isRegularFile(archive) }
+        composeRule.onNodeWithTag("entry-bundle.zip").performTouchInput { longClick() }
+        composeRule.onNodeWithTag("workspace-action-extract").performClick()
+        composeRule.onNodeWithTag("workspace-operation-input").performTextReplacement("restored")
+        composeRule.onNodeWithTag("confirm-workspace-operation").performClick()
+
+        val restoredDocument = workspace.resolve("restored/Document.docx")
+        val restoredSource = workspace.resolve("restored/src/Main.kt")
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            Files.isRegularFile(restoredDocument) && Files.isRegularFile(restoredSource)
+        }
+        assertArrayEquals(documentBytes, Files.readAllBytes(restoredDocument))
+        assertEquals(
+            "fun main() = Unit\\n",
+            String(Files.readAllBytes(restoredSource), Charsets.UTF_8),
+        )
+    }
+
 }
