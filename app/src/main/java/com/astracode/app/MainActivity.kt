@@ -106,36 +106,122 @@ private val AstraColorScheme = darkColorScheme(
     error = Danger,
 )
 
+private const val PRIVATE_WORKSPACE_ID = "private"
+private const val SAVED_WORKSPACES_KEY = "saved_workspace_uris"
+private const val ACTIVE_WORKSPACE_KEY = "active_workspace_id"
+
+private data class WorkspaceBookmark(
+    val uri: Uri,
+    val name: String,
+) {
+    val id: String get() = uri.toString()
+}
+
 class MainActivity : ComponentActivity() {
     private var activeStorage: WorkspaceStorage? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val preferences = getSharedPreferences("astracode_workspace", MODE_PRIVATE)
+        val savedUris = loadSavedWorkspaceUris(preferences)
+        val legacyActiveUri = preferences.getString("tree_uri", null)
+        val initialBookmarks = savedUris.map(::createWorkspaceBookmark)
+        val requestedActiveId = preferences.getString(
+            ACTIVE_WORKSPACE_KEY,
+            legacyActiveUri ?: PRIVATE_WORKSPACE_ID,
+        ) ?: PRIVATE_WORKSPACE_ID
+
         var restoreNotice: String? = null
-        val savedTreeUri = preferences.getString("tree_uri", null)
-        val initialStorage = if (savedTreeUri.isNullOrBlank()) {
-            createPrivateWorkspace()
+        var resolvedActiveId = PRIVATE_WORKSPACE_ID
+        val initialStorage: WorkspaceStorage = if (
+            requestedActiveId != PRIVATE_WORKSPACE_ID &&
+            savedUris.any { it.toString() == requestedActiveId }
+        ) {
+            runCatching {
+                SafWorkspaceStorage(applicationContext, Uri.parse(requestedActiveId))
+            }.onSuccess {
+                resolvedActiveId = requestedActiveId
+            }.onFailure { error ->
+                restoreNotice = "Could not restore the saved folder: " +
+                    (error.message ?: "permission denied") +
+                    ". Open Saved workspaces to try again."
+            }.getOrNull() ?: createPrivateWorkspace()
         } else {
-            try {
-                SafWorkspaceStorage(applicationContext, Uri.parse(savedTreeUri))
-            } catch (_: Exception) {
-                releasePersistedTreePermission(Uri.parse(savedTreeUri))
-                preferences.edit().remove("tree_uri").apply()
-                restoreNotice = "The saved external folder is no longer accessible. Choose it again."
-                createPrivateWorkspace()
-            }
+            createPrivateWorkspace()
         }
         activeStorage = initialStorage
 
+        // Migrate the former single-folder preference into the saved-folder list.
+        preferences.edit()
+            .putString(SAVED_WORKSPACES_KEY, encodeWorkspaceUris(savedUris))
+            .putString(ACTIVE_WORKSPACE_KEY, resolvedActiveId)
+            .remove("tree_uri")
+            .apply()
+
         setContent {
             var storage by remember { mutableStateOf(initialStorage) }
+            var activeWorkspaceId by remember { mutableStateOf(resolvedActiveId) }
+            var savedWorkspaceFolders by remember { mutableStateOf(initialBookmarks) }
             var workspaceNotice by remember { mutableStateOf(restoreNotice) }
+
+            fun activatePrivateWorkspace() {
+                if (activeWorkspaceId == PRIVATE_WORKSPACE_ID) return
+                val previous = storage
+                val next = createPrivateWorkspace()
+                storage = next
+                activeStorage = next
+                activeWorkspaceId = PRIVATE_WORKSPACE_ID
+                preferences.edit().putString(ACTIVE_WORKSPACE_KEY, PRIVATE_WORKSPACE_ID).apply()
+                previous.close()
+                workspaceNotice = "Using the private workspace."
+                // Other saved folders intentionally keep their Android URI grants.
+            }
+
+            fun activateSavedWorkspace(bookmark: WorkspaceBookmark) {
+                if (activeWorkspaceId == bookmark.id) return
+                runCatching {
+                    SafWorkspaceStorage(applicationContext, bookmark.uri)
+                }.onSuccess { nextStorage ->
+                    val previous = storage
+                    storage = nextStorage
+                    activeStorage = nextStorage
+                    activeWorkspaceId = bookmark.id
+                    preferences.edit().putString(ACTIVE_WORKSPACE_KEY, bookmark.id).apply()
+                    previous.close()
+                    workspaceNotice = "Opened " + nextStorage.displayName
+                }.onFailure { error ->
+                    workspaceNotice = "Could not open saved folder: " +
+                        (error.message ?: "permission denied") +
+                        ". You can add the folder again to restore access."
+                }
+            }
+
+            fun removeSavedWorkspace(bookmark: WorkspaceBookmark) {
+                val remaining = savedWorkspaceFolders.filterNot { it.id == bookmark.id }
+                val wasActive = activeWorkspaceId == bookmark.id
+                if (wasActive) {
+                    val previous = storage
+                    val next = createPrivateWorkspace()
+                    storage = next
+                    activeStorage = next
+                    activeWorkspaceId = PRIVATE_WORKSPACE_ID
+                    preferences.edit().putString(ACTIVE_WORKSPACE_KEY, PRIVATE_WORKSPACE_ID).apply()
+                    previous.close()
+                }
+                savedWorkspaceFolders = remaining
+                preferences.edit()
+                    .putString(SAVED_WORKSPACES_KEY, encodeWorkspaceUris(remaining.map { it.uri }))
+                    .apply()
+                releasePersistedTreePermission(bookmark.uri)
+                workspaceNotice = "Removed " + bookmark.name + " from AstraCode. Its files were not deleted."
+            }
 
             val chooseFolder = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.OpenDocumentTree(),
             ) { uri ->
                 if (uri != null) {
+                    val alreadySaved = savedWorkspaceFolders.any { it.uri == uri }
+                    val alreadyGranted = contentResolver.persistedUriPermissions.any { it.uri == uri }
                     runCatching {
                         contentResolver.takePersistableUriPermission(
                             uri,
@@ -143,22 +229,31 @@ class MainActivity : ComponentActivity() {
                         )
                         SafWorkspaceStorage(applicationContext, uri)
                     }.onSuccess { nextStorage ->
+                        val bookmark = WorkspaceBookmark(uri, nextStorage.displayName)
+                        val updatedBookmarks = if (alreadySaved) {
+                            savedWorkspaceFolders.map { if (it.uri == uri) bookmark else it }
+                        } else {
+                            savedWorkspaceFolders + bookmark
+                        }
                         val previous = storage
                         storage = nextStorage
                         activeStorage = nextStorage
-                        if (previous is SafWorkspaceStorage && previous.treeUri != uri) {
-                            releasePersistedTreePermission(previous.treeUri)
-                        }
-                        previous.close()
+                        activeWorkspaceId = bookmark.id
+                        savedWorkspaceFolders = updatedBookmarks
                         preferences.edit()
-                            .putString("tree_uri", uri.toString())
+                            .putString(SAVED_WORKSPACES_KEY, encodeWorkspaceUris(updatedBookmarks.map { it.uri }))
+                            .putString(ACTIVE_WORKSPACE_KEY, bookmark.id)
                             .apply()
-                        workspaceNotice = "Opened " + nextStorage.displayName
-                    }.onFailure { error ->
-                        if ((storage as? SafWorkspaceStorage)?.treeUri != uri) {
-                            releasePersistedTreePermission(uri)
+                        previous.close()
+                        workspaceNotice = if (alreadySaved) {
+                            "Opened saved folder " + nextStorage.displayName
+                        } else {
+                            "Added and opened " + nextStorage.displayName
                         }
-                        workspaceNotice = "Could not open folder: " + (error.message ?: "permission denied")
+                    }.onFailure { error ->
+                        if (!alreadySaved && !alreadyGranted) releasePersistedTreePermission(uri)
+                        workspaceNotice = "Could not add folder: " +
+                            (error.message ?: "permission denied")
                     }
                 }
             }
@@ -170,24 +265,50 @@ class MainActivity : ComponentActivity() {
                 ) {
                     FileManagementScreen(
                         storage = storage,
+                        activeWorkspaceId = activeWorkspaceId,
+                        savedWorkspaceFolders = savedWorkspaceFolders,
                         externalMessage = workspaceNotice,
-                        onChooseWorkspace = { chooseFolder.launch(null) },
-                        onUsePrivateWorkspace = {
-                            val nextStorage = createPrivateWorkspace()
-                            val previous = storage
-                            storage = nextStorage
-                            activeStorage = nextStorage
-                            if (previous is SafWorkspaceStorage) {
-                                releasePersistedTreePermission(previous.treeUri)
-                            }
-                            previous.close()
-                            preferences.edit().remove("tree_uri").apply()
-                            workspaceNotice = "Using the private workspace."
-                        },
+                        onAddWorkspace = { chooseFolder.launch(null) },
+                        onSelectPrivateWorkspace = { activatePrivateWorkspace() },
+                        onSelectSavedWorkspace = { bookmark -> activateSavedWorkspace(bookmark) },
+                        onRemoveSavedWorkspace = { bookmark -> removeSavedWorkspace(bookmark) },
                     )
                 }
             }
         }
+    }
+
+    private fun loadSavedWorkspaceUris(preferences: android.content.SharedPreferences): List<Uri> {
+        val storedList = preferences.getString(SAVED_WORKSPACES_KEY, null)
+        val rawUris = if (storedList != null) {
+            runCatching {
+                val json = org.json.JSONArray(storedList)
+                List(json.length()) { index -> Uri.parse(json.getString(index)) }
+            }.getOrDefault(emptyList())
+        } else {
+            preferences.getString("tree_uri", null)
+                ?.takeIf { it.isNotBlank() }
+                ?.let { listOf(Uri.parse(it)) }
+                ?: emptyList()
+        }
+        return rawUris.distinctBy { it.toString() }
+    }
+
+    private fun encodeWorkspaceUris(uris: List<Uri>): String =
+        org.json.JSONArray().apply {
+            uris.distinctBy { it.toString() }.forEach { put(it.toString()) }
+        }.toString()
+
+    private fun createWorkspaceBookmark(uri: Uri): WorkspaceBookmark {
+        val providerName = runCatching {
+            androidx.documentfile.provider.DocumentFile.fromTreeUri(applicationContext, uri)?.name
+        }.getOrNull()
+        val readableName = providerName
+            ?.takeIf { it.isNotBlank() }
+            ?: uri.lastPathSegment?.substringAfterLast(':')?.substringAfterLast('/')
+                ?.takeIf { it.isNotBlank() }
+            ?: "External folder"
+        return WorkspaceBookmark(uri, readableName)
     }
 
     private fun releasePersistedTreePermission(uri: Uri) {
@@ -213,9 +334,13 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun FileManagementScreen(
     storage: WorkspaceStorage,
+    activeWorkspaceId: String,
+    savedWorkspaceFolders: List<WorkspaceBookmark>,
     externalMessage: String?,
-    onChooseWorkspace: () -> Unit,
-    onUsePrivateWorkspace: () -> Unit,
+    onAddWorkspace: () -> Unit,
+    onSelectPrivateWorkspace: () -> Unit,
+    onSelectSavedWorkspace: (WorkspaceBookmark) -> Unit,
+    onRemoveSavedWorkspace: (WorkspaceBookmark) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -234,6 +359,7 @@ private fun FileManagementScreen(
     var pendingNavigation by remember { mutableStateOf<(() -> Unit)?>(null) }
     var showDiscardDialog by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
+    var showWorkspaceManager by remember { mutableStateOf(false) }
 
     fun notify(message: String) {
         scope.launch { snackbarHostState.showSnackbar(message) }
@@ -373,8 +499,10 @@ private fun FileManagementScreen(
                     rootName = storage.displayName,
                     storageType = storage.storageType,
                     entries = entries,
-                    onChooseWorkspace = { requestNavigation(onChooseWorkspace) },
-                    onUsePrivateWorkspace = { requestNavigation(onUsePrivateWorkspace) },
+                    savedWorkspaceFolders = savedWorkspaceFolders,
+                    activeWorkspaceId = activeWorkspaceId,
+                    onAddWorkspace = { requestNavigation(onAddWorkspace) },
+                    onManageWorkspaces = { showWorkspaceManager = true },
                     onOpenEntry = { entry ->
                         when (entry.type) {
                             FileEntryType.DIRECTORY -> requestNavigation {
@@ -404,6 +532,27 @@ private fun FileManagementScreen(
                 )
             }
         }
+    }
+
+    if (showWorkspaceManager) {
+        WorkspaceManagerDialog(
+            savedFolders = savedWorkspaceFolders,
+            activeWorkspaceId = activeWorkspaceId,
+            onDismiss = { showWorkspaceManager = false },
+            onAddFolder = {
+                showWorkspaceManager = false
+                onAddWorkspace()
+            },
+            onSelectPrivate = {
+                showWorkspaceManager = false
+                onSelectPrivateWorkspace()
+            },
+            onSelectFolder = { bookmark ->
+                showWorkspaceManager = false
+                onSelectSavedWorkspace(bookmark)
+            },
+            onRemoveFolder = onRemoveSavedWorkspace,
+        )
     }
 
     if (showNewFileDialog) {
@@ -603,8 +752,10 @@ private fun WorkspacePanel(
     rootName: String,
     storageType: WorkspaceStorageType,
     entries: List<FileEntry>,
-    onChooseWorkspace: () -> Unit,
-    onUsePrivateWorkspace: () -> Unit,
+    savedWorkspaceFolders: List<WorkspaceBookmark>,
+    activeWorkspaceId: String,
+    onAddWorkspace: () -> Unit,
+    onManageWorkspaces: () -> Unit,
     onOpenEntry: (FileEntry) -> Unit,
     onNewFile: () -> Unit,
     onNewFolder: () -> Unit,
@@ -637,7 +788,8 @@ private fun WorkspacePanel(
                 )
                 Text(
                     if (storageType == WorkspaceStorageType.DOCUMENT_TREE) {
-                        "External folder • Android permission"
+                        savedWorkspaceFolders.size.toString() + " saved external " +
+                            if (savedWorkspaceFolders.size == 1) "folder" else "folders"
                     } else {
                         "Private app workspace"
                     },
@@ -646,18 +798,16 @@ private fun WorkspacePanel(
                 )
             }
             IconButton(
-                onClick = onChooseWorkspace,
-                modifier = Modifier.testTag("choose-workspace-button"),
+                onClick = onAddWorkspace,
+                modifier = Modifier.testTag("add-workspace-button"),
             ) {
-                Icon(Icons.Filled.FolderOpen, contentDescription = "Choose workspace folder", tint = Mint)
+                Icon(Icons.Filled.FolderOpen, contentDescription = "Add workspace folder", tint = Mint)
             }
-            if (storageType == WorkspaceStorageType.DOCUMENT_TREE) {
-                IconButton(
-                    onClick = onUsePrivateWorkspace,
-                    modifier = Modifier.testTag("private-workspace-button"),
-                ) {
-                    Icon(Icons.Filled.Folder, contentDescription = "Use private workspace", tint = MutedText)
-                }
+            IconButton(
+                onClick = onManageWorkspaces,
+                modifier = Modifier.testTag("manage-workspaces-button"),
+            ) {
+                Icon(Icons.Filled.Folder, contentDescription = "Manage workspaces", tint = MutedText)
             }
             IconButton(
                 onClick = onNewFolder,
@@ -726,6 +876,129 @@ private fun WorkspacePanel(
             }
         }
     }
+}
+
+@Composable
+private fun WorkspaceManagerDialog(
+    savedFolders: List<WorkspaceBookmark>,
+    activeWorkspaceId: String,
+    onDismiss: () -> Unit,
+    onAddFolder: () -> Unit,
+    onSelectPrivate: () -> Unit,
+    onSelectFolder: (WorkspaceBookmark) -> Unit,
+    onRemoveFolder: (WorkspaceBookmark) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Saved workspaces") },
+        text = {
+            Column {
+                Text(
+                    "Folders stay here until you remove them. Removing a folder only removes its access from AstraCode; it does not delete its files.",
+                    color = MutedText,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onSelectPrivate)
+                        .padding(vertical = 10.dp, horizontal = 4.dp)
+                        .testTag("private-workspace-bookmark"),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Filled.Folder, contentDescription = null, tint = Mint, modifier = Modifier.size(25.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Private workspace", color = PrimaryText, fontWeight = FontWeight.SemiBold)
+                        Text("Stored inside AstraCode", color = MutedText, fontSize = 12.sp)
+                    }
+                    if (activeWorkspaceId == PRIVATE_WORKSPACE_ID) {
+                        Text("Current", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                Divider(color = Border)
+                if (savedFolders.isEmpty()) {
+                    Text(
+                        "No external folders saved yet. Tap Add folder to keep one here.",
+                        color = MutedText,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(vertical = 18.dp),
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(270.dp),
+                    ) {
+                        items(savedFolders, key = { it.id }) { bookmark ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { onSelectFolder(bookmark) }
+                                        .padding(vertical = 8.dp, horizontal = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        Icons.Filled.FolderOpen,
+                                        contentDescription = null,
+                                        tint = Mint,
+                                        modifier = Modifier.size(25.dp),
+                                    )
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            bookmark.name,
+                                            color = PrimaryText,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        Text("External folder", color = MutedText, fontSize = 12.sp)
+                                    }
+                                }
+                                if (activeWorkspaceId == bookmark.id) {
+                                    Text("Current", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                                IconButton(
+                                    onClick = { onRemoveFolder(bookmark) },
+                                    modifier = Modifier.testTag("remove-workspace-" + bookmark.id),
+                                ) {
+                                    Icon(
+                                        Icons.Filled.DeleteOutline,
+                                        contentDescription = "Remove " + bookmark.name,
+                                        tint = Danger,
+                                    )
+                                }
+                            }
+                            Divider(color = Border)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onAddFolder,
+                colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Ink),
+                modifier = Modifier.testTag("add-workspace-from-manager"),
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Add folder")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Done") }
+        },
+    )
 }
 
 @Composable

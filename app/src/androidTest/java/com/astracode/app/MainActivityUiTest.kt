@@ -52,7 +52,7 @@ class MainActivityUiTest {
     @Test
     fun canCreateEditSaveAndReopenAWorkspaceFile() {
         composeRule.onNodeWithText("AstraCode").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Choose workspace folder").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Add workspace folder").assertIsDisplayed()
         composeRule.onNodeWithText("New file").performClick()
         composeRule.onNodeWithTag("new-file-name-input").performTextInput("Hello.kt")
         composeRule.onNodeWithTag("confirm-create-file").performClick()
@@ -87,8 +87,19 @@ class MainActivityUiTest {
     }
 
     @Test
+    fun workspaceManagerShowsPrivateWorkspaceAndAddFolderAction() {
+        composeRule.onNodeWithContentDescription("Manage workspaces").performClick()
+        composeRule.onNodeWithText("Saved workspaces").assertIsDisplayed()
+        composeRule.onNodeWithTag("private-workspace-bookmark").assertIsDisplayed()
+        composeRule.onNodeWithText("Add folder").assertIsDisplayed()
+        composeRule.onNodeWithText(
+            "Removing a folder only removes its access from AstraCode; it does not delete its files.",
+        ).assertIsDisplayed()
+    }
+
+    @Test
     fun workspacePickerAndPrivateWorkspaceEntryAreAvailable() {
-        composeRule.onNodeWithContentDescription("Choose workspace folder").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Add workspace folder").assertIsDisplayed()
         composeRule.onNodeWithText("Private app workspace").assertIsDisplayed()
     }
 
