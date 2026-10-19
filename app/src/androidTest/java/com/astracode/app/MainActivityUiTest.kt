@@ -54,15 +54,22 @@ class MainActivityUiTest {
         composeRule.onNodeWithContentDescription("Choose workspace folder").assertIsDisplayed()
         composeRule.onNodeWithText("New file").performClick()
         composeRule.onNodeWithTag("new-file-name-input").performTextInput("Hello.kt")
-        composeRule.onNodeWithText("Create file").performClick()
+        composeRule.onNodeWithTag("confirm-create-file").performClick()
 
         val editor = composeRule.onNodeWithTag("file-editor-input")
         editor.assertIsDisplayed()
-        editor.performTextInput("fun main() = println(\"AstraCode\")")
-        composeRule.onNodeWithText("Save").performClick()
-        composeRule.waitForIdle()
+        val expectedText = "fun main() = println(\"AstraCode\")"
+        editor.performTextInput(expectedText)
+        composeRule.onNodeWithTag("save-file-button").performClick()
 
-        composeRule.onNodeWithText("Saved Hello.kt").assertIsDisplayed()
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val savedFile = context.filesDir.toPath().resolve("workspace/Hello.kt")
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching { Files.readString(savedFile) == expectedText }.getOrDefault(false)
+        }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithText("FILE EDITOR").fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithContentDescription("Back").performClick()
         composeRule.onNodeWithText("Hello.kt").assertIsDisplayed()
         composeRule.onNodeWithText("Hello.kt").performClick()
