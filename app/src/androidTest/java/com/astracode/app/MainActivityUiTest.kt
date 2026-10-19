@@ -1,5 +1,6 @@
 package com.astracode.app
 
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -75,6 +76,14 @@ class MainActivityUiTest {
         composeRule.onNodeWithText("Hello.kt").performClick()
         composeRule.onNodeWithTag("file-editor-input").assertIsDisplayed()
         composeRule.onNodeWithTag("file-editor-input").assertTextContains("fun main() = println(\"AstraCode\")")
+    }
+
+    @Test
+    fun recreatingActivityDoesNotShowCancellationAsFolderLoadFailure() {
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitForIdle()
+        composeRule.onAllNodesWithText("Could not load folder", substring = true)
+            .assertCountEquals(0)
     }
 
     @Test

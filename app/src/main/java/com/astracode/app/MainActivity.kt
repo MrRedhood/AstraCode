@@ -78,6 +78,7 @@ import com.astracode.filesystem.FileManagementSystem
 import com.astracode.filesystem.WorkspaceStorage
 import com.astracode.filesystem.WorkspaceStorageType
 import com.astracode.app.storage.SafWorkspaceStorage
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -249,7 +250,7 @@ private fun FileManagementScreen(
 
     fun openFile(path: String) {
         scope.launch {
-            val result = runCatching {
+            val result = runCatchingCancellable {
                 withContext(Dispatchers.IO) { storage.readText(path) }
             }
             result.onSuccess { snapshot ->
@@ -273,7 +274,7 @@ private fun FileManagementScreen(
         val path = openedFile ?: return
         val content = editorText
         scope.launch {
-            val result = runCatching {
+            val result = runCatchingCancellable {
                 withContext(Dispatchers.IO) { storage.writeText(path, content) }
             }
             result.onSuccess { saved ->
@@ -294,11 +295,17 @@ private fun FileManagementScreen(
     }
 
     LaunchedEffect(storage, currentDirectory, refreshKey) {
-        val result = runCatching {
-            withContext(Dispatchers.IO) { storage.listDirectory(currentDirectory) }
+        try {
+            entries = withContext(Dispatchers.IO) { storage.listDirectory(currentDirectory) }
+        } catch (cancelled: CancellationException) {
+            // A folder change or a disposed screen cancels this load by design.
+            // Cancellation is control flow, not a folder-loading failure.
+            throw cancelled
+        } catch (error: Exception) {
+            snackbarHostState.showSnackbar(
+                "Could not load folder: " + (error.message ?: "unknown error"),
+            )
         }
-        result.onSuccess { entries = it }
-            .onFailure { error -> notify("Could not load folder: " + (error.message ?: "unknown error")) }
     }
 
     LaunchedEffect(storage) {
@@ -416,7 +423,7 @@ private fun FileManagementScreen(
                 } else {
                     val path = joinPath(currentDirectory, name)
                     scope.launch {
-                        val result = runCatching {
+                        val result = runCatchingCancellable {
                             withContext(Dispatchers.IO) { storage.writeText(path, "") }
                         }
                         result.onSuccess {
@@ -451,7 +458,7 @@ private fun FileManagementScreen(
                 } else {
                     val path = joinPath(currentDirectory, name)
                     scope.launch {
-                        val result = runCatching {
+                        val result = runCatchingCancellable {
                             withContext(Dispatchers.IO) { storage.createDirectory(path) }
                         }
                         result.onSuccess {
@@ -476,7 +483,7 @@ private fun FileManagementScreen(
                 TextButton(
                     onClick = {
                         scope.launch {
-                            val result = runCatching {
+                            val result = runCatchingCancellable {
                                 withContext(Dispatchers.IO) { storage.delete(path) }
                             }
                             result.onSuccess {
@@ -926,6 +933,16 @@ private fun NameEntryDialog(
         },
     )
 }
+
+private suspend fun <T> runCatchingCancellable(block: suspend () -> T): Result<T> =
+    try {
+        Result.success(block())
+    } catch (cancelled: CancellationException) {
+        // Never turn coroutine cancellation into a user-visible storage error.
+        throw cancelled
+    } catch (error: Exception) {
+        Result.failure(error)
+    }
 
 private fun isSimpleName(value: String): Boolean =
     value.isNotBlank() &&
