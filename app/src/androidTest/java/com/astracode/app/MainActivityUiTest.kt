@@ -3,11 +3,16 @@ package com.astracode.app
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import java.nio.file.Files
+import java.util.Comparator
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -16,6 +21,20 @@ import org.junit.runner.RunWith
 class MainActivityUiTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<MainActivity>()
+
+    @Before
+    fun resetWorkspace() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workspace = context.filesDir.toPath().resolve("workspace")
+        if (Files.exists(workspace)) {
+            Files.walk(workspace).use { paths ->
+                paths.filter { it != workspace }
+                    .sorted(Comparator.reverseOrder<java.nio.file.Path>())
+                    .forEach { Files.deleteIfExists(it) }
+            }
+        }
+        composeRule.activityRule.scenario.recreate()
+    }
 
     @Test
     fun canCreateEditSaveAndReopenAWorkspaceFile() {

@@ -11,7 +11,7 @@ version = "0.1.0"
 
 android {
     namespace = "com.astracode.app"
-    compileSdk = 37
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.astracode"
@@ -45,7 +45,7 @@ kotlin {
 dependencies {
     implementation(project(":core-filesystem"))
 
-    val composeBom = platform("androidx.compose:compose-bom:2026.09.00")
+    val composeBom = platform("androidx.compose:compose-bom:2026.06.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)
 
