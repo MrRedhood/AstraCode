@@ -66,7 +66,7 @@ class MainActivityUiTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val savedFile = context.filesDir.toPath().resolve("workspace/Hello.kt")
         composeRule.waitUntil(timeoutMillis = 10_000) {
-            runCatching { Files.readString(savedFile) == expectedText }.getOrDefault(false)
+            runCatching { String(Files.readAllBytes(savedFile), Charsets.UTF_8) == expectedText }.getOrDefault(false)
         }
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodesWithText("FILE EDITOR").fetchSemanticsNodes().isNotEmpty()
