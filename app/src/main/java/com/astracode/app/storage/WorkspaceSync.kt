@@ -202,15 +202,14 @@ internal fun propagateWorkspaceChange(
         }
 
         if (movedTo != null && isSameOrChild(linkedRoot, changedPath)) {
-            val newLocalPath = if (privateActive) {
-                replaceWorkspacePrefix(link.privatePath, changedPath, movedTo)
+            val newLocalPath: String
+            val newExternalPath: String
+            if (privateActive) {
+                newLocalPath = replaceWorkspacePrefix(link.privatePath, changedPath, movedTo)
+                newExternalPath = replaceWorkspacePrefix(link.externalPath, link.privatePath, newLocalPath)
             } else {
-                replaceWorkspacePrefix(link.privatePath, changedPath, movedTo)
-            }
-            val newExternalPath = if (privateActive) {
-                replaceWorkspacePrefix(link.externalPath, changedPath, movedTo)
-            } else {
-                replaceWorkspacePrefix(link.externalPath, changedPath, movedTo)
+                newExternalPath = replaceWorkspacePrefix(link.externalPath, changedPath, movedTo)
+                newLocalPath = replaceWorkspacePrefix(link.privatePath, link.externalPath, newExternalPath)
             }
 
             if (privateActive) {
