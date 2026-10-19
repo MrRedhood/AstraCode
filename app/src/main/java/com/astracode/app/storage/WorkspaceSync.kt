@@ -172,3 +172,138 @@ private fun findEntry(storage: WorkspaceStorage, path: String): FileEntry? {
 
 private fun joinWorkspacePath(parent: String, child: String): String =
     if (parent.isEmpty()) child else "$parent/$child"
+
+
+internal fun mapBetweenWorkspacePaths(sourceRoot: String, targetRoot: String, sourcePath: String): String {
+    val suffix = sourcePath.removePrefix(sourceRoot).trimStart('/')
+    return if (suffix.isEmpty()) targetRoot else "$targetRoot/$suffix"
+}
+
+internal fun propagateWorkspaceChange(
+    context: Context,
+    activeWorkspaceId: String,
+    activeStorage: WorkspaceStorage,
+    links: List<WorkspaceSyncLink>,
+    changedPath: String,
+    deleted: Boolean = false,
+    movedTo: String? = null,
+): List<WorkspaceSyncLink> {
+    val privateActive = activeWorkspaceId == "private"
+    val updated = mutableListOf<WorkspaceSyncLink>()
+
+    links.forEach { link ->
+        val uriMatches = privateActive || link.externalTreeUri == activeWorkspaceId
+        val linkedRoot = if (privateActive) link.privatePath else link.externalPath
+        if (!uriMatches) {
+            updated += link
+            return@forEach
+        }
+
+        if (movedTo != null && isSameOrChild(linkedRoot, changedPath)) {
+            val newLocalPath = if (privateActive) {
+                replaceWorkspacePrefix(link.privatePath, changedPath, movedTo)
+            } else {
+                replaceWorkspacePrefix(link.privatePath, changedPath, movedTo)
+            }
+            val newExternalPath = if (privateActive) {
+                replaceWorkspacePrefix(link.externalPath, changedPath, movedTo)
+            } else {
+                replaceWorkspacePrefix(link.externalPath, changedPath, movedTo)
+            }
+
+            if (privateActive) {
+                val external = SafWorkspaceStorage(context, Uri.parse(link.externalTreeUri))
+                try {
+                    if (activeStorage.exists(newLocalPath)) {
+                        syncWorkspaceEntry(activeStorage, newLocalPath, external, newExternalPath, overwriteExisting = true)
+                    } else {
+                        throw IOException("The moved app-side item no longer exists: $newLocalPath")
+                    }
+                    if (link.externalPath != newExternalPath && external.exists(link.externalPath)) {
+                        external.delete(link.externalPath, recursive = true)
+                    }
+                } finally {
+                    external.close()
+                }
+            } else {
+                val privateStorage = FileManagementSystem(context.filesDir.toPath().resolve("workspace"))
+                try {
+                    if (activeStorage.exists(newExternalPath)) {
+                        syncWorkspaceEntry(activeStorage, newExternalPath, privateStorage, newLocalPath, overwriteExisting = true)
+                    } else {
+                        throw IOException("The moved external item no longer exists: $newExternalPath")
+                    }
+                    if (link.privatePath != newLocalPath && privateStorage.exists(link.privatePath)) {
+                        privateStorage.delete(link.privatePath, recursive = true)
+                    }
+                } finally {
+                    privateStorage.close()
+                }
+            }
+            updated += link.copy(privatePath = newLocalPath, externalPath = newExternalPath)
+            return@forEach
+        }
+
+        if (deleted && isSameOrChild(linkedRoot, changedPath)) {
+            if (privateActive) {
+                val external = SafWorkspaceStorage(context, Uri.parse(link.externalTreeUri))
+                try {
+                    if (external.exists(link.externalPath)) external.delete(link.externalPath, recursive = true)
+                } finally {
+                    external.close()
+                }
+            } else {
+                val privateStorage = FileManagementSystem(context.filesDir.toPath().resolve("workspace"))
+                try {
+                    if (privateStorage.exists(link.privatePath)) privateStorage.delete(link.privatePath, recursive = true)
+                } finally {
+                    privateStorage.close()
+                }
+            }
+            return@forEach
+        }
+
+        if (isSameOrChild(changedPath, linkedRoot)) {
+            if (privateActive) {
+                val external = SafWorkspaceStorage(context, Uri.parse(link.externalTreeUri))
+                try {
+                    if (activeStorage.exists(link.privatePath)) {
+                        syncWorkspaceEntry(activeStorage, link.privatePath, external, link.externalPath, overwriteExisting = true)
+                    } else {
+                        if (external.exists(link.externalPath)) external.delete(link.externalPath, recursive = true)
+                        return@forEach
+                    }
+                } finally {
+                    external.close()
+                }
+            } else {
+                val privateStorage = FileManagementSystem(context.filesDir.toPath().resolve("workspace"))
+                try {
+                    if (activeStorage.exists(link.externalPath)) {
+                        syncWorkspaceEntry(activeStorage, link.externalPath, privateStorage, link.privatePath, overwriteExisting = true)
+                    } else {
+                        if (privateStorage.exists(link.privatePath)) privateStorage.delete(link.privatePath, recursive = true)
+                        return@forEach
+                    }
+                } finally {
+                    privateStorage.close()
+                }
+            }
+            updated += link
+        } else {
+            updated += link
+        }
+    }
+
+    saveWorkspaceSyncLinks(context, updated)
+    return updated
+}
+
+private fun isSameOrChild(candidate: String, root: String): Boolean =
+    candidate == root || candidate.startsWith(root + "/")
+
+private fun replaceWorkspacePrefix(path: String, oldRoot: String, newRoot: String): String {
+    if (!isSameOrChild(path, oldRoot)) return path
+    val suffix = path.removePrefix(oldRoot).trimStart('/')
+    return if (suffix.isEmpty()) newRoot else "$newRoot/$suffix"
+}
