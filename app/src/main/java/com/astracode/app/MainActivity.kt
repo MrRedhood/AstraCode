@@ -1157,10 +1157,10 @@ private fun FileManagementScreen(
                                             else SafWorkspaceStorage(context, Uri.parse(externalUri))
                                         try {
                                             syncWorkspaceEntry(
-                                                sourceStorage = if (usePrivateActive) privateStorage else externalStorage,
-                                                sourcePath = if (usePrivateActive) privatePath else externalPath,
-                                                targetStorage = if (usePrivateActive) externalStorage else privateStorage,
-                                                targetPath = if (usePrivateActive) externalPath else privatePath,
+                                                sourceStorage = privateStorage,
+                                                sourcePath = privatePath,
+                                                targetStorage = externalStorage,
+                                                targetPath = externalPath,
                                                 overwriteExisting = true,
                                             )
                                             val existingParent = linksSnapshot.any {
