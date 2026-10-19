@@ -88,6 +88,7 @@ import com.astracode.filesystem.WorkspaceStorageType
 import com.astracode.filesystem.Utf8RepairDecoder
 import com.astracode.app.storage.SafWorkspaceStorage
 import com.astracode.app.storage.WorkspaceArchive
+import com.astracode.app.storage.WorkspaceArchive
 import com.astracode.app.storage.WorkspaceSyncLink
 import com.astracode.app.storage.loadWorkspaceSyncLinks
 import com.astracode.app.storage.mapBetweenWorkspacePaths
@@ -684,10 +685,20 @@ private fun FileManagementScreen(
     }
 
     fun startBulkAction(kind: String) {
-        val paths = selectedPaths.toList().sortedBy { it.count { ch -> ch == '/' } }
-        if (paths.isEmpty()) {
+        val requestedPaths = selectedPaths.toList().sortedBy { it.count { ch -> ch == '/' } }
+        if (requestedPaths.isEmpty()) {
             notify("Select at least one file or folder.")
             return
+        }
+        val paths = mutableListOf<String>()
+        requestedPaths.forEach { path ->
+            val alreadyCovered = paths.any { parentPath ->
+                parentPath == path || isSameOrChildPath(path, parentPath) &&
+                    requestedPaths.any { candidate -> candidate == parentPath } &&
+                    runCatching { findWorkspaceEntry(storage, parentPath)?.type == FileEntryType.DIRECTORY }
+                        .getOrDefault(false)
+            }
+            if (!alreadyCovered) paths += path
         }
         val input = bulkInput.trim()
         val archiveName = if (kind == "zip") {
