@@ -28,7 +28,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 class FileManagementSystem(
     rootDirectory: Path,
     private val options: FileSystemOptions = FileSystemOptions(),
-) : AutoCloseable {
+) : WorkspaceStorage {
     private val root: Path
     private val textCache = LruBufferCache<String, CachedText>(options.cacheCapacity)
     private val listeners = CopyOnWriteArrayList<(FileChangeEvent) -> Unit>()
@@ -44,19 +44,21 @@ class FileManagementSystem(
     }
 
     val rootDirectory: Path get() = root
+    override val displayName: String get() = root.fileName?.toString() ?: "Workspace"
+    override val storageType: WorkspaceStorageType get() = WorkspaceStorageType.PRIVATE
 
-    fun addChangeListener(listener: (FileChangeEvent) -> Unit): AutoCloseable {
+    override fun addChangeListener(listener: (FileChangeEvent) -> Unit): AutoCloseable {
         ensureOpen()
         listeners += listener
         return AutoCloseable { listeners -= listener }
     }
 
-    fun exists(relativePath: String): Boolean {
+    override fun exists(relativePath: String): Boolean {
         ensureOpen()
         return Files.exists(resolve(relativePath), LinkOption.NOFOLLOW_LINKS)
     }
 
-    fun listDirectory(relativePath: String = ""): List<FileEntry> {
+    override fun listDirectory(relativePath: String): List<FileEntry> {
         ensureOpen()
         val directory = resolve(relativePath)
         requireDirectory(directory, relativePath)
@@ -67,7 +69,7 @@ class FileManagementSystem(
         }
     }
 
-    fun scanTree(maxDepth: Int = Int.MAX_VALUE): List<FileEntry> {
+    override fun scanTree(maxDepth: Int): List<FileEntry> {
         ensureOpen()
         require(maxDepth >= 0) { "maxDepth must be zero or greater" }
         val output = mutableListOf<FileEntry>()
@@ -84,7 +86,7 @@ class FileManagementSystem(
         return output
     }
 
-    fun createDirectory(relativePath: String): FileEntry {
+    override fun createDirectory(relativePath: String): FileEntry {
         ensureOpen()
         val directory = resolve(relativePath)
         require(directory != root) { "Workspace root already exists" }
@@ -99,9 +101,12 @@ class FileManagementSystem(
         return describeEntry(directory)
     }
 
+    override fun readText(relativePath: String): TextFileSnapshot =
+        readText(relativePath, options.defaultReadBufferSize)
+
     fun readText(
         relativePath: String,
-        readBufferSize: Int = options.defaultReadBufferSize,
+        readBufferSize: Int,
     ): TextFileSnapshot {
         ensureOpen()
         require(readBufferSize > 0) { "readBufferSize must be greater than zero" }
@@ -165,7 +170,7 @@ class FileManagementSystem(
      * Save canonical UTF-8 text via temp-file + ATOMIC_MOVE. Malformed UTF-16
      * code units from callers are normalized to U+FFFD before encoding.
      */
-    fun writeText(relativePath: String, text: String): TextFileWriteResult {
+    override fun writeText(relativePath: String, text: String): TextFileWriteResult {
         ensureOpen()
         val normalizedPath = normalizeRelative(relativePath)
         val target = resolve(normalizedPath)
@@ -215,7 +220,7 @@ class FileManagementSystem(
         return TextFileWriteResult(normalizedPath, bytes.size.toLong(), persistedText, replacedCount)
     }
 
-    fun move(sourcePath: String, targetPath: String, replaceExisting: Boolean = false): FileEntry {
+    override fun move(sourcePath: String, targetPath: String, replaceExisting: Boolean): FileEntry {
         ensureOpen()
         val sourceName = normalizeRelative(sourcePath)
         val targetName = normalizeRelative(targetPath)
@@ -245,7 +250,7 @@ class FileManagementSystem(
         return describeEntry(target)
     }
 
-    fun delete(relativePath: String, recursive: Boolean = false) {
+    override fun delete(relativePath: String, recursive: Boolean) {
         ensureOpen()
         val normalizedPath = normalizeRelative(relativePath)
         val target = resolve(normalizedPath)
