@@ -268,6 +268,7 @@ class MainActivityUiTest {
 
         composeRule.waitUntil(timeoutMillis = 10_000) {
             Files.exists(workspace.resolve("app/restored/spec.docx")) &&
+                Files.exists(workspace.resolve("app/restored/build.gradle.kts")) &&
                 Files.exists(workspace.resolve("app/restored/src/Main.kt"))
         }
         assertArrayEquals(docxBytes, Files.readAllBytes(workspace.resolve("app/restored/spec.docx")))
