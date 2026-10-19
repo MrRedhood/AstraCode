@@ -1335,6 +1335,11 @@ private fun FileManagementScreen(
                             notify("The destination is the same as the original path.")
                             return@TextButton
                         }
+                        if (entry.type == FileEntryType.DIRECTORY &&
+                            destinationPath.startsWith(entry.path + "/")) {
+                            notify("A folder cannot be copied or moved into itself.")
+                            return@TextButton
+                        }
                         val linksSnapshot = syncLinks
                         scope.launch {
                             val operation = runCatchingCancellable {
