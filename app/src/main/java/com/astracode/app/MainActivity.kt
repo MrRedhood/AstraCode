@@ -1068,15 +1068,15 @@ private fun FileManagementScreen(
                         modifier = Modifier.fillMaxWidth().testTag("workspace-action-delete"),
                     ) { Text("Delete") }
                     TextButton(
-                        onClick = showOperationDialog(entry, "rename"),
+                        onClick = { showOperationDialog(entry, "rename") },
                         modifier = Modifier.fillMaxWidth().testTag("workspace-action-rename"),
                     ) { Text("Rename") }
                     TextButton(
-                        onClick = showOperationDialog(entry, "copy"),
+                        onClick = { showOperationDialog(entry, "copy") },
                         modifier = Modifier.fillMaxWidth().testTag("workspace-action-copy"),
                     ) { Text("Copy") }
                     TextButton(
-                        onClick = showOperationDialog(entry, "move"),
+                        onClick = { showOperationDialog(entry, "move") },
                         modifier = Modifier.fillMaxWidth().testTag("workspace-action-move"),
                     ) { Text("Move") }
                 }
