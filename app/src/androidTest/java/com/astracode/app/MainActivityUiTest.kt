@@ -17,6 +17,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.nio.file.Files
 import java.util.Comparator
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Rule
@@ -225,6 +226,58 @@ class MainActivityUiTest {
         val moved = workspace.resolve("folder/moved.txt")
         composeRule.waitUntil(timeoutMillis = 5_000) { Files.exists(moved) && !Files.exists(renamed) }
         assertEquals("original", String(Files.readAllBytes(moved), Charsets.UTF_8))
+    }
+
+    @Test
+    fun multiSelectCreatesAndExtractsZipWithoutChangingFileBytes() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workspace = context.filesDir.toPath().resolve("workspace")
+        Files.createDirectories(workspace.resolve("app/src"))
+        val docxBytes = byteArrayOf(0, 1, -1, -128, 12, 42)
+        Files.write(workspace.resolve("app/spec.docx"), docxBytes)
+        Files.write(workspace.resolve("app/build.gradle.kts"), "plugins {}\\n".toByteArray(Charsets.UTF_8))
+        Files.write(workspace.resolve("app/src/Main.kt"), "fun main() = Unit\\n".toByteArray(Charsets.UTF_8))
+        composeRule.activityRule.scenario.recreate()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("entry-app").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("entry-app").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("entry-build.gradle.kts").assertIsDisplayed() }.isSuccess
+        }
+
+        composeRule.onNodeWithTag("workspace-toggle-selection").performClick()
+        composeRule.onNodeWithTag("workspace-select-spec.docx").performClick()
+        composeRule.onNodeWithTag("workspace-select-src").performClick()
+        composeRule.onNodeWithTag("workspace-bulk-zip").performClick()
+        composeRule.onNodeWithTag("workspace-bulk-input").performTextReplacement("release.zip")
+        composeRule.onNodeWithTag("confirm-workspace-bulk-action").performClick()
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            Files.exists(workspace.resolve("app/release.zip"))
+        }
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("entry-release.zip").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("entry-release.zip").performTouchInput { longClick() }
+        composeRule.onNodeWithTag("workspace-action-extract").performClick()
+        composeRule.onNodeWithTag("workspace-operation-input").performTextReplacement("app/restored")
+        composeRule.onNodeWithTag("confirm-workspace-operation").performClick()
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            Files.exists(workspace.resolve("app/restored/spec.docx")) &&
+                Files.exists(workspace.resolve("app/restored/src/Main.kt"))
+        }
+        assertArrayEquals(docxBytes, Files.readAllBytes(workspace.resolve("app/restored/spec.docx")))
+        assertEquals("plugins {}\\n", String(Files.readAllBytes(workspace.resolve("app/restored/build.gradle.kts")), Charsets.UTF_8).let {
+            if (it.isEmpty()) it else it
+        }.ifEmpty { "unused" })
+        assertEquals(
+            "fun main() = Unit\\n",
+            String(Files.readAllBytes(workspace.resolve("app/restored/src/Main.kt")), Charsets.UTF_8),
+        )
+        assertEquals(false, Files.exists(workspace.resolve("app/restored/app")))
     }
 
 }
