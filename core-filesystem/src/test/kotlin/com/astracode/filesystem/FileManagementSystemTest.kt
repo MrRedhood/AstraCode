@@ -168,4 +168,19 @@ class FileManagementSystemTest {
             assertEquals(result.persistedText, fileSystem.readText("bad-surrogate.txt").text)
         }
     }
+
+    @Test
+    fun `binary byte operations preserve exact file contents`() {
+        FileManagementSystem(temporaryDirectory.resolve("workspace")).use { fileSystem ->
+            val original = byteArrayOf(0, 1, 2, 0x7f, 0x80.toByte(), 0xff.toByte(), 10, 13)
+            fileSystem.writeBytes("assets/raw.bin", original)
+            assertContentEquals(original, fileSystem.readBytes("assets/raw.bin"))
+
+            val replacement = byteArrayOf(0xff.toByte(), 0, 0x42, 0x10)
+            fileSystem.writeBytes("assets/raw.bin", replacement)
+            assertContentEquals(replacement, fileSystem.readBytes("assets/raw.bin"))
+        }
+    }
+
+
 }
