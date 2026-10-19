@@ -20,6 +20,16 @@ interface WorkspaceStorage : AutoCloseable {
     fun createDirectory(relativePath: String): FileEntry
     fun readText(relativePath: String): TextFileSnapshot
     fun writeText(relativePath: String, text: String): TextFileWriteResult
+
+    /** Read the exact bytes of a regular file without text decoding. */
+    fun readBytes(relativePath: String): ByteArray {
+        throw UnsupportedOperationException("Binary reads are not supported by this storage adapter.")
+    }
+
+    /** Write exact bytes to a regular file without text encoding. */
+    fun writeBytes(relativePath: String, bytes: ByteArray) {
+        throw UnsupportedOperationException("Binary writes are not supported by this storage adapter.")
+    }
     fun move(sourcePath: String, targetPath: String, replaceExisting: Boolean = false): FileEntry
     fun delete(relativePath: String, recursive: Boolean = false)
 
