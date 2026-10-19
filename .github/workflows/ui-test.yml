@@ -81,6 +81,8 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: 'platform-tools platforms;android-37 build-tools;36.0.0'
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6
@@ -90,7 +92,7 @@ jobs:
         env:
           UI_TEST_CLASSES: ${{ needs.detect.outputs.ui_classes }}
         with:
-          api-level: 35
+          api-level: 36
           target: google_apis
           arch: x86_64
           profile: pixel_6
