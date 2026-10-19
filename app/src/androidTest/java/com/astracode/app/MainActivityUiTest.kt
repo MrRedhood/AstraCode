@@ -87,6 +87,17 @@ class MainActivityUiTest {
     }
 
     @Test
+    fun savedFilesManagerOffersFilePickerAndPersistentBookmarkArea() {
+        composeRule.onNodeWithTag("manage-saved-documents-button").performClick()
+        composeRule.onNodeWithText("No files saved yet. Choose a file to add one.")
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag("choose-standalone-file-button").assertIsDisplayed()
+        composeRule.onNodeWithText(
+            "Files stay here until you remove them. Removing a bookmark only removes AstraCode's access; it does not delete the original file.",
+        ).assertIsDisplayed()
+    }
+
+    @Test
     fun workspaceManagerShowsPrivateWorkspaceAndAddFolderAction() {
         composeRule.onNodeWithContentDescription("Manage workspaces").performClick()
         composeRule.onNodeWithText("Saved workspaces").assertIsDisplayed()

@@ -1,8 +1,10 @@
 package com.astracode.app
 
+import android.content.Context
 import android.os.Bundle
 import android.content.Intent
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -18,6 +20,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -64,6 +67,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -77,6 +81,7 @@ import com.astracode.filesystem.FileEntryType
 import com.astracode.filesystem.FileManagementSystem
 import com.astracode.filesystem.WorkspaceStorage
 import com.astracode.filesystem.WorkspaceStorageType
+import com.astracode.filesystem.Utf8RepairDecoder
 import com.astracode.app.storage.SafWorkspaceStorage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -109,6 +114,9 @@ private val AstraColorScheme = darkColorScheme(
 private const val PRIVATE_WORKSPACE_ID = "private"
 private const val SAVED_WORKSPACES_KEY = "saved_workspace_uris"
 private const val ACTIVE_WORKSPACE_KEY = "active_workspace_id"
+private const val SAVED_DOCUMENTS_KEY = "saved_document_uris"
+private const val ACTIVE_DOCUMENT_KEY = "active_document_uri"
+private const val MAX_STANDALONE_DOCUMENT_BYTES = 8L * 1024L * 1024L
 
 private data class WorkspaceBookmark(
     val uri: Uri,
@@ -116,6 +124,19 @@ private data class WorkspaceBookmark(
 ) {
     val id: String get() = uri.toString()
 }
+
+private data class DocumentBookmark(
+    val uri: Uri,
+    val name: String,
+    val writable: Boolean,
+) {
+    val id: String get() = uri.toString()
+}
+
+private data class StandaloneDocumentContent(
+    val text: String,
+    val wasRepaired: Boolean,
+)
 
 class MainActivity : ComponentActivity() {
     private var activeStorage: WorkspaceStorage? = null
@@ -126,6 +147,12 @@ class MainActivity : ComponentActivity() {
         val savedUris = loadSavedWorkspaceUris(preferences)
         val legacyActiveUri = preferences.getString("tree_uri", null)
         val initialBookmarks = savedUris.map(::createWorkspaceBookmark)
+        val savedDocumentUris = loadSavedDocumentUris(preferences)
+        val initialDocumentBookmarks = savedDocumentUris.map(::createDocumentBookmark)
+        val initialActiveDocument = preferences.getString(ACTIVE_DOCUMENT_KEY, null)
+            ?.let { Uri.parse(it) }
+            ?.takeIf { candidate -> savedDocumentUris.contains(candidate) }
+            ?.let(::createDocumentBookmark)
         val requestedActiveId = preferences.getString(
             ACTIVE_WORKSPACE_KEY,
             legacyActiveUri ?: PRIVATE_WORKSPACE_ID,
@@ -162,7 +189,59 @@ class MainActivity : ComponentActivity() {
             var storage by remember { mutableStateOf(initialStorage) }
             var activeWorkspaceId by remember { mutableStateOf(resolvedActiveId) }
             var savedWorkspaceFolders by remember { mutableStateOf(initialBookmarks) }
+            var savedDocuments by remember { mutableStateOf(initialDocumentBookmarks) }
+            var activeDocument by remember { mutableStateOf(initialActiveDocument) }
             var workspaceNotice by remember { mutableStateOf(restoreNotice) }
+
+            fun selectDocument(bookmark: DocumentBookmark) {
+                activeDocument = bookmark
+                preferences.edit().putString(ACTIVE_DOCUMENT_KEY, bookmark.uri.toString()).apply()
+            }
+
+            fun closeActiveDocument() {
+                activeDocument = null
+                preferences.edit().remove(ACTIVE_DOCUMENT_KEY).apply()
+            }
+
+            fun removeSavedDocument(bookmark: DocumentBookmark) {
+                val remaining = savedDocuments.filterNot { it.id == bookmark.id }
+                savedDocuments = remaining
+                preferences.edit()
+                    .putString(SAVED_DOCUMENTS_KEY, encodeDocumentUris(remaining.map { it.uri }))
+                    .apply()
+                if (activeDocument?.id == bookmark.id) closeActiveDocument()
+                releasePersistedDocumentPermission(bookmark.uri)
+                workspaceNotice = "Removed " + bookmark.name +
+                    " from AstraCode. The original file was not deleted."
+            }
+
+            fun savePickedDocument(uri: Uri) {
+                val alreadySaved = savedDocuments.any { it.uri == uri }
+                val alreadyGranted = contentResolver.persistedUriPermissions.any { it.uri == uri }
+                runCatching {
+                    persistDocumentPermission(uri)
+                    val bookmark = createDocumentBookmark(uri)
+                    ensureSupportedTextDocument(uri, bookmark.name)
+                    bookmark
+                }.onSuccess { bookmark ->
+                    val updated = if (alreadySaved) {
+                        savedDocuments.map { if (it.uri == uri) bookmark else it }
+                    } else {
+                        savedDocuments + bookmark
+                    }
+                    savedDocuments = updated
+                    activeDocument = bookmark
+                    preferences.edit()
+                        .putString(SAVED_DOCUMENTS_KEY, encodeDocumentUris(updated.map { it.uri }))
+                        .putString(ACTIVE_DOCUMENT_KEY, bookmark.uri.toString())
+                        .apply()
+                    workspaceNotice = "Opened and saved " + bookmark.name
+                }.onFailure { error ->
+                    if (!alreadySaved && !alreadyGranted) releasePersistedDocumentPermission(uri)
+                    workspaceNotice = "Could not open file: " +
+                        (error.message ?: "permission denied")
+                }
+            }
 
             fun activatePrivateWorkspace() {
                 if (activeWorkspaceId == PRIVATE_WORKSPACE_ID) return
@@ -258,6 +337,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            val chooseDocument = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.OpenDocument(),
+            ) { uri ->
+                if (uri != null) savePickedDocument(uri)
+            }
+
             MaterialTheme(colorScheme = AstraColorScheme) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -267,8 +352,14 @@ class MainActivity : ComponentActivity() {
                         storage = storage,
                         activeWorkspaceId = activeWorkspaceId,
                         savedWorkspaceFolders = savedWorkspaceFolders,
+                        savedDocuments = savedDocuments,
+                        selectedDocument = activeDocument,
                         externalMessage = workspaceNotice,
                         onAddWorkspace = { chooseFolder.launch(null) },
+                        onOpenStandaloneFile = { chooseDocument.launch(arrayOf("*/*")) },
+                        onOpenSavedDocument = { bookmark -> selectDocument(bookmark) },
+                        onRemoveSavedDocument = { bookmark -> removeSavedDocument(bookmark) },
+                        onCloseStandaloneDocument = { closeActiveDocument() },
                         onSelectPrivateWorkspace = { activatePrivateWorkspace() },
                         onSelectSavedWorkspace = { bookmark -> activateSavedWorkspace(bookmark) },
                         onRemoveSavedWorkspace = { bookmark -> removeSavedWorkspace(bookmark) },
@@ -298,6 +389,80 @@ class MainActivity : ComponentActivity() {
         org.json.JSONArray().apply {
             uris.distinctBy { it.toString() }.forEach { put(it.toString()) }
         }.toString()
+
+    private fun loadSavedDocumentUris(preferences: android.content.SharedPreferences): List<Uri> {
+        val storedList = preferences.getString(SAVED_DOCUMENTS_KEY, null) ?: return emptyList()
+        return runCatching {
+            val json = org.json.JSONArray(storedList)
+            List(json.length()) { index -> Uri.parse(json.getString(index)) }
+        }.getOrDefault(emptyList()).distinctBy { it.toString() }
+    }
+
+    private fun encodeDocumentUris(uris: List<Uri>): String =
+        org.json.JSONArray().apply {
+            uris.distinctBy { it.toString() }.forEach { put(it.toString()) }
+        }.toString()
+
+    private fun createDocumentBookmark(uri: Uri): DocumentBookmark {
+        val displayName = runCatching {
+            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+        }.getOrNull()
+        val name = displayName
+            ?.takeIf { it.isNotBlank() }
+            ?: uri.lastPathSegment?.substringAfterLast(':')?.substringAfterLast('/')
+                ?.takeIf { it.isNotBlank() }
+            ?: "External file"
+        val grant = contentResolver.persistedUriPermissions.firstOrNull { it.uri == uri }
+        return DocumentBookmark(uri, name, writable = grant?.isWritePermission == true)
+    }
+
+    private fun ensureSupportedTextDocument(uri: Uri, fileName: String) {
+        val mimeType = contentResolver.getType(uri).orEmpty().lowercase()
+        val extension = fileName.substringAfterLast('.', "").lowercase()
+        val textExtensions = setOf(
+            "kt", "kts", "java", "xml", "json", "md", "txt", "gradle", "properties",
+            "html", "htm", "css", "js", "jsx", "ts", "tsx", "py", "sh", "bash",
+            "c", "h", "cc", "cpp", "hpp", "yml", "yaml", "toml", "ini", "cfg",
+            "conf", "sql", "rs", "go", "rb", "php", "dart", "swift", "log", "csv",
+            "env", "gitignore", "makefile",
+        )
+        val supportedMime = mimeType.startsWith("text/") ||
+            mimeType in setOf(
+                "application/json",
+                "application/xml",
+                "application/javascript",
+                "application/x-sh",
+                "application/yaml",
+                "application/x-yaml",
+            )
+        if (!supportedMime && extension !in textExtensions) {
+            throw java.io.IOException("AstraCode's editor currently supports text and source-code files only.")
+        }
+    }
+
+    private fun persistDocumentPermission(uri: Uri) {
+        try {
+            contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+            )
+        } catch (_: Exception) {
+            // A provider may expose a read-only document. Keep its read grant if available.
+            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+    }
+
+    private fun releasePersistedDocumentPermission(uri: Uri) {
+        val grant = contentResolver.persistedUriPermissions.firstOrNull { it.uri == uri } ?: return
+        var flags = 0
+        if (grant.isReadPermission) flags = flags or Intent.FLAG_GRANT_READ_URI_PERMISSION
+        if (grant.isWritePermission) flags = flags or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        if (flags != 0) {
+            runCatching { contentResolver.releasePersistableUriPermission(uri, flags) }
+        }
+    }
 
     private fun createWorkspaceBookmark(uri: Uri): WorkspaceBookmark {
         val providerName = runCatching {
@@ -331,18 +496,97 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private fun readStandaloneDocument(context: Context, uri: Uri): StandaloneDocumentContent {
+    val decoder = Utf8RepairDecoder()
+    val text = StringBuilder()
+    val buffer = ByteArray(16 * 1024)
+    var bytesRead = 0L
+    val input = context.contentResolver.openInputStream(uri)
+        ?: throw java.io.IOException("The document provider could not open this file for reading.")
+    input.use { stream ->
+        while (true) {
+            val count = stream.read(buffer)
+            if (count < 0) break
+            if (count == 0) continue
+            bytesRead += count
+            if (bytesRead > MAX_STANDALONE_DOCUMENT_BYTES) {
+                throw java.io.IOException("Files larger than 8 MB are not supported yet.")
+            }
+            text.append(decoder.decode(buffer, 0, count))
+        }
+        text.append(decoder.decode(ByteArray(0), endOfInput = true))
+    }
+    return StandaloneDocumentContent(
+        text = text.toString(),
+        wasRepaired = decoder.repairedSpans.isNotEmpty(),
+    )
+}
+
+private fun writeStandaloneDocument(context: Context, uri: Uri, text: String): String {
+    val (persistedText, _) = replaceUnpairedSurrogates(text)
+    val bytes = persistedText.toByteArray(Charsets.UTF_8)
+    if (bytes.size.toLong() > MAX_STANDALONE_DOCUMENT_BYTES) {
+        throw java.io.IOException("Files larger than 8 MB are not supported yet.")
+    }
+    val output = context.contentResolver.openOutputStream(uri, "wt")
+        ?: throw java.io.IOException("The document provider could not open this file for writing.")
+    output.use { stream ->
+        stream.write(bytes)
+        stream.flush()
+    }
+    return persistedText
+}
+
+private fun replaceUnpairedSurrogates(text: String): Pair<String, Int> {
+    var replacements = 0
+    val output = StringBuilder(text.length)
+    var index = 0
+    while (index < text.length) {
+        val current = text[index]
+        when {
+            Character.isHighSurrogate(current) -> {
+                if (index + 1 < text.length && Character.isLowSurrogate(text[index + 1])) {
+                    output.append(current).append(text[index + 1])
+                    index += 2
+                } else {
+                    output.append('\uFFFD')
+                    replacements++
+                    index++
+                }
+            }
+            Character.isLowSurrogate(current) -> {
+                output.append('\uFFFD')
+                replacements++
+                index++
+            }
+            else -> {
+                output.append(current)
+                index++
+            }
+        }
+    }
+    return output.toString() to replacements
+}
+
 @Composable
 private fun FileManagementScreen(
     storage: WorkspaceStorage,
     activeWorkspaceId: String,
     savedWorkspaceFolders: List<WorkspaceBookmark>,
+    savedDocuments: List<DocumentBookmark>,
+    selectedDocument: DocumentBookmark?,
     externalMessage: String?,
     onAddWorkspace: () -> Unit,
+    onOpenStandaloneFile: () -> Unit,
+    onOpenSavedDocument: (DocumentBookmark) -> Unit,
+    onRemoveSavedDocument: (DocumentBookmark) -> Unit,
+    onCloseStandaloneDocument: () -> Unit,
     onSelectPrivateWorkspace: () -> Unit,
     onSelectSavedWorkspace: (WorkspaceBookmark) -> Unit,
     onRemoveSavedWorkspace: (WorkspaceBookmark) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
 
     var currentDirectory by remember { mutableStateOf("") }
@@ -360,13 +604,14 @@ private fun FileManagementScreen(
     var showDiscardDialog by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var showWorkspaceManager by remember { mutableStateOf(false) }
+    var showSavedDocuments by remember { mutableStateOf(false) }
 
     fun notify(message: String) {
         scope.launch { snackbarHostState.showSnackbar(message) }
     }
 
     fun requestNavigation(action: () -> Unit) {
-        if (openedFile != null && editorText != savedText) {
+        if ((openedFile != null || selectedDocument != null) && editorText != savedText) {
             pendingNavigation = action
             showDiscardDialog = true
         } else {
@@ -397,8 +642,26 @@ private fun FileManagementScreen(
     }
 
     fun saveFile() {
-        val path = openedFile ?: return
         val content = editorText
+        val document = selectedDocument
+        if (document != null) {
+            scope.launch {
+                val result = runCatchingCancellable {
+                    withContext(Dispatchers.IO) {
+                        writeStandaloneDocument(context, document.uri, content)
+                    }
+                }
+                result.onSuccess { persistedText ->
+                    editorText = persistedText
+                    savedText = persistedText
+                    notify("Saved " + document.name)
+                }.onFailure { error ->
+                    notify("Could not save file: " + (error.message ?: "unknown error"))
+                }
+            }
+            return
+        }
+        val path = openedFile ?: return
         scope.launch {
             val result = runCatchingCancellable {
                 withContext(Dispatchers.IO) { storage.writeText(path, content) }
@@ -434,7 +697,7 @@ private fun FileManagementScreen(
         }
     }
 
-    LaunchedEffect(storage) {
+    LaunchedEffect(storage, selectedDocument) {
         currentDirectory = ""
         openedFile = null
         editorText = ""
@@ -443,6 +706,25 @@ private fun FileManagementScreen(
         pendingNavigation = null
         showDiscardDialog = false
         refreshKey++
+        if (selectedDocument != null) {
+            val result = runCatchingCancellable {
+                withContext(Dispatchers.IO) {
+                    readStandaloneDocument(context, selectedDocument.uri)
+                }
+            }
+            result.onSuccess { snapshot ->
+                editorText = snapshot.text
+                savedText = snapshot.text
+                statusMessage = if (snapshot.wasRepaired) {
+                    "Invalid UTF-8 was repaired while opening this file."
+                } else {
+                    null
+                }
+            }.onFailure { error ->
+                notify("Could not open file: " + (error.message ?: "unknown error"))
+                onCloseStandaloneDocument()
+            }
+        }
     }
 
     LaunchedEffect(externalMessage) {
@@ -468,11 +750,14 @@ private fun FileManagementScreen(
                 .background(Ink),
         ) {
             AppTopBar(
-                openedFile = openedFile,
-                dirty = openedFile != null && editorText != savedText,
+                openedFile = selectedDocument?.name ?: openedFile,
+                dirty = (openedFile != null || selectedDocument != null) && editorText != savedText,
+                canSave = selectedDocument?.writable != false,
                 onBack = {
                     requestNavigation {
-                        if (openedFile != null) {
+                        if (selectedDocument != null) {
+                            onCloseStandaloneDocument()
+                        } else if (openedFile != null) {
                             openedFile = null
                             editorText = ""
                             savedText = ""
@@ -486,9 +771,9 @@ private fun FileManagementScreen(
             )
             Divider(color = Border, thickness = 1.dp)
 
-            if (openedFile != null) {
+            if (openedFile != null || selectedDocument != null) {
                 EditorPanel(
-                    path = openedFile.orEmpty(),
+                    path = selectedDocument?.name ?: openedFile.orEmpty(),
                     text = editorText,
                     onTextChange = { editorText = it },
                     onSave = ::saveFile,
@@ -502,6 +787,8 @@ private fun FileManagementScreen(
                     savedWorkspaceFolders = savedWorkspaceFolders,
                     activeWorkspaceId = activeWorkspaceId,
                     onAddWorkspace = { requestNavigation(onAddWorkspace) },
+                    onOpenStandaloneFile = { requestNavigation(onOpenStandaloneFile) },
+                    onManageSavedDocuments = { showSavedDocuments = true },
                     onManageWorkspaces = { showWorkspaceManager = true },
                     onOpenEntry = { entry ->
                         when (entry.type) {
@@ -532,6 +819,22 @@ private fun FileManagementScreen(
                 )
             }
         }
+    }
+
+    if (showSavedDocuments) {
+        SavedDocumentsDialog(
+            savedDocuments = savedDocuments,
+            onDismiss = { showSavedDocuments = false },
+            onChooseFile = {
+                showSavedDocuments = false
+                requestNavigation(onOpenStandaloneFile)
+            },
+            onSelectDocument = { bookmark ->
+                showSavedDocuments = false
+                onOpenSavedDocument(bookmark)
+            },
+            onRemoveDocument = onRemoveSavedDocument,
+        )
     }
 
     if (showWorkspaceManager) {
@@ -687,6 +990,7 @@ private fun FileManagementScreen(
 private fun AppTopBar(
     openedFile: String?,
     dirty: Boolean,
+    canSave: Boolean = true,
     onBack: () -> Unit,
     onSave: () -> Unit,
 ) {
@@ -734,7 +1038,7 @@ private fun AppTopBar(
             Button(
                 onClick = onSave,
                 colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Ink),
-                enabled = dirty,
+                enabled = dirty && canSave,
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.testTag("save-file-button"),
             ) {
@@ -755,6 +1059,8 @@ private fun WorkspacePanel(
     savedWorkspaceFolders: List<WorkspaceBookmark>,
     activeWorkspaceId: String,
     onAddWorkspace: () -> Unit,
+    onOpenStandaloneFile: () -> Unit,
+    onManageSavedDocuments: () -> Unit,
     onManageWorkspaces: () -> Unit,
     onOpenEntry: (FileEntry) -> Unit,
     onNewFile: () -> Unit,
@@ -824,6 +1130,32 @@ private fun WorkspacePanel(
                 Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(4.dp))
                 Text("New file")
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 22.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedButton(
+                onClick = onOpenStandaloneFile,
+                modifier = Modifier.weight(1f).testTag("open-standalone-file-button"),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Icon(Icons.Filled.Description, contentDescription = null, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Open file")
+            }
+            OutlinedButton(
+                onClick = onManageSavedDocuments,
+                modifier = Modifier.weight(1f).testTag("manage-saved-documents-button"),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Icon(Icons.Filled.Folder, contentDescription = null, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Saved files")
             }
         }
 
@@ -993,6 +1325,109 @@ private fun WorkspaceManagerDialog(
                 Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(17.dp))
                 Spacer(Modifier.width(6.dp))
                 Text("Add folder")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Done") }
+        },
+    )
+}
+
+@Composable
+private fun SavedDocumentsDialog(
+    savedDocuments: List<DocumentBookmark>,
+    onDismiss: () -> Unit,
+    onChooseFile: () -> Unit,
+    onSelectDocument: (DocumentBookmark) -> Unit,
+    onRemoveDocument: (DocumentBookmark) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Saved files") },
+        text = {
+            Column {
+                Text(
+                    "Files stay here until you remove them. Removing a bookmark only removes AstraCode's access; it does not delete the original file.",
+                    color = MutedText,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
+                )
+                Spacer(Modifier.height(12.dp))
+                if (savedDocuments.isEmpty()) {
+                    Text(
+                        "No files saved yet. Choose a file to add one.",
+                        color = MutedText,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(vertical = 18.dp),
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 280.dp),
+                    ) {
+                        items(savedDocuments, key = { it.id }) { bookmark ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { onSelectDocument(bookmark) }
+                                        .padding(vertical = 8.dp, horizontal = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Description,
+                                        contentDescription = null,
+                                        tint = Color(0xFFB9C6FF),
+                                        modifier = Modifier.size(25.dp),
+                                    )
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            bookmark.name,
+                                            color = PrimaryText,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        Text(
+                                            if (bookmark.writable) "Saved file" else "Read-only access",
+                                            color = MutedText,
+                                            fontSize = 12.sp,
+                                        )
+                                    }
+                                }
+                                IconButton(
+                                    onClick = { onRemoveDocument(bookmark) },
+                                    modifier = Modifier.testTag("remove-document-" + bookmark.uri.hashCode()),
+                                ) {
+                                    Icon(
+                                        Icons.Filled.DeleteOutline,
+                                        contentDescription = "Remove " + bookmark.name,
+                                        tint = Danger,
+                                    )
+                                }
+                            }
+                            Divider(color = Border)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onChooseFile,
+                colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Ink),
+                modifier = Modifier.testTag("choose-standalone-file-button"),
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Choose file")
             }
         },
         dismissButton = {
