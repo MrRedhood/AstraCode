@@ -119,6 +119,7 @@ class MainActivity : ComponentActivity() {
             try {
                 SafWorkspaceStorage(applicationContext, Uri.parse(savedTreeUri))
             } catch (_: Exception) {
+                releasePersistedTreePermission(Uri.parse(savedTreeUri))
                 preferences.edit().remove("tree_uri").apply()
                 restoreNotice = "The saved external folder is no longer accessible. Choose it again."
                 createPrivateWorkspace()
@@ -144,6 +145,9 @@ class MainActivity : ComponentActivity() {
                         val previous = storage
                         storage = nextStorage
                         activeStorage = nextStorage
+                        if (previous is SafWorkspaceStorage && previous.treeUri != uri) {
+                            releasePersistedTreePermission(previous.treeUri)
+                        }
                         previous.close()
                         preferences.edit()
                             .putString("tree_uri", uri.toString())
@@ -169,6 +173,9 @@ class MainActivity : ComponentActivity() {
                             val previous = storage
                             storage = nextStorage
                             activeStorage = nextStorage
+                            if (previous is SafWorkspaceStorage) {
+                                releasePersistedTreePermission(previous.treeUri)
+                            }
                             previous.close()
                             preferences.edit().remove("tree_uri").apply()
                             workspaceNotice = "Using the private workspace."
@@ -176,6 +183,16 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
+        }
+    }
+
+    private fun releasePersistedTreePermission(uri: Uri) {
+        val grant = contentResolver.persistedUriPermissions.firstOrNull { it.uri == uri } ?: return
+        var flags = 0
+        if (grant.isReadPermission) flags = flags or Intent.FLAG_GRANT_READ_URI_PERMISSION
+        if (grant.isWritePermission) flags = flags or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        if (flags != 0) {
+            runCatching { contentResolver.releasePersistableUriPermission(uri, flags) }
         }
     }
 

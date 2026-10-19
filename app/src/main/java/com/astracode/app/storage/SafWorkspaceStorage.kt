@@ -29,7 +29,7 @@ import java.util.concurrent.CopyOnWriteArrayList
  */
 class SafWorkspaceStorage(
     context: Context,
-    treeUri: Uri,
+    val treeUri: Uri,
     private val options: FileSystemOptions = FileSystemOptions(),
 ) : WorkspaceStorage {
     private val appContext = context.applicationContext
