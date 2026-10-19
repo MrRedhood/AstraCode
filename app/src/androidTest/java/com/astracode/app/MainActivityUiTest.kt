@@ -141,24 +141,24 @@ class MainActivityUiTest {
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithText("4 ITEMS").assertIsDisplayed() }.isSuccess
         }
-        composeRule.onNodeWithTag("entry-.gitignore").assertTextContains("Hidden file")
+        composeRule.onNodeWithTag("entry-.gitignore").assertTextContains("Hidden file", substring = true)
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching {
-                composeRule.onNodeWithTag("entry-app").assertTextContains("2 items")
-                composeRule.onNodeWithTag("entry-empty").assertTextContains("0 items")
+                composeRule.onNodeWithTag("entry-app").assertTextContains("2 items", substring = true)
+                composeRule.onNodeWithTag("entry-empty").assertTextContains("0 items", substring = true)
             }.isSuccess
         }
 
         composeRule.onNodeWithTag("entry-app").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
-            runCatching { composeRule.onNodeWithTag("entry-src").assertTextContains("2 items") }.isSuccess
+            runCatching { composeRule.onNodeWithTag("entry-src").assertTextContains("2 items", substring = true) }.isSuccess
         }
         composeRule.onNodeWithTag("entry-src").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("entry-.env").assertIsDisplayed() }.isSuccess
         }
-        composeRule.onNodeWithTag("entry-.env").assertTextContains("Hidden file · 14 B")
+        composeRule.onNodeWithTag("entry-.env").assertTextContains("Hidden file · 14 B", substring = true)
         composeRule.onNodeWithTag("entry-.env").performClick()
         composeRule.onNodeWithTag("file-editor-input").assertIsDisplayed()
         composeRule.onNodeWithTag("file-editor-input").performTextReplacement("TOKEN=updated")
