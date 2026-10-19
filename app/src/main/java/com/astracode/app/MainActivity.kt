@@ -300,8 +300,14 @@ class MainActivity : ComponentActivity() {
                 preferences.edit()
                     .putString(SAVED_WORKSPACES_KEY, encodeWorkspaceUris(remaining.map { it.uri }))
                     .apply()
-                releasePersistedTreePermission(bookmark.uri)
-                workspaceNotice = "Removed " + bookmark.name + " from AstraCode. Its files were not deleted."
+                val isStillSynced = loadWorkspaceSyncLinks(applicationContext)
+                    .any { it.externalTreeUri == bookmark.id }
+                if (!isStillSynced) releasePersistedTreePermission(bookmark.uri)
+                workspaceNotice = if (isStillSynced) {
+                    "Removed " + bookmark.name + " from the workspace list. Sync links keep access to its original files."
+                } else {
+                    "Removed " + bookmark.name + " from AstraCode. Its files were not deleted."
+                }
             }
 
             val chooseFolder = rememberLauncherForActivityResult(
