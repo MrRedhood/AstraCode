@@ -728,6 +728,14 @@ private fun FileManagementScreen(
                         "Saved " + fileName(path)
                     },
                 )
+                scope.launch {
+                    val synced = runCatchingCancellable { propagateChangedPath(path) }
+                    synced.onSuccess { updatedLinks -> syncLinks = updatedLinks }
+                        .onFailure { error ->
+                            notify("Saved locally, but a synced copy could not be updated: " +
+                                (error.message ?: "unknown error"))
+                        }
+                }
             }.onFailure { error ->
                 notify("Could not save file: " + (error.message ?: "unknown error"))
             }
