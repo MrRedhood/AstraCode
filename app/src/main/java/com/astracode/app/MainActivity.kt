@@ -87,6 +87,7 @@ import com.astracode.filesystem.WorkspaceStorage
 import com.astracode.filesystem.WorkspaceStorageType
 import com.astracode.filesystem.Utf8RepairDecoder
 import com.astracode.app.storage.SafWorkspaceStorage
+import com.astracode.app.storage.WorkspaceArchive
 import com.astracode.app.storage.WorkspaceSyncLink
 import com.astracode.app.storage.loadWorkspaceSyncLinks
 import com.astracode.app.storage.mapBetweenWorkspacePaths
@@ -2488,8 +2489,7 @@ private fun isSimpleName(value: String): Boolean =
 
 private fun isSafeWorkspaceRelativePath(value: String, allowEmpty: Boolean): Boolean {
     if (value.isEmpty()) return allowEmpty
-    if (value.startsWith("/") || value.contains('\\') || value.none { it != '\u0000' }) return false
-    if (value.indexOf('\u0000') >= 0) return false
+    if (value.startsWith("/") || value.contains('\\') || value.indexOf('\u0000') >= 0) return false
     return value.split('/').none { it.isBlank() || it == "." || it == ".." }
 }
 
