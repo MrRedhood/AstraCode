@@ -276,9 +276,6 @@ class SafWorkspaceStorage(
         val sourceParent = source.parentFile
             ?: throw IOException("The workspace root cannot be moved.")
 
-        if (sourceParent.uri != targetParent.uri) {
-            throw IOException("This storage provider adapter currently supports rename within the same folder only.")
-        }
         val target = targetParent.findFile(targetName)
         if (target != null && target.uri != source.uri) {
             if (!replaceExisting) throw IOException("Target already exists: $targetPath")
@@ -287,13 +284,34 @@ class SafWorkspaceStorage(
                     "the existing target was left untouched: $targetPath",
             )
         }
-        if (!source.renameTo(targetName)) {
-            throw IOException("The storage provider does not support renaming '$sourceName'.")
+        if (source.isDirectory && (targetParts.joinToString("/") == sourceName ||
+                targetParts.joinToString("/").startsWith(sourceName + "/"))) {
+            throw IOException("A folder cannot be moved inside itself.")
         }
-        val renamed = targetParent.findFile(targetName)
-            ?: throw IOException("The renamed document could not be found.")
-        publish(FileChangeEvent(FileChangeType.MOVED, targetParts.joinToString("/"), sourceName))
-        return describe(renamed, targetParts.joinToString("/"))
+
+        val canonicalTargetPath = targetParts.joinToString("/")
+        if (sourceParent.uri == targetParent.uri) {
+            if (!source.renameTo(targetName)) {
+                throw IOException("The storage provider does not support renaming '$sourceName'.")
+            }
+            val renamed = targetParent.findFile(targetName)
+                ?: throw IOException("The renamed document could not be found.")
+            publish(FileChangeEvent(FileChangeType.MOVED, canonicalTargetPath, sourceName))
+            return describe(renamed, canonicalTargetPath)
+        }
+
+        // Some document providers cannot move between folders. Copy the complete
+        // tree first, then remove the source only after the copy fully succeeds.
+        syncWorkspaceEntry(this, sourceName, this, canonicalTargetPath, overwriteExisting = false)
+        try {
+            delete(sourceName, recursive = true)
+        } catch (error: Exception) {
+            runCatching { delete(canonicalTargetPath, recursive = true) }
+            throw IOException("The item was copied but the original could not be removed; the copy was rolled back when possible.", error)
+        }
+        val moved = resolve(canonicalTargetPath)
+        publish(FileChangeEvent(FileChangeType.MOVED, canonicalTargetPath, sourceName))
+        return describe(moved, canonicalTargetPath)
     }
 
     override fun delete(relativePath: String, recursive: Boolean) {
