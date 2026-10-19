@@ -1192,8 +1192,7 @@ private fun FileManagementScreen(
                                     syncLinks = updatedLinks
                                     syncEntry = null
                                     refreshKey++
-                                    notify(if (usePrivateActive) "Synced app copy to external storage."
-                                        else "Synced external storage to app copy.")
+                                    notify("Synced app copy to external storage.")
                                 }.onFailure { error ->
                                     notify("Sync failed: " + (error.message ?: "unknown error"))
                                 }
@@ -1242,7 +1241,7 @@ private fun FileManagementScreen(
                                             else SafWorkspaceStorage(context, Uri.parse(externalUri))
                                         try {
                                             syncWorkspaceEntry(
-                                                sourceStorage = if (usePrivateActive) externalStorage else externalStorage,
+                                                sourceStorage = externalStorage,
                                                 sourcePath = externalPath,
                                                 targetStorage = privateStorage,
                                                 targetPath = privatePath,
