@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.nio.file.Files
@@ -121,5 +122,56 @@ class MainActivityUiTest {
     fun emptyWorkspaceExplainsHowToCreateAFile() {
         composeRule.onNodeWithText("A clean workspace.").assertIsDisplayed()
         composeRule.onNodeWithText("Create your first file").assertIsDisplayed()
+        composeRule.onNodeWithText("0 ITEMS").assertIsDisplayed()
+    }
+
+    @Test
+    fun folderRowsShowDirectChildCountsAndHiddenFilesCanBeEdited() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workspace = context.filesDir.toPath().resolve("workspace")
+        Files.createDirectories(workspace.resolve("app/src"))
+        Files.createDirectories(workspace.resolve("empty"))
+        Files.writeString(workspace.resolve(".gitignore"), "build/\n")
+        Files.writeString(workspace.resolve("README.txt"), "Workspace fixture\n")
+        Files.writeString(workspace.resolve("app/build.gradle.kts"), "plugins {}\n")
+        Files.writeString(workspace.resolve("app/src/Main.kt"), "fun main() = Unit\n")
+        Files.writeString(workspace.resolve("app/src/.env"), "TOKEN=original")
+
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithText("4 ITEMS").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("entry-.gitignore").assertTextContains("Hidden file")
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("entry-app").assertTextContains("2 items")
+                composeRule.onNodeWithTag("entry-empty").assertTextContains("0 items")
+            }.isSuccess
+        }
+
+        composeRule.onNodeWithTag("entry-app").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("entry-src").assertTextContains("2 items") }.isSuccess
+        }
+        composeRule.onNodeWithTag("entry-src").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("entry-.env").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("entry-.env").assertTextContains("Hidden file · 14 B")
+        composeRule.onNodeWithTag("entry-.env").performClick()
+        composeRule.onNodeWithTag("file-editor-input").assertIsDisplayed()
+        composeRule.onNodeWithTag("file-editor-input").performTextReplacement("TOKEN=updated")
+        composeRule.onNodeWithTag("save-file-button").performClick()
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                workspace.resolve("app/src/.env").toFile().readText() == "TOKEN=updated"
+            }.getOrDefault(false)
+        }
+        org.junit.Assert.assertEquals(
+            "TOKEN=updated",
+            workspace.resolve("app/src/.env").toFile().readText(),
+        )
     }
 }

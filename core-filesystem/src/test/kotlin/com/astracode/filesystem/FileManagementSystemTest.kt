@@ -42,6 +42,33 @@ class FileManagementSystemTest {
     }
 
     @Test
+    fun `directory listings include dotfiles and count direct files and folders`() {
+        val workspace = temporaryDirectory.resolve("workspace")
+        Files.createDirectories(workspace.resolve("app/src"))
+        Files.createDirectories(workspace.resolve("empty"))
+        Files.writeString(workspace.resolve(".gitignore"), "build/")
+        Files.writeString(workspace.resolve("README.txt"), "readme")
+        Files.writeString(workspace.resolve("app/build.gradle.kts"), "plugins {}")
+        Files.writeString(workspace.resolve("app/src/Main.kt"), "fun main() = Unit")
+        Files.writeString(workspace.resolve("app/src/.env"), "TOKEN=original")
+
+        FileManagementSystem(workspace).use { fileSystem ->
+            assertEquals(
+                setOf(".gitignore", "README.txt", "app", "empty"),
+                fileSystem.listDirectory().map { it.name }.toSet(),
+            )
+            assertEquals(4, fileSystem.listDirectory().size)
+            assertEquals(2, fileSystem.listDirectory("app").size)
+            assertEquals(2, fileSystem.listDirectory("app/src").size)
+            assertEquals(0, fileSystem.listDirectory("empty").size)
+            assertEquals("TOKEN=original", fileSystem.readText("app/src/.env").text)
+
+            fileSystem.writeText("app/src/.env", "TOKEN=updated")
+            assertEquals("TOKEN=updated", fileSystem.readText("app/src/.env").text)
+        }
+    }
+
+    @Test
     fun `malformed UTF8 is repaired then saved as canonical UTF8`() {
         val workspace = temporaryDirectory.resolve("workspace")
         Files.createDirectories(workspace)

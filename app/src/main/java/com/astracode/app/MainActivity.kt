@@ -595,6 +595,7 @@ private fun FileManagementScreen(
     var editorText by remember { mutableStateOf("") }
     var savedText by remember { mutableStateOf("") }
     var entries by remember { mutableStateOf<List<FileEntry>>(emptyList()) }
+    var folderCounts by remember { mutableStateOf<Map<String, Int?>>(emptyMap()) }
     var refreshKey by remember { mutableStateOf(0) }
     var newFileName by remember { mutableStateOf("") }
     var newFolderName by remember { mutableStateOf("") }
@@ -689,12 +690,36 @@ private fun FileManagementScreen(
 
     LaunchedEffect(storage, currentDirectory, refreshKey) {
         try {
-            entries = withContext(Dispatchers.IO) { storage.listDirectory(currentDirectory) }
+            val listedEntries = withContext(Dispatchers.IO) {
+                storage.listDirectory(currentDirectory)
+            }
+            entries = listedEntries
+            folderCounts = emptyMap()
+
+            // Count only direct children for each visible folder. Each folder gets its own
+            // count when opened; we do not recursively scan the entire project on redraw.
+            folderCounts = withContext(Dispatchers.IO) {
+                listedEntries.asSequence()
+                    .filter { it.type == FileEntryType.DIRECTORY }
+                    .associate { folder ->
+                        val count = try {
+                            storage.listDirectory(folder.path).size
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            // Some external providers may expose a folder but not allow it to be listed.
+                            null
+                        }
+                        folder.path to count
+                    }
+            }
         } catch (cancelled: CancellationException) {
             // A folder change or a disposed screen cancels this load by design.
             // Cancellation is control flow, not a folder-loading failure.
             throw cancelled
         } catch (error: Exception) {
+            entries = emptyList()
+            folderCounts = emptyMap()
             snackbarHostState.showSnackbar(
                 "Could not load folder: " + (error.message ?: "unknown error"),
             )
@@ -707,6 +732,7 @@ private fun FileManagementScreen(
         editorText = ""
         savedText = ""
         entries = emptyList()
+        folderCounts = emptyMap()
         pendingNavigation = null
         showDiscardDialog = false
         standaloneDocumentLoading = selectedDocument != null
@@ -797,6 +823,7 @@ private fun FileManagementScreen(
                     rootName = storage.displayName,
                     storageType = storage.storageType,
                     entries = entries,
+                    folderCounts = folderCounts,
                     savedWorkspaceFolders = savedWorkspaceFolders,
                     activeWorkspaceId = activeWorkspaceId,
                     onAddWorkspace = { requestNavigation(onAddWorkspace) },
@@ -1069,6 +1096,7 @@ private fun WorkspacePanel(
     rootName: String,
     storageType: WorkspaceStorageType,
     entries: List<FileEntry>,
+    folderCounts: Map<String, Int?>,
     savedWorkspaceFolders: List<WorkspaceBookmark>,
     activeWorkspaceId: String,
     onAddWorkspace: () -> Unit,
@@ -1199,24 +1227,30 @@ private fun WorkspacePanel(
         }
 
         Divider(color = Border, thickness = 1.dp)
+        Text(
+            entries.size.toString() + if (entries.size == 1) " ITEM" else " ITEMS",
+            color = MutedText,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.4.sp,
+            modifier = Modifier.padding(start = 22.dp, top = 18.dp, bottom = 10.dp),
+        )
         if (entries.isEmpty()) {
             EmptyWorkspace(onCreateFile = onNewFile)
         } else {
-            Text(
-                entries.size.toString() + if (entries.size == 1) " ITEM" else " ITEMS",
-                color = MutedText,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.4.sp,
-                modifier = Modifier.padding(start = 22.dp, top = 18.dp, bottom = 10.dp),
-            )
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(7.dp),
             ) {
                 items(entries, key = { it.path }) { entry ->
-                    FileEntryRow(entry = entry, onClick = { onOpenEntry(entry) }, onDelete = { onDelete(entry.path) })
+                    FileEntryRow(
+                        entry = entry,
+                        folderCount = folderCounts[entry.path],
+                        folderCountLoaded = folderCounts.containsKey(entry.path),
+                        onClick = { onOpenEntry(entry) },
+                        onDelete = { onDelete(entry.path) },
+                    )
                 }
             }
         }
@@ -1489,6 +1523,8 @@ private fun EmptyWorkspace(onCreateFile: () -> Unit) {
 @Composable
 private fun FileEntryRow(
     entry: FileEntry,
+    folderCount: Int?,
+    folderCountLoaded: Boolean,
     onClick: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -1532,8 +1568,27 @@ private fun FileEntryRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                val detail = when {
+                    isDirectory -> when {
+                        !folderCountLoaded -> "Counting items…"
+                        folderCount == null -> "Count unavailable"
+                        else -> {
+                            val countLabel = folderCount.toString() +
+                                if (folderCount == 1) " item" else " items"
+                            if (entry.name.startsWith(".")) {
+                                "Hidden folder · " + countLabel
+                            } else {
+                                countLabel
+                            }
+                        }
+                    }
+                    entry.type == FileEntryType.FILE && entry.name.startsWith(".") ->
+                        "Hidden file · " + humanSize(entry.sizeBytes)
+                    entry.type == FileEntryType.FILE -> humanSize(entry.sizeBytes)
+                    else -> "Unsupported item"
+                }
                 Text(
-                    if (isDirectory) "Folder" else if (entry.type == FileEntryType.FILE) humanSize(entry.sizeBytes) else "Unsupported item",
+                    detail,
                     color = MutedText,
                     fontSize = 12.sp,
                 )
