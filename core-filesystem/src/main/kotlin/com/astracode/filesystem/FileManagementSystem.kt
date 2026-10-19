@@ -220,6 +220,64 @@ class FileManagementSystem(
         return TextFileWriteResult(normalizedPath, bytes.size.toLong(), persistedText, replacedCount)
     }
 
+    override fun readBytes(relativePath: String): ByteArray {
+        ensureOpen()
+        val path = normalizeRelative(relativePath)
+        val target = resolve(path)
+        if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)) {
+            throw IOException("Not a regular file: $path")
+        }
+        checkContainedAndNoSymlinks(target)
+        val size = Files.size(target)
+        if (size > options.maxFileBytes) {
+            throw FileTooLargeException(path, size, options.maxFileBytes)
+        }
+        val bytes = Files.readAllBytes(target)
+        if (bytes.size.toLong() > options.maxFileBytes) {
+            throw FileTooLargeException(path, bytes.size.toLong(), options.maxFileBytes)
+        }
+        return bytes
+    }
+
+    override fun writeBytes(relativePath: String, bytes: ByteArray) {
+        ensureOpen()
+        val path = normalizeRelative(relativePath)
+        val target = resolve(path)
+        require(target != root) { "A file path is required, not the workspace root" }
+        if (bytes.size.toLong() > options.maxFileBytes) {
+            throw FileTooLargeException(path, bytes.size.toLong(), options.maxFileBytes)
+        }
+        checkContainedAndNoSymlinks(target)
+        if (Files.exists(target, LinkOption.NOFOLLOW_LINKS) &&
+            !Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)
+        ) {
+            throw IOException("Cannot write bytes to a non-regular file: $path")
+        }
+        createSafeParents(target.parent)
+        checkContainedAndNoSymlinks(target)
+        val existed = Files.exists(target, LinkOption.NOFOLLOW_LINKS)
+        val parent = target.parent ?: throw IOException("Target has no parent: $path")
+        val temporary = Files.createTempFile(parent, ".astracode-copy-", ".tmp")
+        try {
+            FileChannel.open(temporary, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING).use { channel ->
+                val buffer = ByteBuffer.wrap(bytes)
+                while (buffer.hasRemaining()) channel.write(buffer)
+                channel.force(true)
+            }
+            checkContainedAndNoSymlinks(target)
+            try {
+                Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            } catch (unsupported: AtomicMoveNotSupportedException) {
+                throw AtomicFileOperationNotSupportedException(path, unsupported)
+            }
+        } finally {
+            Files.deleteIfExists(temporary)
+        }
+        checkContainedAndNoSymlinks(target)
+        textCache.remove(path)
+        publish(FileChangeEvent(if (existed) FileChangeType.MODIFIED else FileChangeType.CREATED, path))
+    }
+
     override fun move(sourcePath: String, targetPath: String, replaceExisting: Boolean): FileEntry {
         ensureOpen()
         val sourceName = normalizeRelative(sourcePath)
