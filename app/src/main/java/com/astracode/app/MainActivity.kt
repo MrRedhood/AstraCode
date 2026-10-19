@@ -9,7 +9,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -84,6 +86,12 @@ import com.astracode.filesystem.WorkspaceStorage
 import com.astracode.filesystem.WorkspaceStorageType
 import com.astracode.filesystem.Utf8RepairDecoder
 import com.astracode.app.storage.SafWorkspaceStorage
+import com.astracode.app.storage.WorkspaceSyncLink
+import com.astracode.app.storage.loadWorkspaceSyncLinks
+import com.astracode.app.storage.mapBetweenWorkspacePaths
+import com.astracode.app.storage.propagateWorkspaceChange
+import com.astracode.app.storage.saveWorkspaceSyncLinks
+import com.astracode.app.storage.syncWorkspaceEntry
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -602,6 +610,13 @@ private fun FileManagementScreen(
     var showNewFileDialog by remember { mutableStateOf(false) }
     var showNewFolderDialog by remember { mutableStateOf(false) }
     var pendingDeletePath by remember { mutableStateOf<String?>(null) }
+    var actionEntry by remember { mutableStateOf<FileEntry?>(null) }
+    var operationEntry by remember { mutableStateOf<FileEntry?>(null) }
+    var operationKind by remember { mutableStateOf<String?>(null) }
+    var operationInput by remember { mutableStateOf("") }
+    var syncEntry by remember { mutableStateOf<FileEntry?>(null) }
+    var syncExternalUri by remember { mutableStateOf("") }
+    var syncLinks by remember(context) { mutableStateOf(loadWorkspaceSyncLinks(context)) }
     var pendingNavigation by remember { mutableStateOf<(() -> Unit)?>(null) }
     var showDiscardDialog by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf<String?>(null) }
@@ -622,6 +637,37 @@ private fun FileManagementScreen(
         } else {
             action()
         }
+    }
+
+
+    suspend fun propagateChangedPath(
+        path: String,
+        deleted: Boolean = false,
+        movedTo: String? = null,
+    ): List<WorkspaceSyncLink> {
+        val currentLinks = syncLinks
+        return withContext(Dispatchers.IO) {
+            propagateWorkspaceChange(
+                context = context,
+                activeWorkspaceId = activeWorkspaceId,
+                activeStorage = storage,
+                links = currentLinks,
+                changedPath = path,
+                deleted = deleted,
+                movedTo = movedTo,
+            )
+        }
+    }
+
+    fun showOperationDialog(entry: FileEntry, kind: String) {
+        operationEntry = entry
+        operationKind = kind
+        operationInput = when (kind) {
+            "rename" -> entry.name
+            "copy" -> "copy-" + entry.name
+            else -> entry.path
+        }
+        actionEntry = null
     }
 
     fun openFile(path: String) {
