@@ -214,7 +214,10 @@ class SafWorkspaceStorage(
         val target = targetParent.findFile(targetName)
         if (target != null && target.uri != source.uri) {
             if (!replaceExisting) throw IOException("Target already exists: $targetPath")
-            if (!target.delete()) throw IOException("Could not replace target: $targetPath")
+            throw IOException(
+                "Safe replacement is not supported by this document provider; " +
+                    "the existing target was left untouched: $targetPath",
+            )
         }
         if (!source.renameTo(targetName)) {
             throw IOException("The storage provider does not support renaming '$sourceName'.")

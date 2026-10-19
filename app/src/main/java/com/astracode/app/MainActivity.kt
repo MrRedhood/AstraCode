@@ -154,6 +154,9 @@ class MainActivity : ComponentActivity() {
                             .apply()
                         workspaceNotice = "Opened " + nextStorage.displayName
                     }.onFailure { error ->
+                        if ((storage as? SafWorkspaceStorage)?.treeUri != uri) {
+                            releasePersistedTreePermission(uri)
+                        }
                         workspaceNotice = "Could not open folder: " + (error.message ?: "permission denied")
                     }
                 }
@@ -403,6 +406,7 @@ private fun FileManagementScreen(
             value = newFileName,
             testTag = "new-file-name-input",
             confirmLabel = "Create file",
+            confirmTestTag = "confirm-create-file",
             onValueChange = { newFileName = it },
             onDismiss = { showNewFileDialog = false },
             onConfirm = {
@@ -437,6 +441,7 @@ private fun FileManagementScreen(
             value = newFolderName,
             testTag = "new-folder-name-input",
             confirmLabel = "Create folder",
+            confirmTestTag = "confirm-create-folder",
             onValueChange = { newFolderName = it },
             onDismiss = { showNewFolderDialog = false },
             onConfirm = {
@@ -886,6 +891,7 @@ private fun NameEntryDialog(
     value: String,
     testTag: String,
     confirmLabel: String,
+    confirmTestTag: String,
     onValueChange: (String) -> Unit,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
@@ -910,7 +916,10 @@ private fun NameEntryDialog(
             )
         },
         confirmButton = {
-            TextButton(onClick = onConfirm) { Text(confirmLabel) }
+            TextButton(
+                onClick = onConfirm,
+                modifier = Modifier.testTag(confirmTestTag),
+            ) { Text(confirmLabel) }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }
