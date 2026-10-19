@@ -978,6 +978,14 @@ private fun FileManagementScreen(
                             editorText = ""
                             savedText = ""
                             refreshKey++
+                            scope.launch {
+                                val synced = runCatchingCancellable { propagateChangedPath(path) }
+                                synced.onSuccess { updatedLinks -> syncLinks = updatedLinks }
+                                    .onFailure { error ->
+                                        notify("Created the file, but its synced copy could not be updated: " +
+                                            (error.message ?: "unknown error"))
+                                    }
+                            }
                         }.onFailure { error ->
                             notify("Could not create file: " + (error.message ?: "unknown error"))
                         }
@@ -1011,6 +1019,14 @@ private fun FileManagementScreen(
                             showNewFolderDialog = false
                             refreshKey++
                             notify("Created folder " + name)
+                            scope.launch {
+                                val synced = runCatchingCancellable { propagateChangedPath(path) }
+                                synced.onSuccess { updatedLinks -> syncLinks = updatedLinks }
+                                    .onFailure { error ->
+                                        notify("Created the folder, but its synced copy could not be updated: " +
+                                            (error.message ?: "unknown error"))
+                                    }
+                            }
                         }.onFailure { error ->
                             notify("Could not create folder: " + (error.message ?: "unknown error"))
                         }
