@@ -396,7 +396,7 @@ private fun FileManagementScreen(
                     val path = joinPath(currentDirectory, name)
                     scope.launch {
                         val result = runCatching {
-                            withContext(Dispatchers.IO) { fileSystem.writeText(path, "") }
+                            withContext(Dispatchers.IO) { storage.writeText(path, "") }
                         }
                         result.onSuccess {
                             showNewFileDialog = false
