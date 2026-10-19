@@ -105,6 +105,7 @@ class MainActivityUiTest {
         composeRule.onNodeWithText("Add folder").assertIsDisplayed()
         composeRule.onNodeWithText(
             "Removing a folder only removes its access from AstraCode; it does not delete its files.",
+            substring = true,
         ).assertIsDisplayed()
     }
 
@@ -112,6 +113,8 @@ class MainActivityUiTest {
     fun workspacePickerAndPrivateWorkspaceEntryAreAvailable() {
         composeRule.onNodeWithContentDescription("Add workspace folder").assertIsDisplayed()
         composeRule.onNodeWithText("Private app workspace").assertIsDisplayed()
+        composeRule.onNodeWithTag("open-standalone-file-button").assertIsDisplayed()
+        composeRule.onNodeWithTag("manage-saved-documents-button").assertIsDisplayed()
     }
 
     @Test
