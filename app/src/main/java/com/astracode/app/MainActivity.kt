@@ -904,6 +904,22 @@ private fun FileManagementScreen(
                         showNewFolderDialog = true
                     },
                     onDelete = { path -> pendingDeletePath = path },
+                    onLongClick = { entry ->
+                        actionEntry = entry
+                        val linked = if (activeWorkspaceId == PRIVATE_WORKSPACE_ID) {
+                            syncLinks.filter {
+                                entry.path == it.privatePath || entry.path.startsWith(it.privatePath + "/")
+                            }.maxByOrNull { it.privatePath.length }
+                        } else {
+                            syncLinks.filter {
+                                it.externalTreeUri == activeWorkspaceId &&
+                                    (entry.path == it.externalPath || entry.path.startsWith(it.externalPath + "/"))
+                            }.maxByOrNull { it.externalPath.length }
+                        }
+                        syncExternalUri = linked?.externalTreeUri
+                            ?: if (activeWorkspaceId != PRIVATE_WORKSPACE_ID) activeWorkspaceId
+                            else savedWorkspaceFolders.firstOrNull()?.id.orEmpty()
+                    },
                     onGoUp = {
                         requestNavigation {
                             currentDirectory = parentPath(currentDirectory)
@@ -1186,6 +1202,7 @@ private fun WorkspacePanel(
     onNewFile: () -> Unit,
     onNewFolder: () -> Unit,
     onDelete: (String) -> Unit,
+    onLongClick: (FileEntry) -> Unit,
     onGoUp: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
@@ -1329,6 +1346,7 @@ private fun WorkspacePanel(
                         folderCountLoaded = folderCounts.containsKey(entry.path),
                         onClick = { onOpenEntry(entry) },
                         onDelete = { onDelete(entry.path) },
+                        onLongClick = { onLongClick(entry) },
                     )
                 }
             }
@@ -1600,19 +1618,21 @@ private fun EmptyWorkspace(onCreateFile: () -> Unit) {
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun FileEntryRow(
     entry: FileEntry,
     folderCount: Int?,
     folderCountLoaded: Boolean,
     onClick: () -> Unit,
     onDelete: () -> Unit,
+    onLongClick: () -> Unit,
 ) {
     val isDirectory = entry.type == FileEntryType.DIRECTORY
     val isSupported = isDirectory || entry.type == FileEntryType.FILE
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = isSupported, onClick = onClick)
+            .combinedClickable(enabled = isSupported, onClick = onClick, onLongClick = onLongClick)
             .testTag("entry-" + entry.name),
         shape = RoundedCornerShape(15.dp),
         colors = CardDefaults.cardColors(containerColor = Panel),
