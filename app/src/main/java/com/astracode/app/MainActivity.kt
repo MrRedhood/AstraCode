@@ -1052,6 +1052,338 @@ private fun FileManagementScreen(
         )
     }
 
+
+    actionEntry?.let { entry ->
+        AlertDialog(
+            onDismissRequest = { actionEntry = null },
+            title = { Text(entry.name + " options") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    TextButton(
+                        onClick = { syncEntry = entry; actionEntry = null },
+                        modifier = Modifier.fillMaxWidth().testTag("workspace-action-sync"),
+                    ) { Text("Sync") }
+                    TextButton(
+                        onClick = { pendingDeletePath = entry.path; actionEntry = null },
+                        modifier = Modifier.fillMaxWidth().testTag("workspace-action-delete"),
+                    ) { Text("Delete") }
+                    TextButton(
+                        onClick = showOperationDialog(entry, "rename"),
+                        modifier = Modifier.fillMaxWidth().testTag("workspace-action-rename"),
+                    ) { Text("Rename") }
+                    TextButton(
+                        onClick = showOperationDialog(entry, "copy"),
+                        modifier = Modifier.fillMaxWidth().testTag("workspace-action-copy"),
+                    ) { Text("Copy") }
+                    TextButton(
+                        onClick = showOperationDialog(entry, "move"),
+                        modifier = Modifier.fillMaxWidth().testTag("workspace-action-move"),
+                    ) { Text("Move") }
+                }
+            },
+            confirmButton = { TextButton(onClick = { actionEntry = null }) { Text("Cancel") } },
+        )
+    }
+
+    syncEntry?.let { entry ->
+        val externalUri = if (activeWorkspaceId == PRIVATE_WORKSPACE_ID) syncExternalUri else activeWorkspaceId
+        AlertDialog(
+            onDismissRequest = { syncEntry = null },
+            title = { Text("Sync " + entry.name) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (activeWorkspaceId == PRIVATE_WORKSPACE_ID) {
+                        Text("Choose an external folder, then choose which side should replace the other.")
+                        if (savedWorkspaceFolders.isEmpty()) {
+                            Text("Add an external folder before syncing.")
+                            TextButton(
+                                onClick = {
+                                    syncEntry = null
+                                    requestNavigation(onAddWorkspace)
+                                },
+                                modifier = Modifier.fillMaxWidth().testTag("sync-add-external-folder"),
+                            ) { Text("Add external folder") }
+                        } else {
+                            savedWorkspaceFolders.forEach { bookmark ->
+                                TextButton(
+                                    onClick = { syncExternalUri = bookmark.id },
+                                    modifier = Modifier.fillMaxWidth().testTag("sync-target-" + bookmark.name),
+                                ) {
+                                    Text((if (externalUri == bookmark.id) "✓ " else "") + bookmark.name)
+                                }
+                            }
+                        }
+                    } else {
+                        Text("External folder: " + storage.displayName)
+                    }
+                    Button(
+                        onClick = {
+                            val selectedEntry = syncEntry ?: return@Button
+                            if (externalUri.isBlank()) {
+                                notify("Choose or add an external folder first.")
+                                return@Button
+                            }
+                            val usePrivateActive = activeWorkspaceId == PRIVATE_WORKSPACE_ID
+                            val matching = if (usePrivateActive) {
+                                syncLinks.filter { it.externalTreeUri == externalUri }
+                                    .filter { selectedEntry.path == it.privatePath ||
+                                        selectedEntry.path.startsWith(it.privatePath + "/") }
+                                    .maxByOrNull { it.privatePath.length }
+                            } else {
+                                syncLinks.filter { it.externalTreeUri == externalUri }
+                                    .filter { selectedEntry.path == it.externalPath ||
+                                        selectedEntry.path.startsWith(it.externalPath + "/") }
+                                    .maxByOrNull { it.externalPath.length }
+                            }
+                            val privatePath = if (usePrivateActive) selectedEntry.path else {
+                                matching?.let {
+                                    mapBetweenWorkspacePaths(it.externalPath, it.privatePath, selectedEntry.path)
+                                } ?: selectedEntry.path
+                            }
+                            val externalPath = if (usePrivateActive) {
+                                matching?.let {
+                                    mapBetweenWorkspacePaths(it.privatePath, it.externalPath, selectedEntry.path)
+                                } ?: selectedEntry.path
+                            } else selectedEntry.path
+                            val linksSnapshot = syncLinks
+                            scope.launch {
+                                val result = runCatchingCancellable {
+                                    withContext(Dispatchers.IO) {
+                                        val temporaryPrivate = !usePrivateActive
+                                        val temporaryExternal = usePrivateActive
+                                        val privateStorage: WorkspaceStorage = if (usePrivateActive) storage
+                                            else FileManagementSystem(context.filesDir.toPath().resolve("workspace"))
+                                        val externalStorage: WorkspaceStorage = if (!usePrivateActive) storage
+                                            else SafWorkspaceStorage(context, Uri.parse(externalUri))
+                                        try {
+                                            syncWorkspaceEntry(
+                                                sourceStorage = if (usePrivateActive) privateStorage else externalStorage,
+                                                sourcePath = if (usePrivateActive) privatePath else externalPath,
+                                                targetStorage = if (usePrivateActive) externalStorage else privateStorage,
+                                                targetPath = if (usePrivateActive) externalPath else privatePath,
+                                                overwriteExisting = true,
+                                            )
+                                            val existingParent = linksSnapshot.any {
+                                                it.externalTreeUri == externalUri &&
+                                                    (privatePath == it.privatePath || privatePath.startsWith(it.privatePath + "/")) &&
+                                                    (externalPath == it.externalPath || externalPath.startsWith(it.externalPath + "/"))
+                                            }
+                                            val updatedLinks = if (existingParent) {
+                                                linksSnapshot
+                                            } else {
+                                                val rest = linksSnapshot.filterNot {
+                                                    it.externalTreeUri == externalUri &&
+                                                        (it.privatePath == privatePath ||
+                                                            it.privatePath.startsWith(privatePath + "/") ||
+                                                            it.externalPath == externalPath ||
+                                                            it.externalPath.startsWith(externalPath + "/"))
+                                                }
+                                                rest + WorkspaceSyncLink(privatePath, externalUri, externalPath)
+                                            }
+                                            saveWorkspaceSyncLinks(context, updatedLinks)
+                                            updatedLinks
+                                        } finally {
+                                            if (temporaryPrivate) privateStorage.close()
+                                            if (temporaryExternal) externalStorage.close()
+                                        }
+                                    }
+                                }
+                                result.onSuccess { updatedLinks ->
+                                    syncLinks = updatedLinks
+                                    syncEntry = null
+                                    refreshKey++
+                                    notify(if (usePrivateActive) "Synced app copy to external storage."
+                                        else "Synced external storage to app copy.")
+                                }.onFailure { error ->
+                                    notify("Sync failed: " + (error.message ?: "unknown error"))
+                                }
+                            }
+                        },
+                        enabled = externalUri.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth().testTag("sync-app-to-external"),
+                    ) { Text("App → external storage") }
+                    Button(
+                        onClick = {
+                            // The same pair of copies is used; the direction is shown explicitly.
+                            val selectedEntry = syncEntry ?: return@Button
+                            if (externalUri.isBlank()) {
+                                notify("Choose or add an external folder first.")
+                                return@Button
+                            }
+                            val usePrivateActive = activeWorkspaceId == PRIVATE_WORKSPACE_ID
+                            val matching = if (usePrivateActive) {
+                                syncLinks.filter { it.externalTreeUri == externalUri }
+                                    .filter { selectedEntry.path == it.privatePath ||
+                                        selectedEntry.path.startsWith(it.privatePath + "/") }
+                                    .maxByOrNull { it.privatePath.length }
+                            } else {
+                                syncLinks.filter { it.externalTreeUri == externalUri }
+                                    .filter { selectedEntry.path == it.externalPath ||
+                                        selectedEntry.path.startsWith(it.externalPath + "/") }
+                                    .maxByOrNull { it.externalPath.length }
+                            }
+                            val privatePath = if (usePrivateActive) selectedEntry.path else {
+                                matching?.let { mapBetweenWorkspacePaths(it.externalPath, it.privatePath, selectedEntry.path) }
+                                    ?: selectedEntry.path
+                            }
+                            val externalPath = if (usePrivateActive) {
+                                matching?.let { mapBetweenWorkspacePaths(it.privatePath, it.externalPath, selectedEntry.path) }
+                                    ?: selectedEntry.path
+                            } else selectedEntry.path
+                            val linksSnapshot = syncLinks
+                            scope.launch {
+                                val result = runCatchingCancellable {
+                                    withContext(Dispatchers.IO) {
+                                        val temporaryPrivate = !usePrivateActive
+                                        val temporaryExternal = usePrivateActive
+                                        val privateStorage: WorkspaceStorage = if (usePrivateActive) storage
+                                            else FileManagementSystem(context.filesDir.toPath().resolve("workspace"))
+                                        val externalStorage: WorkspaceStorage = if (!usePrivateActive) storage
+                                            else SafWorkspaceStorage(context, Uri.parse(externalUri))
+                                        try {
+                                            syncWorkspaceEntry(
+                                                sourceStorage = if (usePrivateActive) externalStorage else externalStorage,
+                                                sourcePath = externalPath,
+                                                targetStorage = privateStorage,
+                                                targetPath = privatePath,
+                                                overwriteExisting = true,
+                                            )
+                                            val existingParent = linksSnapshot.any {
+                                                it.externalTreeUri == externalUri &&
+                                                    (privatePath == it.privatePath || privatePath.startsWith(it.privatePath + "/")) &&
+                                                    (externalPath == it.externalPath || externalPath.startsWith(it.externalPath + "/"))
+                                            }
+                                            val updatedLinks = if (existingParent) linksSnapshot else {
+                                                val rest = linksSnapshot.filterNot {
+                                                    it.externalTreeUri == externalUri &&
+                                                        (it.privatePath == privatePath ||
+                                                            it.privatePath.startsWith(privatePath + "/") ||
+                                                            it.externalPath == externalPath ||
+                                                            it.externalPath.startsWith(externalPath + "/"))
+                                                }
+                                                rest + WorkspaceSyncLink(privatePath, externalUri, externalPath)
+                                            }
+                                            saveWorkspaceSyncLinks(context, updatedLinks)
+                                            updatedLinks
+                                        } finally {
+                                            if (temporaryPrivate) privateStorage.close()
+                                            if (temporaryExternal) externalStorage.close()
+                                        }
+                                    }
+                                }
+                                result.onSuccess { updatedLinks ->
+                                    syncLinks = updatedLinks
+                                    syncEntry = null
+                                    refreshKey++
+                                    notify("Synced external storage to app copy.")
+                                }.onFailure { error ->
+                                    notify("Sync failed: " + (error.message ?: "unknown error"))
+                                }
+                            }
+                        },
+                        enabled = externalUri.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth().testTag("sync-external-to-app"),
+                    ) { Text("External storage → app") }
+                }
+            },
+            confirmButton = { TextButton(onClick = { syncEntry = null }) { Text("Cancel") } },
+        )
+    }
+
+    operationEntry?.let { entry ->
+        val kind = operationKind.orEmpty()
+        AlertDialog(
+            onDismissRequest = { operationEntry = null; operationKind = null },
+            title = {
+                Text(when (kind) {
+                    "rename" -> "Rename " + entry.name
+                    "copy" -> "Copy " + entry.name
+                    else -> "Move " + entry.name
+                })
+            },
+            text = {
+                Column {
+                    Text(when (kind) {
+                        "rename" -> "Enter a new name for this item."
+                        "copy" -> "Enter a name for the copy in this folder."
+                        else -> "Enter a destination path relative to the workspace root."
+                    })
+                    OutlinedTextField(
+                        value = operationInput,
+                        onValueChange = { operationInput = it },
+                        label = { Text(if (kind == "move") "Destination path" else "Name") },
+                        modifier = Modifier.fillMaxWidth().testTag("workspace-operation-input"),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val raw = operationInput.trim()
+                        if (kind != "move" && !isSimpleName(raw)) {
+                            notify("Enter a valid name without folders or path segments.")
+                            return@TextButton
+                        }
+                        val destinationPath = if (kind == "move") raw else joinPath(parentPath(entry.path), raw)
+                        if (destinationPath.isBlank() || destinationPath.startsWith("/") ||
+                            destinationPath.contains('\\') ||
+                            destinationPath.split('/').any { it.isBlank() || it == "." || it == ".." }) {
+                            notify("Enter a valid workspace-relative destination path.")
+                            return@TextButton
+                        }
+                        if (destinationPath == entry.path) {
+                            notify("The destination is the same as the original path.")
+                            return@TextButton
+                        }
+                        val linksSnapshot = syncLinks
+                        scope.launch {
+                            val operation = runCatchingCancellable {
+                                withContext(Dispatchers.IO) {
+                                    if (kind == "copy") {
+                                        syncWorkspaceEntry(storage, entry.path, storage, destinationPath,
+                                            overwriteExisting = false)
+                                    } else {
+                                        storage.move(entry.path, destinationPath, replaceExisting = false)
+                                    }
+                                }
+                            }
+                            operation.onSuccess {
+                                operationEntry = null
+                                operationKind = null
+                                refreshKey++
+                                if (kind == "copy") {
+                                    notify("Copied " + entry.name)
+                                } else {
+                                    val synced = runCatchingCancellable {
+                                        withContext(Dispatchers.IO) {
+                                            propagateWorkspaceChange(
+                                                context, activeWorkspaceId, storage, linksSnapshot,
+                                                entry.path, deleted = false, movedTo = destinationPath,
+                                            )
+                                        }
+                                    }
+                                    synced.onSuccess { updatedLinks ->
+                                        syncLinks = updatedLinks
+                                        notify((if (kind == "rename") "Renamed " else "Moved ") + entry.name)
+                                    }.onFailure { error ->
+                                        notify("The item was moved, but the synced copy could not be updated: " +
+                                            (error.message ?: "unknown error"))
+                                    }
+                                }
+                            }.onFailure { error ->
+                                notify("Could not " + kind + " item: " + (error.message ?: "unknown error"))
+                            }
+                        }
+                    },
+                    modifier = Modifier.testTag("confirm-workspace-operation"),
+                ) { Text(when (kind) { "rename" -> "Rename"; "copy" -> "Copy"; else -> "Move" }) }
+            },
+            dismissButton = {
+                TextButton(onClick = { operationEntry = null; operationKind = null }) { Text("Cancel") }
+            },
+        )
+    }
+
     pendingDeletePath?.let { path ->
         AlertDialog(
             onDismissRequest = { pendingDeletePath = null },
