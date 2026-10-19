@@ -1,0 +1,118 @@
+name: UI Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect:
+    name: Find UI test classes
+    runs-on: ubuntu-24.04
+    outputs:
+      has_ui_tests: ${{ steps.scan.outputs.has_ui_tests }}
+      ui_classes: ${{ steps.scan.outputs.ui_classes }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - id: scan
+        name: Find classes ending with UiTest or UITest
+        shell: bash
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          from pathlib import Path
+          import re
+
+          app_has_build = Path("app/build.gradle.kts").is_file() or Path("app/build.gradle").is_file()
+          classes = set()
+          android_test_root = Path("app/src/androidTest")
+
+          if app_has_build and android_test_root.is_dir():
+              for source in android_test_root.rglob("*"):
+                  if not source.is_file() or source.suffix not in {".kt", ".java"}:
+                      continue
+                  if any(part in {".git", "build", ".gradle"} for part in source.parts):
+                      continue
+                  if not source.name.endswith(("UiTest.kt", "UITest.kt", "UiTest.java", "UITest.java")):
+                      continue
+
+                  content = source.read_text(encoding="utf-8")
+                  package_match = re.search(r"(?m)^\s*package\s+([A-Za-z_][\w.]*)", content)
+                  if not package_match:
+                      continue
+                  package_name = package_match.group(1)
+                  for class_name in re.findall(r"\b(?:class|object)\s+([A-Za-z_][A-Za-z0-9_]*)", content):
+                      if class_name.endswith(("UiTest", "UITest")):
+                          classes.add(f"{package_name}.{class_name}")
+
+          class_list = ",".join(sorted(classes))
+          print(f"has_ui_tests={'true' if class_list else 'false'}")
+          print(f"ui_classes={class_list}")
+          PY
+
+  ui-tests:
+    name: Run filtered UI tests on Android emulator
+    needs: detect
+    if: ${{ needs.detect.outputs.has_ui_tests == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6
+
+      - name: Run UI test classes only
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        env:
+          UI_TEST_CLASSES: ${{ needs.detect.outputs.ui_classes }}
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace "-Pandroid.testInstrumentationRunnerArguments.class=$UI_TEST_CLASSES"
+
+      - name: Upload UI test reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: ui-test-reports
+          path: |
+            app/build/outputs/androidTest-results/connected/**/*.xml
+            app/build/reports/androidTests/connected/**
+          if-no-files-found: ignore
+          retention-days: 14
+
+  skipped:
+    name: Explain why UI tests were skipped
+    needs: detect
+    if: ${{ needs.detect.outputs.has_ui_tests != 'true' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Report missing UI test suite
+        run: echo "::notice::UI tests were skipped because app/src/androidTest has no Kotlin/Java class ending in UiTest or UITest yet. Use that naming convention so this workflow can select UI tests without running the full instrumentation suite."
