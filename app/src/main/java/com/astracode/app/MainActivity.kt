@@ -1040,18 +1040,27 @@ private fun FileManagementScreen(
         AlertDialog(
             onDismissRequest = { pendingDeletePath = null },
             title = { Text("Delete " + fileName(path) + "?") },
-            text = { Text("This removes the item from the workspace. Non-empty folders cannot be deleted here.") },
+            text = { Text("This deletes the item from this workspace. A synced copy is deleted too; folders include all their contents.") },
             confirmButton = {
                 TextButton(
                     onClick = {
+                        val recursive = entries.firstOrNull { it.path == path }?.type == FileEntryType.DIRECTORY
                         scope.launch {
                             val result = runCatchingCancellable {
-                                withContext(Dispatchers.IO) { storage.delete(path) }
+                                withContext(Dispatchers.IO) { storage.delete(path, recursive = recursive) }
                             }
                             result.onSuccess {
                                 pendingDeletePath = null
                                 refreshKey++
                                 notify("Deleted " + fileName(path))
+                                scope.launch {
+                                    val synced = runCatchingCancellable { propagateChangedPath(path, deleted = true) }
+                                    synced.onSuccess { updatedLinks -> syncLinks = updatedLinks }
+                                        .onFailure { error ->
+                                            notify("Deleted locally, but the linked copy could not be updated: " +
+                                                (error.message ?: "unknown error"))
+                                        }
+                                }
                             }.onFailure { error ->
                                 pendingDeletePath = null
                                 notify("Could not delete item: " + (error.message ?: "unknown error"))
