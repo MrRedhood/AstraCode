@@ -306,7 +306,13 @@ class MainActivityUiTest {
         composeRule.onNodeWithTag("confirm-workspace-bulk-action").performClick()
 
         val archive = workspace.resolve("bundle.zip")
-        composeRule.waitUntil(timeoutMillis = 10_000) { Files.isRegularFile(archive) }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            Files.isRegularFile(archive) &&
+                runCatching {
+                    composeRule.onNodeWithTag("workspace-toggle-selection").assertTextContains("Select")
+                    composeRule.onNodeWithTag("entry-bundle.zip").assertIsDisplayed()
+                }.isSuccess
+        }
         composeRule.onNodeWithTag("entry-bundle.zip").performTouchInput { longClick() }
         composeRule.onNodeWithTag("workspace-action-extract").performClick()
         composeRule.onNodeWithTag("workspace-operation-input").performTextReplacement("restored")
