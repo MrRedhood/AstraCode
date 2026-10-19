@@ -249,6 +249,7 @@ class MainActivityUiTest {
 
         composeRule.onNodeWithTag("workspace-toggle-selection").performClick()
         composeRule.onNodeWithTag("workspace-select-spec.docx").performClick()
+        composeRule.onNodeWithTag("workspace-select-build.gradle.kts").performClick()
         composeRule.onNodeWithTag("workspace-select-src").performClick()
         composeRule.onNodeWithTag("workspace-bulk-zip").performClick()
         composeRule.onNodeWithTag("workspace-bulk-input").performTextReplacement("release.zip")
@@ -270,9 +271,10 @@ class MainActivityUiTest {
                 Files.exists(workspace.resolve("app/restored/src/Main.kt"))
         }
         assertArrayEquals(docxBytes, Files.readAllBytes(workspace.resolve("app/restored/spec.docx")))
-        assertEquals("plugins {}\\n", String(Files.readAllBytes(workspace.resolve("app/restored/build.gradle.kts")), Charsets.UTF_8).let {
-            if (it.isEmpty()) it else it
-        }.ifEmpty { "unused" })
+        assertEquals(
+            "plugins {}\\n",
+            String(Files.readAllBytes(workspace.resolve("app/restored/build.gradle.kts")), Charsets.UTF_8),
+        )
         assertEquals(
             "fun main() = Unit\\n",
             String(Files.readAllBytes(workspace.resolve("app/restored/src/Main.kt")), Charsets.UTF_8),
