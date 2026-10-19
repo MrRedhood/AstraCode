@@ -131,11 +131,11 @@ class MainActivityUiTest {
         val workspace = context.filesDir.toPath().resolve("workspace")
         Files.createDirectories(workspace.resolve("app/src"))
         Files.createDirectories(workspace.resolve("empty"))
-        Files.writeString(workspace.resolve(".gitignore"), "build/\n")
-        Files.writeString(workspace.resolve("README.txt"), "Workspace fixture\n")
-        Files.writeString(workspace.resolve("app/build.gradle.kts"), "plugins {}\n")
-        Files.writeString(workspace.resolve("app/src/Main.kt"), "fun main() = Unit\n")
-        Files.writeString(workspace.resolve("app/src/.env"), "TOKEN=original")
+        Files.write(workspace.resolve(".gitignore"), "build/\n".toByteArray(Charsets.UTF_8))
+        Files.write(workspace.resolve("README.txt"), "Workspace fixture\n".toByteArray(Charsets.UTF_8))
+        Files.write(workspace.resolve("app/build.gradle.kts"), "plugins {}\n".toByteArray(Charsets.UTF_8))
+        Files.write(workspace.resolve("app/src/Main.kt"), "fun main() = Unit\n".toByteArray(Charsets.UTF_8))
+        Files.write(workspace.resolve("app/src/.env"), "TOKEN=original".toByteArray(Charsets.UTF_8))
 
         composeRule.activityRule.scenario.recreate()
         composeRule.waitUntil(timeoutMillis = 5_000) {
