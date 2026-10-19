@@ -92,10 +92,10 @@ jobs:
         env:
           UI_TEST_CLASSES: ${{ needs.detect.outputs.ui_classes }}
         with:
-          api-level: 36
+          api-level: 30
           target: google_apis
           arch: x86_64
-          profile: pixel_6
+          profile: pixel_2
           disable-animations: true
           script: ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace "-Pandroid.testInstrumentationRunnerArguments.class=$UI_TEST_CLASSES"
 
