@@ -44,6 +44,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -605,6 +606,9 @@ private fun FileManagementScreen(
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var showWorkspaceManager by remember { mutableStateOf(false) }
     var showSavedDocuments by remember { mutableStateOf(false) }
+    var standaloneDocumentLoading by remember(selectedDocument?.id) {
+        mutableStateOf(selectedDocument != null)
+    }
 
     fun notify(message: String) {
         scope.launch { snackbarHostState.showSnackbar(message) }
@@ -705,6 +709,7 @@ private fun FileManagementScreen(
         entries = emptyList()
         pendingNavigation = null
         showDiscardDialog = false
+        standaloneDocumentLoading = selectedDocument != null
         refreshKey++
         if (selectedDocument != null) {
             val result = runCatchingCancellable {
@@ -715,12 +720,14 @@ private fun FileManagementScreen(
             result.onSuccess { snapshot ->
                 editorText = snapshot.text
                 savedText = snapshot.text
+                standaloneDocumentLoading = false
                 statusMessage = if (snapshot.wasRepaired) {
                     "Invalid UTF-8 was repaired while opening this file."
                 } else {
                     null
                 }
             }.onFailure { error ->
+                standaloneDocumentLoading = false
                 notify("Could not open file: " + (error.message ?: "unknown error"))
                 onCloseStandaloneDocument()
             }
@@ -751,8 +758,9 @@ private fun FileManagementScreen(
         ) {
             AppTopBar(
                 openedFile = selectedDocument?.name ?: openedFile,
-                dirty = (openedFile != null || selectedDocument != null) && editorText != savedText,
-                canSave = selectedDocument?.writable != false,
+                dirty = !standaloneDocumentLoading &&
+                    (openedFile != null || selectedDocument != null) && editorText != savedText,
+                canSave = !standaloneDocumentLoading && selectedDocument?.writable != false,
                 onBack = {
                     requestNavigation {
                         if (selectedDocument != null) {
@@ -772,12 +780,17 @@ private fun FileManagementScreen(
             Divider(color = Border, thickness = 1.dp)
 
             if (openedFile != null || selectedDocument != null) {
-                EditorPanel(
-                    path = selectedDocument?.name ?: openedFile.orEmpty(),
-                    text = editorText,
-                    onTextChange = { editorText = it },
-                    onSave = ::saveFile,
-                )
+                if (selectedDocument != null && standaloneDocumentLoading) {
+                    StandaloneDocumentLoadingPanel(selectedDocument.name)
+                } else {
+                    EditorPanel(
+                        path = selectedDocument?.name ?: openedFile.orEmpty(),
+                        text = editorText,
+                        readOnly = selectedDocument?.writable == false,
+                        onTextChange = { editorText = it },
+                        onSave = ::saveFile,
+                    )
+                }
             } else {
                 WorkspacePanel(
                     currentDirectory = currentDirectory,
@@ -1536,9 +1549,32 @@ private fun FileEntryRow(
 }
 
 @Composable
+private fun StandaloneDocumentLoadingPanel(name: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            CircularProgressIndicator(color = Mint)
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "Opening " + name,
+                color = PrimaryText,
+                fontSize = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
 private fun EditorPanel(
     path: String,
     text: String,
+    readOnly: Boolean = false,
     onTextChange: (String) -> Unit,
     onSave: () -> Unit,
 ) {
@@ -1560,12 +1596,13 @@ private fun EditorPanel(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text("EDITOR", color = Mint, fontSize = 11.sp, letterSpacing = 1.4.sp, fontWeight = FontWeight.Bold)
-            Text("UTF-8", color = MutedText, fontSize = 11.sp)
+            Text(if (readOnly) "READ ONLY" else "UTF-8", color = MutedText, fontSize = 11.sp)
         }
         Spacer(Modifier.height(10.dp))
         OutlinedTextField(
             value = text,
             onValueChange = onTextChange,
+            readOnly = readOnly,
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
