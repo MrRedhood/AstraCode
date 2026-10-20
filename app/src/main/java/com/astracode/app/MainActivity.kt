@@ -98,34 +98,59 @@ import com.astracode.app.storage.mapBetweenWorkspacePaths
 import com.astracode.app.storage.propagateWorkspaceChange
 import com.astracode.app.storage.saveWorkspaceSyncLinks
 import com.astracode.app.storage.syncWorkspaceEntry
+import com.astracode.ui.components.AstraCodeBottomNav
+import com.astracode.ui.components.CreateZipModal
+import com.astracode.ui.components.QuickInspectorSheet
+import com.astracode.ui.components.Screen
+import com.astracode.ui.models.AtelierDuplicateGroup
+import com.astracode.ui.models.AtelierFileItem
+import com.astracode.ui.models.AtelierPreview
+import com.astracode.ui.models.AtelierSearchResult
+import com.astracode.ui.models.AtelierStorageHealth
+import com.astracode.ui.models.AtelierTrashItem
+import com.astracode.ui.screens.FilesScreen
+import com.astracode.ui.screens.SafetyScreen
+import com.astracode.ui.screens.SearchScreen
+import com.astracode.ui.screens.TrashScreen
+import com.astracode.ui.theme.AstraCodeTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val Ink = Color(0xFF0B110F)
-private val Panel = Color(0xFF141C19)
-private val PanelRaised = Color(0xFF1B2621)
-private val Mint = Color(0xFFA6F2C7)
-private val PrimaryText = Color(0xFFEAF4ED)
-private val MutedText = Color(0xFF9AA99F)
-private val Border = Color(0xFF2C3A32)
-private val Danger = Color(0xFFFFB4AB)
+private val Ink = Color(0xFF101311)
+private val Panel = Color(0xFF1C211D)
+private val PanelRaised = Color(0xFF272D27)
+private val Mint = Color(0xFFC5A46D)
+private val PrimaryText = Color(0xFFE8E3D8)
+private val MutedText = Color(0xFFA7ADA4)
+private val Sage = Color(0xFF87948A)
+private val Border = Color(0xFF343B34)
+private val Danger = Color(0xFFD9857C)
+private val Warning = Color(0xFFE3B567)
 
 private val AstraColorScheme = darkColorScheme(
     primary = Mint,
     onPrimary = Ink,
-    secondary = Color(0xFFC8B7FF),
+    primaryContainer = Color(0xFF3B3020),
+    onPrimaryContainer = PrimaryText,
+    secondary = Sage,
+    onSecondary = Ink,
+    secondaryContainer = Color(0xFF283229),
+    onSecondaryContainer = PrimaryText,
+    tertiary = Warning,
+    onTertiary = Ink,
     background = Ink,
     onBackground = PrimaryText,
-    surface = Panel,
+    surface = Ink,
     onSurface = PrimaryText,
-    surfaceVariant = PanelRaised,
+    surfaceVariant = Panel,
     onSurfaceVariant = MutedText,
     outline = Border,
+    outlineVariant = Border,
     error = Danger,
+    errorContainer = Color(0xFF35201D),
 )
-
 private const val PRIVATE_WORKSPACE_ID = "private"
 private const val SAVED_WORKSPACES_KEY = "saved_workspace_uris"
 private const val ACTIVE_WORKSPACE_KEY = "active_workspace_id"
@@ -364,7 +389,7 @@ class MainActivity : ComponentActivity() {
                 if (uri != null) savePickedDocument(uri)
             }
 
-            MaterialTheme(colorScheme = AstraColorScheme) {
+            AstraCodeTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
@@ -689,6 +714,25 @@ private fun FileManagementScreen(
     var showWorkspaceManager by remember { mutableStateOf(false) }
     var showSavedDocuments by remember { mutableStateOf(false) }
     var showWorkspaceSafety by remember { mutableStateOf(false) }
+    var activeMainScreen by remember { mutableStateOf<Screen>(Screen.Files) }
+    var inspectorEntry by remember { mutableStateOf<FileEntry?>(null) }
+
+    var searchResults by remember(storage) { mutableStateOf(emptyList<AtelierSearchResult>()) }
+    var searchBusy by remember(storage) { mutableStateOf(false) }
+    var searchMessage by remember(storage) { mutableStateOf<String?>(null) }
+    var searchPreview by remember(storage) { mutableStateOf<AtelierPreview?>(null) }
+    var duplicateGroups by remember(storage) { mutableStateOf(emptyList<AtelierDuplicateGroup>()) }
+    var duplicatesScanned by remember(storage) { mutableStateOf(false) }
+    var skippedDuplicateFiles by remember(storage) { mutableStateOf(0) }
+
+    var healthReport by remember(storage) { mutableStateOf<AtelierStorageHealth?>(null) }
+    var healthLoading by remember(storage) { mutableStateOf(false) }
+    var healthMessage by remember(storage) { mutableStateOf<String?>(null) }
+
+    var trashScreenItems by remember(storage) { mutableStateOf(emptyList<AtelierTrashItem>()) }
+    var trashScreenLoading by remember(storage) { mutableStateOf(false) }
+    var trashScreenMessage by remember(storage) { mutableStateOf<String?>(null) }
+    var bulkActionInProgress by remember { mutableStateOf(false) }
     var standaloneDocumentLoading by remember(selectedDocument?.id) {
         mutableStateOf(selectedDocument != null)
     }
