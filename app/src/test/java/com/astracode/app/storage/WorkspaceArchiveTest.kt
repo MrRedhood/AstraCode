@@ -99,6 +99,39 @@ class WorkspaceArchiveTest {
     }
 
     @Test
+    fun rejectsReservedPathsAndExcessivelyLongArchiveNames() {
+        val root = Files.createTempDirectory("astracode-archive-path-limits").toFile()
+        val storage = FileManagementSystem(root.toPath())
+        try {
+            storage.writeText("source.txt", "payload")
+            try {
+                WorkspaceArchive.createZip(storage, listOf("source.txt"), ".astracode-user.zip")
+                fail("The user must not write into the reserved recovery namespace.")
+            } catch (_: SecurityException) { }
+            val tooLong = List(60) { "a".repeat(80) }.joinToString("/") + "/out.zip"
+            try {
+                WorkspaceArchive.createZip(storage, listOf("source.txt"), tooLong)
+                fail("Oversized paths must be rejected before writing.")
+            } catch (_: SecurityException) { }
+            val output = ByteArrayOutputStream()
+            ZipOutputStream(output).use { zip ->
+                zip.putNextEntry(ZipEntry("nested/.astracode-backup-orphan"))
+                zip.write("reserved".toByteArray())
+                zip.closeEntry()
+            }
+            storage.writeBytes("reserved.zip", output.toByteArray())
+            try {
+                WorkspaceArchive.extractZip(storage, "reserved.zip", "restored")
+                fail("Reserved system paths inside an archive must be rejected.")
+            } catch (_: SecurityException) { }
+            assertFalse(storage.exists("restored"))
+        } finally {
+            storage.close()
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun refusesToOverwriteAnExistingExtractionDestination() {
         val root = Files.createTempDirectory("astracode-workspace-no-overwrite").toFile()
         val storage = FileManagementSystem(root.toPath())

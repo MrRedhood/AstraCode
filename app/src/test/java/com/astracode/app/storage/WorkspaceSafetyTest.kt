@@ -27,6 +27,56 @@ class WorkspaceSafetyTest {
         } finally { root.deleteRecursively() }
     }
 
+    @Test fun trashCanHandleMultipleItemsAndJournalEachOperation() {
+        val root = Files.createTempDirectory("safety-multiple-trash").toFile()
+        try {
+            FileManagementSystem(root.toPath()).use { storage ->
+                storage.writeText("one.txt", "one")
+                storage.writeText("two.txt", "two")
+                WorkspaceSafety.moveToTrash(storage, "one.txt", nowMillis = 1000)
+                WorkspaceSafety.moveToTrash(storage, "two.txt", nowMillis = 2000)
+                assertEquals(2, WorkspaceSafety.listTrash(storage).size)
+                assertEquals(2, storage.listDirectory(WorkspaceSafety.OPERATIONS_DIRECTORY + "/journal").size)
+                assertFalse(storage.exists("one.txt"))
+                assertFalse(storage.exists("two.txt"))
+            }
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test fun verifiedCopyLocksPathsAndPreservesBytesForNewAndExistingTargets() {
+        val root = Files.createTempDirectory("safety-copy-verified").toFile()
+        try {
+            FileManagementSystem(root.toPath()).use { storage ->
+                val original = byteArrayOf(0, 1, -1, -128, 42)
+                storage.writeBytes("source.bin", original)
+                WorkspaceSafety.copyVerified(storage, "source.bin", "copy.bin")
+                assertArrayEquals(original, storage.readBytes("copy.bin"))
+                storage.writeBytes("copy.bin", byteArrayOf(2, 3, 4))
+                WorkspaceSafety.copyVerified(storage, "source.bin", "copy.bin", replaceExisting = true)
+                assertArrayEquals(original, storage.readBytes("copy.bin"))
+            }
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test fun systemRecoveryPathsAreHiddenFromSearchAndCannotBeUserTargets() {
+        val root = Files.createTempDirectory("safety-reserved-paths").toFile()
+        try {
+            FileManagementSystem(root.toPath()).use { storage ->
+                storage.writeText(".astracode-tmp-abandoned", "partial")
+                storage.writeText("nested/.astracode-backup-orphan", "backup")
+                storage.writeText(".gitignore", "ordinary hidden file")
+                assertTrue(WorkspaceSafety.isReservedPath("nested/.astracode-backup-orphan"))
+                assertTrue(WorkspaceSafety.search(storage, WorkspaceSearchOptions(includeHidden = true)).none {
+                    it.path.startsWith(".astracode-") || it.path.contains("/.astracode-")
+                })
+                assertTrue(WorkspaceSafety.healthReport(storage).largestFiles.none { it.first.startsWith(".astracode-") })
+                assertTrue(WorkspaceSafety.search(storage, WorkspaceSearchOptions(includeHidden = true)).any { it.path == ".gitignore" })
+                try { WorkspaceSafety.validatePath("nested/.astracode-backup-orphan"); fail("Reserved paths must be rejected.") }
+                catch (_: SecurityException) { }
+            }
+        } finally { root.deleteRecursively() }
+    }
+
     @Test fun trashRetentionDeletesOnlyExpiredValidEntries() {
         val root = Files.createTempDirectory("safety-trash-retention").toFile()
         try {

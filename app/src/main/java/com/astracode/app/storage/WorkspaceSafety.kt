@@ -43,7 +43,8 @@ internal object WorkspaceSafety {
     private val textExtensions = setOf("txt", "json", "xml", "kt", "kts", "java", "c", "cc", "cpp", "h", "hpp", "sh", "py", "js", "mjs", "ts", "tsx", "jsx", "html", "css", "yaml", "yml", "toml", "properties", "gradle", "csv", "ini", "conf", "sql", "rs", "go", "swift")
     private val imageExtensions = setOf("png", "jpg", "jpeg", "webp", "gif", "bmp")
 
-    fun isReservedPath(path: String): Boolean = path.substringBefore('/').let { it in reservedRoots }
+    fun isReservedPath(path: String): Boolean =
+        path.split('/').any { segment -> segment in reservedRoots || segment.startsWith(".astracode-") }
 
     fun validatePath(path: String, allowEmpty: Boolean = false): String {
         if (path.isEmpty() && allowEmpty) return path
@@ -183,45 +184,64 @@ internal object WorkspaceSafety {
     }
 
     /** Verify a sibling temporary document before replacement and attempt rollback if the provider rejects it. */
-    fun writeVerified(storage: WorkspaceStorage, path: String, bytes: ByteArray, cancelled: () -> Boolean = { false }, replaceExisting: Boolean = true) =
-        withPathLocks(storage, listOf(path)) {
-            val normalized = validatePath(path)
-            if (cancelled()) throw CancellationException("Write cancelled before starting.")
-            val parentPath = parent(normalized)
-            if (parentPath.isNotEmpty()) ensureDirectory(storage, parentPath)
-            val temporary = join(parentPath, ".astracode-tmp-${UUID.randomUUID()}")
-            val backup = join(parentPath, ".astracode-backup-${UUID.randomUUID()}")
-            try {
-                if (storage.exists(normalized) && !replaceExisting) throw IOException("Destination already exists: $normalized")
-                storage.writeBytes(temporary, bytes)
-                if (cancelled()) throw CancellationException("Write cancelled before publication.")
-                if (!storage.readBytes(temporary).contentEquals(bytes)) throw IOException("Temporary file failed integrity verification.")
-                if (storage.exists(normalized)) {
-                    storage.move(normalized, backup, replaceExisting = false)
-                    try { storage.move(temporary, normalized, replaceExisting = false) }
-                    catch (error: Exception) {
-                        try {
-                            if (!storage.exists(normalized) && storage.exists(backup)) storage.move(backup, normalized, replaceExisting = false)
-                        } catch (restore: Exception) {
-                            error.addSuppressed(restore)
-                            throw IOException("Write failed; the previous file remains in hidden backup $backup.", error)
-                        }
-                        throw error
-                    }
-                    runCatching { if (storage.exists(backup)) storage.delete(backup, recursive = true) }
-                } else {
-                    if (storage.exists(normalized)) throw IOException("Destination appeared during write.")
-                    storage.move(temporary, normalized, replaceExisting = false)
-                }
-                recordOperation(storage, "write-verified", listOf(normalized), "success")
-            } catch (error: Exception) {
-                runCatching { if (storage.exists(temporary)) storage.delete(temporary, recursive = true) }
-                recordOperation(storage, "write-verified", listOf(normalized), if (error is CancellationException) "cancelled" else "failure")
-                throw error
-            }
-        }
+    fun writeVerified(
+        storage: WorkspaceStorage,
+        path: String,
+        bytes: ByteArray,
+        cancelled: () -> Boolean = { false },
+        replaceExisting: Boolean = true,
+    ) = withPathLocks(storage, listOf(path)) {
+        writeVerifiedLocked(storage, path, bytes, cancelled, replaceExisting)
+    }
 
-    fun copyVerified(storage: WorkspaceStorage, sourcePath: String, destinationPath: String, cancelled: () -> Boolean = { false }, progress: (Long, Long) -> Unit = { _, _ -> }, replaceExisting: Boolean = false) {
+    /** Caller must already hold a lock covering [path]. */
+    private fun writeVerifiedLocked(
+        storage: WorkspaceStorage,
+        path: String,
+        bytes: ByteArray,
+        cancelled: () -> Boolean,
+        replaceExisting: Boolean,
+    ) {
+        val normalized = validatePath(path)
+        if (cancelled()) throw CancellationException("Write cancelled before starting.")
+        val parentPath = parent(normalized)
+        if (parentPath.isNotEmpty()) ensureDirectory(storage, parentPath)
+        val temporary = join(parentPath, ".astracode-tmp-${UUID.randomUUID()}")
+        val backup = join(parentPath, ".astracode-backup-${UUID.randomUUID()}")
+        try {
+            if (storage.exists(normalized) && !replaceExisting) throw IOException("Destination already exists: $normalized")
+            storage.writeBytes(temporary, bytes)
+            if (cancelled()) throw CancellationException("Write cancelled before publication.")
+            if (!storage.readBytes(temporary).contentEquals(bytes)) throw IOException("Temporary file failed integrity verification.")
+            if (storage.exists(normalized)) {
+                storage.move(normalized, backup, replaceExisting = false)
+                try {
+                    storage.move(temporary, normalized, replaceExisting = false)
+                } catch (error: Exception) {
+                    try {
+                        if (!storage.exists(normalized) && storage.exists(backup)) storage.move(backup, normalized, replaceExisting = false)
+                    } catch (restore: Exception) {
+                        error.addSuppressed(restore)
+                        throw IOException("Write failed; the previous file remains in hidden backup $backup.", error)
+                    }
+                    throw error
+                }
+                // A backup cleanup error must not invalidate the verified replacement.
+                runCatching { if (storage.exists(backup)) storage.delete(backup, recursive = true) }
+            } else {
+                if (storage.exists(normalized)) throw IOException("Destination appeared during write.")
+                storage.move(temporary, normalized, replaceExisting = false)
+            }
+            recordOperation(storage, "write-verified", listOf(normalized), "success")
+        } catch (error: Exception) {
+            runCatching { if (storage.exists(temporary)) storage.delete(temporary, recursive = true) }
+            recordOperation(storage, "write-verified", listOf(normalized), if (error is CancellationException) "cancelled" else "failure")
+            throw error
+        }
+    }
+
+    fun copyVerified(storage: WorkspaceStorage, sourcePath: String, destinationPath: String, cancelled: () -> Boolean = { false }, progress: (Long, Long) -> Unit = { _, _ -> }, replaceExisting: Boolean = false) =
+        withPathLocks(storage, listOf(sourcePath, destinationPath)) {
             val source = validatePath(sourcePath)
             val destination = validatePath(destinationPath)
             if (source == destination) throw IOException("Source and destination are the same item.")
@@ -252,7 +272,7 @@ internal object WorkspaceSafety {
                     throw error
                 }
             } else {
-                writeVerified(storage, destination, bytes, cancelled, replaceExisting = replaceExisting)
+                writeVerifiedLocked(storage, destination, bytes, cancelled, replaceExisting)
             }
             if (sha256(storage.readBytes(destination)) != expected) throw IOException("SHA-256 verification failed after copy.")
             progress(bytes.size.toLong(), bytes.size.toLong())

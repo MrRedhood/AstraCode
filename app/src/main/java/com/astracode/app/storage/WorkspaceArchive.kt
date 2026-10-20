@@ -9,6 +9,7 @@ import java.io.IOException
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
+import java.util.UUID
 
 /**
  * ZIP handling over WorkspaceStorage, so private workspaces and Android document
@@ -58,8 +59,9 @@ internal object WorkspaceArchive {
             fun addItem(path: String, relativePath: String) {
                 val item = findWorkspaceEntry(storage, path)
                     ?: throw IOException("Selected item no longer exists: $path")
-                if (relativePath.isBlank() || relativePath == "." || relativePath.startsWith("/") ||
-                    relativePath.split('/').any { it.isBlank() || it == "." || it == ".." }) {
+                if (relativePath.isBlank() || relativePath.length > MAX_PATH_LENGTH ||
+                    relativePath.split('/').size > MAX_PATH_DEPTH || relativePath == "." || relativePath.startsWith("/") ||
+                    relativePath.split('/').any { it.isBlank() || it == "." || it == ".." || it.startsWith(".astracode-") }) {
                     throw IOException("Invalid archive entry path.")
                 }
                 if (item.type == FileEntryType.SYMBOLIC_LINK || item.type == FileEntryType.OTHER) {
@@ -96,7 +98,7 @@ internal object WorkspaceArchive {
             }
         }
 
-        val temporaryPath = joinPath(parentPath(outputPath), ".${fileName(outputPath)}.tmp-${System.nanoTime()}")
+        val temporaryPath = joinPath(parentPath(outputPath), ".astracode-tmp-${UUID.randomUUID()}")
         try {
             storage.writeBytes(temporaryPath, output.toByteArray())
             storage.move(temporaryPath, outputPath, replaceExisting = false)
@@ -267,13 +269,14 @@ internal object WorkspaceArchive {
     }
 
     private fun validatePath(rawPath: String): String {
-        if (rawPath.isBlank() || rawPath.startsWith("/") || rawPath.contains('\\') ||
+        if (rawPath.isBlank() || rawPath.length > MAX_PATH_LENGTH || rawPath.startsWith("/") || rawPath.contains('\\') ||
             rawPath.indexOf('\u0000') >= 0) {
             throw SecurityException("Only workspace-relative paths are allowed.")
         }
         val segments = rawPath.split('/')
-        if (segments.any { it.isBlank() || it == "." || it == ".." }) {
-            throw SecurityException("Invalid workspace path.")
+        if (segments.size > MAX_PATH_DEPTH ||
+            segments.any { it.isBlank() || it == "." || it == ".." || it.startsWith(".astracode-") }) {
+            throw SecurityException("Invalid, reserved, or excessively deep workspace path.")
         }
         return segments.joinToString("/")
     }
@@ -285,8 +288,9 @@ internal object WorkspaceArchive {
         }
         val relative = if (directory) rawName.removeSuffix("/") else rawName
         val segments = relative.split('/')
-        if (segments.any { it.isBlank() || it == "." || it == ".." }) {
-            throw SecurityException("The ZIP contains an unsafe path.")
+        if (segments.size > MAX_PATH_DEPTH ||
+            segments.any { it.isBlank() || it == "." || it == ".." || it.startsWith(".astracode-") }) {
+            throw SecurityException("The ZIP contains an unsafe or reserved path.")
         }
         return segments.joinToString("/")
     }
