@@ -1285,8 +1285,7 @@ private fun FileManagementScreen(
                         onOpenStandaloneFile = { requestNavigation(onOpenStandaloneFile) },
                         onManageSavedDocuments = { showSavedDocuments = true },
                         onOpenSafetyTools = {
-                            activeMainScreen = Screen.Safety
-                            refreshHealthScreen()
+                            showWorkspaceSafety = true
                         },
                         onSelectionModeChanged = { enabled ->
                             selectionMode = enabled
