@@ -64,6 +64,9 @@ class MainActivityUiTest {
         composeRule.onNodeWithTag("confirm-create-file").performClick()
 
         val editor = composeRule.onNodeWithTag("file-editor-input")
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching { editor.assertIsDisplayed() }.isSuccess
+        }
         editor.assertIsDisplayed()
         val expectedText = "fun main() = println(\"AstraCode\")"
         editor.performTextInput(expectedText)
@@ -438,6 +441,11 @@ class MainActivityUiTest {
         composeRule.waitUntil(timeoutMillis = 10_000) {
             Files.exists(workspace.resolve("README-renamed.txt")) &&
                 !Files.exists(workspace.resolve("README.txt"))
+        }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("workspace-safety-close").assertIsDisplayed()
+            }.isSuccess
         }
         composeRule.onNodeWithTag("workspace-safety-close").performClick()
 
