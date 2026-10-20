@@ -229,6 +229,54 @@ class MainActivityUiTest {
     }
 
     @Test
+    fun longPressShowsMetadataForFilesAndFolders() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workspace = context.filesDir.toPath().resolve("workspace")
+        Files.createDirectories(workspace.resolve("metadata-folder"))
+        Files.write(workspace.resolve("metadata-sample.txt"), "metadata".toByteArray(Charsets.UTF_8))
+        Files.write(workspace.resolve("metadata-folder/child.txt"), "child".toByteArray(Charsets.UTF_8))
+        composeRule.activityRule.scenario.recreate()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("entry-metadata-sample.txt").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("entry-metadata-sample.txt").performTouchInput { longClick() }
+        composeRule.onNodeWithTag("workspace-action-metadata").assertIsDisplayed()
+        composeRule.onNodeWithTag("workspace-action-metadata").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("workspace-metadata-details")
+                    .assertTextContains("Name: metadata-sample.txt", substring = true)
+            }.isSuccess
+        }
+        val fileDetails = composeRule.onNodeWithTag("workspace-metadata-details")
+        fileDetails.assertTextContains("Type: File", substring = true)
+        fileDetails.assertTextContains("Size: 8 bytes", substring = true)
+        fileDetails.assertTextContains("Created:", substring = true)
+        fileDetails.assertTextContains("Modified:", substring = true)
+        fileDetails.assertTextContains("Format: TXT", substring = true)
+        fileDetails.assertTextContains("Storage path:", substring = true)
+        composeRule.onNodeWithTag("workspace-metadata-close").performClick()
+
+        composeRule.onNodeWithTag("entry-metadata-folder").performTouchInput { longClick() }
+        composeRule.onNodeWithTag("workspace-action-metadata").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("workspace-metadata-details")
+                    .assertTextContains("Name: metadata-folder", substring = true)
+            }.isSuccess
+        }
+        val folderDetails = composeRule.onNodeWithTag("workspace-metadata-details")
+        folderDetails.assertTextContains("Type: Folder", substring = true)
+        folderDetails.assertTextContains("Size: 5 bytes", substring = true)
+        folderDetails.assertTextContains("Created:", substring = true)
+        folderDetails.assertTextContains("Modified:", substring = true)
+        folderDetails.assertTextContains("Format: Folder", substring = true)
+        folderDetails.assertTextContains("Storage path:", substring = true)
+        composeRule.onNodeWithTag("workspace-metadata-close").performClick()
+    }
+
+    @Test
     fun multiSelectCreatesAndExtractsZipWithoutChangingFileBytes() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val workspace = context.filesDir.toPath().resolve("workspace")

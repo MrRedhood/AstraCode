@@ -13,6 +13,8 @@ data class FileEntry(
     val modifiedAt: Instant,
     val readable: Boolean,
     val writable: Boolean,
+    /** Creation timestamp when the active storage provider can report it. */
+    val createdAt: Instant? = null,
 )
 
 data class TextFileSnapshot(

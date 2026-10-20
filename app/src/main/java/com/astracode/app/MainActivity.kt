@@ -585,6 +585,52 @@ private fun replaceUnpairedSurrogates(text: String): Pair<String, Int> {
     return output.toString() to replacements
 }
 
+private fun workspaceMetadataText(storage: WorkspaceStorage, entry: FileEntry): String {
+    val sizeBytes = if (entry.type == FileEntryType.DIRECTORY) {
+        val pendingDirectories = java.util.ArrayDeque<String>()
+        pendingDirectories.addLast(entry.path)
+        var totalBytes = 0L
+        while (pendingDirectories.isNotEmpty()) {
+            val directory = pendingDirectories.removeFirst()
+            for (child in storage.listDirectory(directory)) {
+                when (child.type) {
+                    FileEntryType.DIRECTORY -> pendingDirectories.addLast(child.path)
+                    FileEntryType.FILE -> totalBytes = Math.addExact(totalBytes, child.sizeBytes)
+                    FileEntryType.SYMBOLIC_LINK, FileEntryType.OTHER -> Unit
+                }
+            }
+        }
+        totalBytes
+    } else {
+        entry.sizeBytes
+    }
+    val type = when (entry.type) {
+        FileEntryType.DIRECTORY -> "Folder"
+        FileEntryType.FILE -> "File"
+        FileEntryType.SYMBOLIC_LINK -> "Symbolic link"
+        FileEntryType.OTHER -> "Other"
+    }
+    val format = when (entry.type) {
+        FileEntryType.DIRECTORY -> "Folder"
+        FileEntryType.SYMBOLIC_LINK -> "Symbolic link"
+        FileEntryType.OTHER -> "Unknown"
+        FileEntryType.FILE -> entry.name.substringAfterLast(".", "").takeIf { it.isNotBlank() }?.uppercase() ?: "Unknown"
+    }
+    val created = entry.createdAt?.toString() ?: "Not recorded by this storage provider"
+    val modified = if (entry.modifiedAt.toEpochMilli() > 0L) {
+        entry.modifiedAt.toString()
+    } else {
+        "Not recorded by this storage provider"
+    }
+    return "Name: " + entry.name +
+        "\nType: " + type +
+        "\nSize: " + sizeBytes + " bytes" +
+        "\nCreated: " + created +
+        "\nModified: " + modified +
+        "\nFormat: " + format +
+        "\nStorage path: " + storage.displayName + "/" + entry.path
+}
+
 @Composable
 private fun FileManagementScreen(
     storage: WorkspaceStorage,
@@ -619,6 +665,10 @@ private fun FileManagementScreen(
     var showNewFolderDialog by remember { mutableStateOf(false) }
     var pendingDeletePath by remember { mutableStateOf<String?>(null) }
     var actionEntry by remember { mutableStateOf<FileEntry?>(null) }
+    var metadataEntry by remember { mutableStateOf<FileEntry?>(null) }
+    var metadataDetails by remember { mutableStateOf<String?>(null) }
+    var metadataLoading by remember { mutableStateOf(false) }
+    var metadataError by remember { mutableStateOf<String?>(null) }
     var operationEntry by remember { mutableStateOf<FileEntry?>(null) }
     var operationKind by remember { mutableStateOf<String?>(null) }
     var operationInput by remember { mutableStateOf("") }
@@ -923,6 +973,10 @@ private fun FileManagementScreen(
         folderCounts = emptyMap()
         selectionMode = false
         selectedPaths = emptySet()
+        metadataEntry = null
+        metadataDetails = null
+        metadataLoading = false
+        metadataError = null
         pendingNavigation = null
         showDiscardDialog = false
         standaloneDocumentLoading = selectedDocument != null
@@ -1208,6 +1262,37 @@ private fun FileManagementScreen(
     }
 
 
+    metadataEntry?.let { entry ->
+        AlertDialog(
+            onDismissRequest = {
+                metadataEntry = null
+                metadataDetails = null
+                metadataLoading = false
+                metadataError = null
+            },
+            title = { Text("File metadata") },
+            text = {
+                when {
+                    metadataLoading -> Text("Reading metadata…", modifier = Modifier.testTag("workspace-metadata-loading"))
+                    metadataError != null -> Text(metadataError!!, modifier = Modifier.testTag("workspace-metadata-error"))
+                    metadataDetails != null -> Text(metadataDetails!!, modifier = Modifier.testTag("workspace-metadata-details"))
+                    else -> Text("Metadata is not available for this item.")
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        metadataEntry = null
+                        metadataDetails = null
+                        metadataLoading = false
+                        metadataError = null
+                    },
+                    modifier = Modifier.testTag("workspace-metadata-close"),
+                ) { Text("Close") }
+            },
+        )
+    }
+
     actionEntry?.let { entry ->
         AlertDialog(
             onDismissRequest = { actionEntry = null },
@@ -1227,6 +1312,31 @@ private fun FileManagementScreen(
                         },
                         modifier = Modifier.fillMaxWidth().testTag("workspace-action-zip"),
                     ) { Text("Create ZIP") }
+                    TextButton(
+                        onClick = {
+                            val requestedStorage = storage
+                            actionEntry = null
+                            metadataEntry = entry
+                            metadataDetails = null
+                            metadataError = null
+                            metadataLoading = true
+                            scope.launch {
+                                val result = runCatchingCancellable {
+                                    withContext(Dispatchers.IO) {
+                                        workspaceMetadataText(requestedStorage, entry)
+                                    }
+                                }
+                                if (storage === requestedStorage && metadataEntry?.path == entry.path) {
+                                    metadataLoading = false
+                                    result.onSuccess { details -> metadataDetails = details }
+                                        .onFailure { error ->
+                                            metadataError = error.message ?: "Could not read metadata."
+                                        }
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("workspace-action-metadata"),
+                    ) { Text("Metadata") }
                     if (entry.type == FileEntryType.FILE && entry.name.endsWith(".zip", ignoreCase = true)) {
                         TextButton(
                             onClick = { showOperationDialog(entry, "extract") },

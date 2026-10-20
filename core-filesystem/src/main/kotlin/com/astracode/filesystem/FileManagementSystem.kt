@@ -417,6 +417,7 @@ class FileManagementSystem(
             modifiedAt = attrs.lastModifiedTime().toInstant(),
             readable = type != FileEntryType.SYMBOLIC_LINK && Files.isReadable(path),
             writable = type != FileEntryType.SYMBOLIC_LINK && Files.isWritable(path),
+            createdAt = attrs.creationTime().toInstant(),
         )
     }
 
