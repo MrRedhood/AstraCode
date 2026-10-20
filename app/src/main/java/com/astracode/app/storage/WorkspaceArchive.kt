@@ -24,6 +24,7 @@ internal object WorkspaceArchive {
     private const val MAX_EXTRACTED_BYTES = 256L * 1024L * 1024L
     private const val MAX_ENTRIES = 10_000
     private const val MAX_PATH_DEPTH = 128
+    private const val MAX_PATH_LENGTH = 4096
 
     fun createZip(
         storage: WorkspaceStorage,
@@ -278,7 +279,7 @@ internal object WorkspaceArchive {
     }
 
     private fun validateArchiveEntry(rawName: String, directory: Boolean): String {
-        if (rawName.isBlank() || rawName.startsWith("/") || rawName.contains('\\') ||
+        if (rawName.isBlank() || rawName.length > MAX_PATH_LENGTH || rawName.startsWith("/") || rawName.contains('\\') ||
             rawName.indexOf('\u0000') >= 0 || Regex("^[A-Za-z]:").containsMatchIn(rawName)) {
             throw SecurityException("The ZIP contains an unsafe path.")
         }
