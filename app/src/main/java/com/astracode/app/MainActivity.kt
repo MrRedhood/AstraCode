@@ -2219,7 +2219,9 @@ private fun FileManagementScreen(
                 ) { Text("Keep editing") }
             },
         )
-    }    inspectorEntry?.let { entry ->
+    }
+
+    inspectorEntry?.let { entry ->
         QuickInspectorSheet(
             item = entry.toAtelierFileItem(folderCounts[entry.path]),
             onDismiss = { inspectorEntry = null },
