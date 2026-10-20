@@ -406,11 +406,43 @@ internal object WorkspaceSafety {
 
     fun healthReport(storage: WorkspaceStorage, largestCount: Int = 10): WorkspaceHealthReport {
         require(largestCount in 1..100)
-        val entries = search(storage, WorkspaceSearchOptions(includeHidden = true, maxResults = MAX_ITEMS))
-        val files = entries.filter { it.type == FileEntryType.FILE && !isReservedPath(it.path) }
-        val dirs = entries.filter { it.type == FileEntryType.DIRECTORY && !isReservedPath(it.path) }
-        return WorkspaceHealthReport(files.sumOf { it.sizeBytes.coerceAtLeast(0) }, files.size, dirs.size,
-            files.sortedByDescending { it.sizeBytes }.take(largestCount).map { it.path to it.sizeBytes })
+        val files = mutableListOf<WorkspaceSearchHit>()
+        var directoryCount = 0
+        var visited = 0
+        val pending = ArrayDeque<Pair<String, Int>>()
+        pending.add("" to 0)
+        while (pending.isNotEmpty()) {
+            val (directory, depth) = pending.removeFirst()
+            if (depth > MAX_DEPTH) continue
+            storage.listDirectory(directory).forEach { child ->
+                val path = join(directory, child.name)
+                if (isReservedPath(path)) return@forEach
+                visited++
+                if (visited > MAX_ITEMS) throw IOException("Storage report stopped at the workspace item limit.")
+                when (child.type) {
+                    FileEntryType.DIRECTORY -> {
+                        directoryCount++
+                        if (depth < MAX_DEPTH) pending.add(path to depth + 1)
+                    }
+                    FileEntryType.FILE -> files += WorkspaceSearchHit(
+                        path = path,
+                        name = child.name,
+                        type = child.type,
+                        sizeBytes = child.sizeBytes.coerceAtLeast(0L),
+                        modifiedAtMillis = child.modifiedAt.toEpochMilli().coerceAtLeast(0L),
+                    )
+                    else -> Unit
+                }
+            }
+        }
+        return WorkspaceHealthReport(
+            totalBytes = files.sumOf { it.sizeBytes },
+            fileCount = files.size,
+            directoryCount = directoryCount,
+            largestFiles = files.sortedWith(
+                compareByDescending<WorkspaceSearchHit> { it.sizeBytes }.thenBy { it.path },
+            ).take(largestCount).map { it.path to it.sizeBytes },
+        )
     }
 
     fun <T> withPathLocks(storage: WorkspaceStorage, paths: List<String>, action: () -> T): T {

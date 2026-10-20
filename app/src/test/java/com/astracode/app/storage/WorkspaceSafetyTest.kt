@@ -108,6 +108,22 @@ class WorkspaceSafetyTest {
         } finally { root.deleteRecursively() }
     }
 
+    @Test fun healthReportCountsDirectoriesWithoutLeakingRecoveryArtifacts() {
+        val root = Files.createTempDirectory("safety-health-directories").toFile()
+        try {
+            FileManagementSystem(root.toPath()).use { storage ->
+                storage.createDirectory("src")
+                storage.createDirectory("src/main")
+                storage.writeBytes("src/main/App.kt", "fun main()".toByteArray())
+                storage.writeBytes(".astracode-backup-orphan", "backup".toByteArray())
+                val report = WorkspaceSafety.healthReport(storage)
+                assertEquals(1, report.fileCount)
+                assertEquals(2, report.directoryCount)
+                assertEquals("src/main/App.kt", report.largestFiles.single().first)
+            }
+        } finally { root.deleteRecursively() }
+    }
+
     @Test fun batchRenameHandlesCyclesAndRejectsDuplicateTargets() {
         val root = Files.createTempDirectory("safety-batch-rename").toFile()
         try {
