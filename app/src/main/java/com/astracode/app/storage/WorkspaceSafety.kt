@@ -72,7 +72,8 @@ internal object WorkspaceSafety {
     private fun ensureDirectory(storage: WorkspaceStorage, path: String) {
         if (path.isEmpty()) { storage.listDirectory(""); return }
         if (storage.exists(path)) {
-            if (entry(storage, path)?.type != FileEntryType.DIRECTORY) throw IOException("Not a folder: $path")
+            val child = storage.listDirectory(parent(path)).firstOrNull { it.name == path.substringAfterLast('/') }
+            if (child?.type != FileEntryType.DIRECTORY) throw IOException("Not a folder: $path")
             return
         }
         val parent = parent(path)
@@ -182,7 +183,7 @@ internal object WorkspaceSafety {
     }
 
     /** Verify a sibling temporary document before replacement and attempt rollback if the provider rejects it. */
-    fun writeVerified(storage: WorkspaceStorage, path: String, bytes: ByteArray, cancelled: () -> Boolean = { false }) =
+    fun writeVerified(storage: WorkspaceStorage, path: String, bytes: ByteArray, cancelled: () -> Boolean = { false }, replaceExisting: Boolean = true) =
         withPathLocks(storage, listOf(path)) {
             val normalized = validatePath(path)
             if (cancelled()) throw CancellationException("Write cancelled before starting.")
@@ -191,6 +192,7 @@ internal object WorkspaceSafety {
             val temporary = join(parentPath, ".astracode-tmp-${UUID.randomUUID()}")
             val backup = join(parentPath, ".astracode-backup-${UUID.randomUUID()}")
             try {
+                if (storage.exists(normalized) && !replaceExisting) throw IOException("Destination already exists: $normalized")
                 storage.writeBytes(temporary, bytes)
                 if (cancelled()) throw CancellationException("Write cancelled before publication.")
                 if (!storage.readBytes(temporary).contentEquals(bytes)) throw IOException("Temporary file failed integrity verification.")
@@ -219,8 +221,7 @@ internal object WorkspaceSafety {
             }
         }
 
-    fun copyVerified(storage: WorkspaceStorage, sourcePath: String, destinationPath: String, cancelled: () -> Boolean = { false }, progress: (Long, Long) -> Unit = { _, _ -> }, replaceExisting: Boolean = false) =
-        withPathLocks(storage, listOf(sourcePath, destinationPath)) {
+    fun copyVerified(storage: WorkspaceStorage, sourcePath: String, destinationPath: String, cancelled: () -> Boolean = { false }, progress: (Long, Long) -> Unit = { _, _ -> }, replaceExisting: Boolean = false) {
             val source = validatePath(sourcePath)
             val destination = validatePath(destinationPath)
             if (source == destination) throw IOException("Source and destination are the same item.")
@@ -251,12 +252,12 @@ internal object WorkspaceSafety {
                     throw error
                 }
             } else {
-                writeVerified(storage, destination, bytes, cancelled)
+                writeVerified(storage, destination, bytes, cancelled, replaceExisting = replaceExisting)
             }
             if (sha256(storage.readBytes(destination)) != expected) throw IOException("SHA-256 verification failed after copy.")
             progress(bytes.size.toLong(), bytes.size.toLong())
             recordOperation(storage, "copy-verified", listOf(source, destination), "success")
-        }
+        
 
     fun preview(storage: WorkspaceStorage, path: String, maxBytes: Long = DEFAULT_PREVIEW_LIMIT_BYTES): WorkspacePreviewResult {
         require(maxBytes > 0)
@@ -292,7 +293,9 @@ internal object WorkspaceSafety {
             if (depth > MAX_DEPTH) continue
             storage.listDirectory(directory).forEach { child ->
                 val path = join(directory, child.name)
-                if (isReservedPath(path)) return@forEach
+                if (isReservedPath(path) || child.name.startsWith(".astracode-tmp-") ||
+                    child.name.startsWith(".astracode-backup-") || child.name.startsWith(".astracode-rename-") ||
+                    child.name.startsWith(".astracode-copy-")) return@forEach
                 if (++visited > MAX_ITEMS) throw IOException("Search stopped at the workspace item limit.")
                 if (!options.includeHidden && path.split('/').any { it.startsWith(".") }) return@forEach
                 if (child.type == FileEntryType.DIRECTORY) {
