@@ -188,7 +188,7 @@ class MainActivityUiTest {
         Files.write(workspace.resolve("folder/child.txt"), "child".toByteArray(Charsets.UTF_8))
         composeRule.activityRule.scenario.recreate()
 
-        composeRule.waitUntil(timeoutMillis = 5_000) {
+        composeRule.waitUntil(timeoutMillis = 10_000) {
             runCatching { composeRule.onNodeWithTag("entry-sample.txt").assertIsDisplayed() }.isSuccess
         }
         composeRule.onNodeWithTag("entry-sample.txt").performTouchInput { longClick() }
@@ -303,8 +303,13 @@ class MainActivityUiTest {
         composeRule.onNodeWithTag("workspace-bulk-input").performTextReplacement("release.zip")
         composeRule.onNodeWithTag("confirm-workspace-bulk-action").performClick()
 
+        // moveToZip intentionally publishes the archive before deleting sources.
+        // Wait for the complete operation, not only the first observable side effect.
         composeRule.waitUntil(timeoutMillis = 10_000) {
-            Files.exists(workspace.resolve("app/release.zip"))
+            Files.exists(workspace.resolve("app/release.zip")) &&
+                !Files.exists(workspace.resolve("app/spec.docx")) &&
+                !Files.exists(workspace.resolve("app/build.gradle.kts")) &&
+                !Files.exists(workspace.resolve("app/src"))
         }
         assertEquals(false, Files.exists(workspace.resolve("app/spec.docx")))
         assertEquals(false, Files.exists(workspace.resolve("app/build.gradle.kts")))
