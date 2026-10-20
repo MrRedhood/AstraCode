@@ -448,7 +448,7 @@ class MainActivityUiTest {
         }
         composeRule.onNodeWithTag("entry-README-renamed.txt").performTouchInput { longClick() }
         composeRule.onNodeWithTag("workspace-action-delete").performClick()
-        composeRule.onNodeWithText("Delete", substring = true).performClick()
+        composeRule.onNodeWithTag("confirm-workspace-delete").performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             !Files.exists(workspace.resolve("README-renamed.txt"))
         }
