@@ -57,7 +57,9 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -685,6 +687,7 @@ private fun FileManagementScreen(
     var statusMessage by remember { mutableStateOf<String?>(null) }
     var showWorkspaceManager by remember { mutableStateOf(false) }
     var showSavedDocuments by remember { mutableStateOf(false) }
+    var showWorkspaceSafety by remember { mutableStateOf(false) }
     var standaloneDocumentLoading by remember(selectedDocument?.id) {
         mutableStateOf(selectedDocument != null)
     }
@@ -934,6 +937,7 @@ private fun FileManagementScreen(
         try {
             val listedEntries = withContext(Dispatchers.IO) {
                 storage.listDirectory(currentDirectory)
+                    .filterNot { WorkspaceSafety.isReservedPath(it.path) }
             }
             entries = listedEntries
             folderCounts = emptyMap()
@@ -945,7 +949,7 @@ private fun FileManagementScreen(
                     .filter { it.type == FileEntryType.DIRECTORY }
                     .associate { folder ->
                         val count = try {
-                            storage.listDirectory(folder.path).size
+                            storage.listDirectory(folder.path).count { !WorkspaceSafety.isReservedPath(it.path) }
                         } catch (cancelled: CancellationException) {
                             throw cancelled
                         } catch (_: Exception) {
@@ -1094,6 +1098,7 @@ private fun FileManagementScreen(
                     onAddWorkspace = { requestNavigation(onAddWorkspace) },
                     onOpenStandaloneFile = { requestNavigation(onOpenStandaloneFile) },
                     onManageSavedDocuments = { showSavedDocuments = true },
+                    onOpenSafetyTools = { showWorkspaceSafety = true },
                     onManageWorkspaces = { showWorkspaceManager = true },
                     onOpenEntry = { entry ->
                         when (entry.type) {
@@ -1184,6 +1189,28 @@ private fun FileManagementScreen(
                 onSelectSavedWorkspace(bookmark)
             },
             onRemoveFolder = onRemoveSavedWorkspace,
+        )
+    }
+
+    if (showWorkspaceSafety && openedFile == null && selectedDocument == null) {
+        WorkspaceSafetyDialog(
+            storage = storage,
+            currentDirectory = currentDirectory,
+            onDismiss = { showWorkspaceSafety = false },
+            onStorageChanged = { refreshKey++ },
+            onRestored = { restoredPath ->
+                scope.launch {
+                    val syncResult = runCatchingCancellable { propagateChangedPath(restoredPath) }
+                    syncResult.onSuccess { updatedLinks ->
+                        syncLinks = updatedLinks
+                    }.onFailure { error ->
+                        notify(
+                            "Restored locally, but the linked copy could not be updated: " +
+                                (error.message ?: "unknown error"),
+                        )
+                    }
+                }
+            },
         )
     }
 
@@ -1766,26 +1793,49 @@ private fun FileManagementScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        val recursive = entries.firstOrNull { it.path == path }?.type == FileEntryType.DIRECTORY
                         scope.launch {
                             val result = runCatchingCancellable {
-                                withContext(Dispatchers.IO) { storage.delete(path, recursive = recursive) }
+                                withContext(Dispatchers.IO) { WorkspaceSafety.moveToTrash(storage, path) }
                             }
-                            result.onSuccess {
+                            result.onSuccess { trashRecord ->
                                 pendingDeletePath = null
                                 refreshKey++
-                                notify("Deleted " + fileName(path))
                                 scope.launch {
-                                    val synced = runCatchingCancellable { propagateChangedPath(path, deleted = true) }
-                                    synced.onSuccess { updatedLinks -> syncLinks = updatedLinks }
-                                        .onFailure { error ->
-                                            notify("Deleted locally, but the linked copy could not be updated: " +
-                                                (error.message ?: "unknown error"))
+                                    val snackbarResult = snackbarHostState.showSnackbar(
+                                        message = "Moved " + fileName(path) +
+                                            " to Trash. The linked copy has not been changed.",
+                                        actionLabel = "Undo",
+                                        withDismissAction = true,
+                                        duration = SnackbarDuration.Long,
+                                    )
+                                    if (snackbarResult == SnackbarResult.ActionPerformed) {
+                                        val restored = runCatchingCancellable {
+                                            withContext(Dispatchers.IO) {
+                                                WorkspaceSafety.restoreFromTrash(storage, trashRecord.id)
+                                            }
                                         }
+                                        restored.onSuccess { restoredPath ->
+                                            refreshKey++
+                                            val syncResult = runCatchingCancellable {
+                                                propagateChangedPath(restoredPath)
+                                            }
+                                            syncResult.onSuccess { updatedLinks ->
+                                                syncLinks = updatedLinks
+                                                notify("Restored " + fileName(restoredPath))
+                                            }.onFailure { error ->
+                                                notify(
+                                                    "Restored locally, but the linked copy could not be updated: " +
+                                                        (error.message ?: "unknown error"),
+                                                )
+                                            }
+                                        }.onFailure { error ->
+                                            notify("Could not undo Trash move: " + (error.message ?: "unknown error"))
+                                        }
+                                    }
                                 }
                             }.onFailure { error ->
                                 pendingDeletePath = null
-                                notify("Could not delete item: " + (error.message ?: "unknown error"))
+                                notify("Could not move item to Trash: " + (error.message ?: "unknown error"))
                             }
                         }
                     },
@@ -1908,6 +1958,7 @@ private fun WorkspacePanel(
     onAddWorkspace: () -> Unit,
     onOpenStandaloneFile: () -> Unit,
     onManageSavedDocuments: () -> Unit,
+    onOpenSafetyTools: () -> Unit,
     onManageWorkspaces: () -> Unit,
     onOpenEntry: (FileEntry) -> Unit,
     onNewFile: () -> Unit,
@@ -2004,6 +2055,13 @@ private fun WorkspacePanel(
                 Icon(Icons.Filled.Folder, contentDescription = null, modifier = Modifier.size(17.dp))
                 Spacer(Modifier.width(6.dp))
                 Text("Saved files")
+            }
+            OutlinedButton(
+                onClick = onOpenSafetyTools,
+                modifier = Modifier.weight(1f).testTag("workspace-safety-tools"),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Text("File safety")
             }
         }
 
