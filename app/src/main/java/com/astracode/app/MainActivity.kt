@@ -1837,7 +1837,7 @@ private fun FileManagementScreen(
                             }
                         }
                     },
-                , modifier = Modifier.testTag("confirm-workspace-delete"),
+                    modifier = Modifier.testTag("confirm-workspace-delete"),
                 ) { Text("Delete", color = Danger) }
             },
             dismissButton = {
