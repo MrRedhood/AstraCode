@@ -614,6 +614,47 @@ private fun replaceUnpairedSurrogates(text: String): Pair<String, Int> {
     return output.toString() to replacements
 }
 
+private fun formatAtelierTimestamp(millis: Long): String =
+    if (millis <= 0L) "Time not recorded"
+    else java.time.Instant.ofEpochMilli(millis).toString().replace('T', ' ').take(16)
+
+private fun FileEntry.toAtelierFileItem(childCount: Int?): AtelierFileItem {
+    val isDirectory = type == FileEntryType.DIRECTORY
+    val kind = when (type) {
+        FileEntryType.DIRECTORY -> "Folder"
+        FileEntryType.FILE -> name.substringAfterLast('.', "").takeIf { it.isNotBlank() }?.uppercase() ?: "File"
+        FileEntryType.SYMBOLIC_LINK -> "Symbolic link"
+        FileEntryType.OTHER -> "Other"
+    }
+    return AtelierFileItem(
+        path = path,
+        name = name,
+        kind = kind,
+        isDirectory = isDirectory,
+        sizeBytes = sizeBytes,
+        modifiedLabel = formatAtelierTimestamp(modifiedAt.toEpochMilli()),
+        childCount = childCount,
+        createdLabel = createdAt?.let { formatAtelierTimestamp(it.toEpochMilli()) } ?: "Not recorded by provider",
+        formatLabel = kind,
+    )
+}
+
+private fun com.astracode.app.storage.WorkspaceSearchHit.toAtelierSearchResult(): AtelierSearchResult {
+    val kind = when (type) {
+        FileEntryType.DIRECTORY -> "Folder"
+        FileEntryType.FILE -> name.substringAfterLast('.', "").takeIf { it.isNotBlank() }?.uppercase() ?: "File"
+        FileEntryType.SYMBOLIC_LINK -> "Symbolic link"
+        FileEntryType.OTHER -> "Other"
+    }
+    return AtelierSearchResult(
+        path = path,
+        name = name,
+        kind = kind,
+        sizeBytes = sizeBytes,
+        modifiedLabel = formatAtelierTimestamp(modifiedAtMillis),
+    )
+}
+
 private fun workspaceMetadataText(storage: WorkspaceStorage, entry: FileEntry): String {
     val sizeBytes = if (entry.type == FileEntryType.DIRECTORY) {
         val pendingDirectories = java.util.ArrayDeque<String>()
@@ -1905,52 +1946,60 @@ private fun FileManagementScreen(
 
 
     bulkActionKind?.let { kind ->
-        val selected = selectedPaths.size
-        AlertDialog(
-            onDismissRequest = { bulkActionKind = null },
-            title = {
-                Text(when (kind) {
-                    "zip" -> "Move $selected item(s) into ZIP"
-                    "copy" -> "Copy $selected item(s)"
-                    "move" -> "Move $selected item(s)"
-                    else -> "Delete $selected item(s)?"
-                })
-            },
-            text = {
-                Column {
+        if (kind == "zip") {
+            CreateZipModal(
+                selectedCount = selectedPaths.size,
+                fileName = bulkInput,
+                onFileNameChange = { bulkInput = it },
+                isBusy = bulkActionInProgress,
+                onDismiss = { if (!bulkActionInProgress) bulkActionKind = null },
+                onCreate = { startBulkAction(kind) },
+            )
+        } else {
+            val selected = selectedPaths.size
+            AlertDialog(
+                onDismissRequest = { if (!bulkActionInProgress) bulkActionKind = null },
+                title = {
                     Text(when (kind) {
-                        "zip" -> "Create one ZIP file containing the selected items, then remove the originals only after the archive is written successfully."
-                        "copy" -> "Copy all selected items into a destination folder that already exists."
-                        "move" -> "Move all selected items into a destination folder that already exists. Synced copies are moved too."
-                        else -> "Delete all selected items and their contents. Synced copies are deleted where linked."
+                        "copy" -> "Copy $selected item(s)"
+                        "move" -> "Move $selected item(s)"
+                        else -> "Move $selected item(s) to Trash?"
                     })
-                    if (kind != "delete") {
+                },
+                text = {
+                    Column {
+                        Text(when (kind) {
+                            "copy" -> "Copy all selected items into a destination folder that already exists."
+                            "move" -> "Move all selected items into a destination folder that already exists. Synced copies are moved too."
+                            else -> "Move selected items and their contents to Trash. Linked copies are not changed by this bulk action."
+                        })
                         OutlinedTextField(
                             value = bulkInput,
                             onValueChange = { bulkInput = it },
-                            label = { Text(if (kind == "zip") "ZIP file name" else "Destination folder path") },
+                            label = { Text("Destination folder path") },
                             modifier = Modifier.fillMaxWidth().testTag("workspace-bulk-input"),
+                            enabled = !bulkActionInProgress,
                         )
                     }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = { startBulkAction(kind) },
-                    modifier = Modifier.testTag("confirm-workspace-bulk-action"),
-                ) {
-                    Text(when (kind) {
-                        "zip" -> "Create ZIP & Move"
-                        "copy" -> "Copy"
-                        "move" -> "Move"
-                        else -> "Delete"
-                    })
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { bulkActionKind = null }) { Text("Cancel") }
-            },
-        )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = { startBulkAction(kind) },
+                        enabled = !bulkActionInProgress,
+                        modifier = Modifier.testTag("confirm-workspace-bulk-action"),
+                    ) {
+                        Text(when (kind) {
+                            "copy" -> "Copy"
+                            "move" -> "Move"
+                            else -> "Move to Trash"
+                        })
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { bulkActionKind = null }, enabled = !bulkActionInProgress) { Text("Cancel") }
+                },
+            )
+        }
     }
 
     operationEntry?.let { entry ->
@@ -2168,7 +2217,40 @@ private fun FileManagementScreen(
                 ) { Text("Keep editing") }
             },
         )
+    }    inspectorEntry?.let { entry ->
+        QuickInspectorSheet(
+            item = entry.toAtelierFileItem(folderCounts[entry.path]),
+            onDismiss = { inspectorEntry = null },
+            onOpen = {
+                inspectorEntry = null
+                openWorkspaceEntry(entry.path)
+            },
+            onCreateZip = {
+                inspectorEntry = null
+                selectedPaths = setOf(entry.path)
+                selectionMode = true
+                bulkActionKind = "zip"
+                bulkInput = entry.name.removeSuffix(".zip").removeSuffix(".ZIP") + "-archive.zip"
+            },
+            onRename = {
+                inspectorEntry = null
+                showOperationDialog(entry, "rename")
+            },
+            onCopy = {
+                inspectorEntry = null
+                showOperationDialog(entry, "copy")
+            },
+            onMove = {
+                inspectorEntry = null
+                showOperationDialog(entry, "move")
+            },
+            onMoveToTrash = {
+                inspectorEntry = null
+                pendingDeletePath = entry.path
+            },
+        )
     }
+
 }
 
 @Composable
