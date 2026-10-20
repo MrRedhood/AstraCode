@@ -810,6 +810,7 @@ private fun FileManagementScreen(
         }
 
         scope.launch {
+            bulkActionInProgress = true
             var completed = 0
             try {
                 when (kind) {
@@ -896,6 +897,7 @@ private fun FileManagementScreen(
                 val partial = if (completed > 0) "$completed item(s) completed. " else ""
                 notify(partial + "Could not complete the action: " + (error.message ?: "unknown error"))
             } finally {
+                bulkActionInProgress = false
                 bulkActionKind = null
                 selectionMode = false
                 selectedPaths = emptySet()
@@ -972,6 +974,107 @@ private fun FileManagementScreen(
                 }
             }.onFailure { error ->
                 notify("Could not save file: " + (error.message ?: "unknown error"))
+            }
+        }
+    }
+
+    fun openWorkspaceEntry(path: String) {
+        val selected = runCatching { findWorkspaceEntry(storage, path) }.getOrNull()
+        if (selected == null) {
+            notify("This item is no longer available.")
+            refreshKey++
+            return
+        }
+        requestNavigation {
+            activeMainScreen = Screen.Files
+            when (selected.type) {
+                FileEntryType.DIRECTORY -> {
+                    currentDirectory = selected.path
+                    refreshKey++
+                }
+                FileEntryType.FILE -> {
+                    if (selected.name.endsWith(".zip", ignoreCase = true)) {
+                        showOperationDialog(selected, "extract")
+                    } else {
+                        openFile(selected.path)
+                    }
+                }
+                FileEntryType.SYMBOLIC_LINK -> notify("Symbolic links are not opened from the workspace.")
+                FileEntryType.OTHER -> notify("This file type is not supported yet.")
+            }
+        }
+    }
+
+    fun showWorkspaceEntryActions(path: String) {
+        val entry = runCatching { findWorkspaceEntry(storage, path) }.getOrNull() ?: run {
+            notify("This item is no longer available.")
+            refreshKey++
+            return
+        }
+        actionEntry = entry
+        val linked = if (activeWorkspaceId == PRIVATE_WORKSPACE_ID) {
+            syncLinks.filter {
+                entry.path == it.privatePath || entry.path.startsWith(it.privatePath + "/")
+            }.maxByOrNull { it.privatePath.length }
+        } else {
+            syncLinks.filter {
+                it.externalTreeUri == activeWorkspaceId &&
+                    (entry.path == it.externalPath || entry.path.startsWith(it.externalPath + "/"))
+            }.maxByOrNull { it.externalPath.length }
+        }
+        syncExternalUri = linked?.externalTreeUri
+            ?: if (activeWorkspaceId != PRIVATE_WORKSPACE_ID) activeWorkspaceId
+            else savedWorkspaceFolders.firstOrNull()?.id.orEmpty()
+    }
+
+    fun refreshTrashScreen() {
+        val requestedStorage = storage
+        trashScreenLoading = true
+        trashScreenMessage = null
+        scope.launch {
+            val result = runCatchingCancellable {
+                withContext(Dispatchers.IO) { WorkspaceSafety.listTrash(requestedStorage) }
+            }
+            if (storage === requestedStorage) {
+                result.onSuccess { records ->
+                    trashScreenItems = records.map { record ->
+                        AtelierTrashItem(
+                            id = record.id,
+                            originalPath = record.originalPath,
+                            deletedAtMillis = record.deletedAtMillis,
+                            deletedLabel = formatAtelierTimestamp(record.deletedAtMillis),
+                        )
+                    }
+                    trashScreenMessage = if (records.isEmpty()) "Trash is empty." else null
+                }.onFailure { error ->
+                    trashScreenMessage = "Could not load Trash: " + (error.message ?: "storage error")
+                }
+                trashScreenLoading = false
+            }
+        }
+    }
+
+    fun refreshHealthScreen() {
+        val requestedStorage = storage
+        healthLoading = true
+        healthMessage = null
+        scope.launch {
+            val result = runCatchingCancellable {
+                withContext(Dispatchers.IO) { WorkspaceSafety.healthReport(requestedStorage) }
+            }
+            if (storage === requestedStorage) {
+                result.onSuccess { report ->
+                    healthReport = AtelierStorageHealth(
+                        totalBytes = report.totalBytes,
+                        fileCount = report.fileCount,
+                        directoryCount = report.directoryCount,
+                        largestFiles = report.largestFiles,
+                        storageLabel = requestedStorage.displayName,
+                    )
+                }.onFailure { error ->
+                    healthMessage = "Storage scan failed: " + (error.message ?: "storage error")
+                }
+                healthLoading = false
             }
         }
     }
