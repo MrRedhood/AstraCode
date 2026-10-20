@@ -782,17 +782,15 @@ private fun FileManagementScreen(
                     }
                     "delete" -> {
                         for (path in paths.sortedByDescending { it.count { ch -> ch == '/' } }) {
-                            val item = withContext(Dispatchers.IO) {
-                                findWorkspaceEntry(storage, path)
-                                    ?: throw IllegalArgumentException("Selected item no longer exists: $path")
-                            }
                             withContext(Dispatchers.IO) {
-                                storage.delete(path, recursive = item.type == FileEntryType.DIRECTORY)
+                                WorkspaceSafety.moveToTrash(storage, path)
                             }
                             completed++
-                            syncLinks = propagateChangedPath(path, deleted = true)
                         }
-                        notify("Deleted $completed item(s)")
+                        notify(
+                            "Moved $completed item(s) to Trash. Open File safety to restore them; " +
+                                "linked copies have not been changed.",
+                        )
                     }
                     "copy", "move" -> {
                         val destinationFolder = input
