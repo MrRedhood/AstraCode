@@ -33,6 +33,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.CreateNewFolder
@@ -767,11 +768,14 @@ private fun FileManagementScreen(
                     "zip" -> {
                         val outputPath = joinPath(currentDirectory, archiveName)
                         withContext(Dispatchers.IO) {
-                            WorkspaceArchive.createZip(storage, paths, outputPath, currentDirectory)
+                            WorkspaceArchive.moveToZip(storage, paths, outputPath, currentDirectory)
                         }
                         completed = 1
+                        paths.sortedByDescending { it.count { ch -> ch == '/' } }.forEach { path ->
+                            syncLinks = propagateChangedPath(path, deleted = true)
+                        }
                         syncLinks = propagateChangedPath(outputPath)
-                        notify("Created $archiveName")
+                        notify("Moved ${paths.size} item(s) into $archiveName")
                     }
                     "delete" -> {
                         for (path in paths.sortedByDescending { it.count { ch -> ch == '/' } }) {
@@ -1097,7 +1101,13 @@ private fun FileManagementScreen(
                                 currentDirectory = entry.path
                                 refreshKey++
                             }
-                            FileEntryType.FILE -> requestNavigation { openFile(entry.path) }
+                            FileEntryType.FILE -> requestNavigation {
+                                if (entry.name.endsWith(".zip", ignoreCase = true)) {
+                                    showOperationDialog(entry, "extract")
+                                } else {
+                                    openFile(entry.path)
+                                }
+                            }
                             FileEntryType.SYMBOLIC_LINK -> notify("Symbolic links are not opened from the workspace.")
                             FileEntryType.OTHER -> notify("This file type is not supported yet.")
                         }
@@ -1311,7 +1321,7 @@ private fun FileManagementScreen(
                             actionEntry = null
                         },
                         modifier = Modifier.fillMaxWidth().testTag("workspace-action-zip"),
-                    ) { Text("Create ZIP") }
+                    ) { Text("Move into ZIP") }
                     TextButton(
                         onClick = {
                             val requestedStorage = storage
@@ -1580,7 +1590,7 @@ private fun FileManagementScreen(
             onDismissRequest = { bulkActionKind = null },
             title = {
                 Text(when (kind) {
-                    "zip" -> "Create ZIP from $selected item(s)"
+                    "zip" -> "Move $selected item(s) into ZIP"
                     "copy" -> "Copy $selected item(s)"
                     "move" -> "Move $selected item(s)"
                     else -> "Delete $selected item(s)?"
@@ -1589,7 +1599,7 @@ private fun FileManagementScreen(
             text = {
                 Column {
                     Text(when (kind) {
-                        "zip" -> "Create one ZIP file containing the selected items. File contents stay in their original format."
+                        "zip" -> "Create one ZIP file containing the selected items, then remove the originals only after the archive is written successfully."
                         "copy" -> "Copy all selected items into a destination folder that already exists."
                         "move" -> "Move all selected items into a destination folder that already exists. Synced copies are moved too."
                         else -> "Delete all selected items and their contents. Synced copies are deleted where linked."
@@ -1610,7 +1620,7 @@ private fun FileManagementScreen(
                     modifier = Modifier.testTag("confirm-workspace-bulk-action"),
                 ) {
                     Text(when (kind) {
-                        "zip" -> "Create ZIP"
+                        "zip" -> "Create ZIP & Move"
                         "copy" -> "Copy"
                         "move" -> "Move"
                         else -> "Delete"
@@ -1637,12 +1647,15 @@ private fun FileManagementScreen(
             },
             text = {
                 Column {
-                    Text(when (kind) {
-                        "rename" -> "Enter a new name for this item."
-                        "copy" -> "Enter a name for the copy in this folder."
-                        "extract" -> "Choose a destination folder path relative to the workspace. Existing folders will not be overwritten."
-                        else -> "Enter a destination path relative to the workspace root."
-                    })
+                    Text(
+                        when (kind) {
+                            "rename" -> "Enter a new name for this item."
+                            "copy" -> "Enter a name for the copy in this folder."
+                            "extract" -> "ZIP files cannot be edited directly. Extract the contents first, then open the extracted files to edit them. Choose a destination folder; existing folders will not be overwritten."
+                            else -> "Enter a destination path relative to the workspace root."
+                        },
+                        modifier = if (kind == "extract") Modifier.testTag("workspace-extract-explanation") else Modifier,
+                    )
                     OutlinedTextField(
                         value = operationInput,
                         onValueChange = { operationInput = it },
@@ -2032,7 +2045,7 @@ private fun WorkspacePanel(
                         onClick = { onBulkAction("zip") },
                         enabled = selectedPaths.isNotEmpty(),
                         modifier = Modifier.testTag("workspace-bulk-zip"),
-                    ) { Text("Create ZIP") }
+                    ) { Text("Move into ZIP") }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     TextButton(
@@ -2397,10 +2410,20 @@ private fun FileEntryRow(
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    if (isDirectory) Icons.Filled.Folder else Icons.Filled.Description,
-                    contentDescription = null,
-                    tint = if (isDirectory) Mint else Color(0xFFB9C6FF),
-                    modifier = Modifier.size(22.dp),
+                    imageVector = when {
+                        isDirectory -> Icons.Filled.Folder
+                        entry.type == FileEntryType.FILE && entry.name.endsWith(".zip", ignoreCase = true) -> Icons.Filled.Archive
+                        else -> Icons.Filled.Description
+                    },
+                    contentDescription = if (
+                        entry.type == FileEntryType.FILE && entry.name.endsWith(".zip", ignoreCase = true)
+                    ) "ZIP archive" else null,
+                    tint = when {
+                        isDirectory -> Mint
+                        entry.type == FileEntryType.FILE && entry.name.endsWith(".zip", ignoreCase = true) -> Color(0xFFFFC857)
+                        else -> Color(0xFFB9C6FF)
+                    },
+                    modifier = Modifier.size(22.dp).testTag("entry-icon-${entry.name}"),
                 )
             }
             Spacer(Modifier.width(12.dp))

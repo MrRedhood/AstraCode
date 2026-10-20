@@ -306,11 +306,17 @@ class MainActivityUiTest {
         composeRule.waitUntil(timeoutMillis = 10_000) {
             Files.exists(workspace.resolve("app/release.zip"))
         }
+        assertEquals(false, Files.exists(workspace.resolve("app/spec.docx")))
+        assertEquals(false, Files.exists(workspace.resolve("app/build.gradle.kts")))
+        assertEquals(false, Files.exists(workspace.resolve("app/src")))
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("entry-release.zip").assertIsDisplayed() }.isSuccess
         }
-        composeRule.onNodeWithTag("entry-release.zip").performTouchInput { longClick() }
-        composeRule.onNodeWithTag("workspace-action-extract").performClick()
+        composeRule.onNodeWithTag("entry-icon-release.zip", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("entry-release.zip").performClick()
+        composeRule.onNodeWithTag("workspace-operation-input").assertIsDisplayed()
+        composeRule.onNodeWithTag("workspace-extract-explanation")
+            .assertTextContains("cannot be edited directly", substring = true)
         composeRule.onNodeWithTag("workspace-operation-input").performTextReplacement("app/restored")
         composeRule.onNodeWithTag("confirm-workspace-operation").performClick()
 
@@ -357,13 +363,18 @@ class MainActivityUiTest {
         val archive = workspace.resolve("bundle.zip")
         composeRule.waitUntil(timeoutMillis = 10_000) {
             Files.isRegularFile(archive) &&
+                !Files.exists(workspace.resolve("Document.docx")) &&
+                !Files.exists(workspace.resolve("src")) &&
                 runCatching {
                     composeRule.onNodeWithTag("workspace-toggle-selection").assertTextContains("Select")
                     composeRule.onNodeWithTag("entry-bundle.zip").assertIsDisplayed()
                 }.isSuccess
         }
-        composeRule.onNodeWithTag("entry-bundle.zip").performTouchInput { longClick() }
-        composeRule.onNodeWithTag("workspace-action-extract").performClick()
+        composeRule.onNodeWithTag("entry-icon-bundle.zip", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("entry-bundle.zip").performClick()
+        composeRule.onNodeWithTag("workspace-operation-input").assertIsDisplayed()
+        composeRule.onNodeWithTag("workspace-extract-explanation")
+            .assertTextContains("cannot be edited directly", substring = true)
         composeRule.onNodeWithTag("workspace-operation-input").performTextReplacement("restored")
         composeRule.onNodeWithTag("confirm-workspace-operation").performClick()
 

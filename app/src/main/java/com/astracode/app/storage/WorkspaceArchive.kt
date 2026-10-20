@@ -108,6 +108,33 @@ internal object WorkspaceArchive {
         return outputPath
     }
 
+    /**
+     * Creates the ZIP first, then removes the selected source items. If archiving fails,
+     * originals remain untouched. If a provider refuses deletion afterward, the completed
+     * ZIP is retained and the caller receives a clear partial-move error.
+     */
+    fun moveToZip(
+        storage: WorkspaceStorage,
+        sourcePaths: List<String>,
+        archivePath: String,
+        archiveBasePath: String = "",
+    ): String {
+        val sources = normalizeSources(storage, sourcePaths)
+        val outputPath = createZip(storage, sources.map { it.path }, archivePath, archiveBasePath)
+        sources.forEach { item ->
+            if (!storage.exists(item.path)) return@forEach
+            try {
+                storage.delete(item.path, recursive = item.type == FileEntryType.DIRECTORY)
+            } catch (error: Exception) {
+                throw IOException(
+                    "Created $outputPath, but could not remove the original item ${item.path}. The ZIP was kept; check for remaining originals.",
+                    error,
+                )
+            }
+        }
+        return outputPath
+    }
+
     fun extractZip(
         storage: WorkspaceStorage,
         archivePath: String,

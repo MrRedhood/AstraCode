@@ -43,6 +43,35 @@ class WorkspaceArchiveTest {
     }
 
     @Test
+    fun moveToZipRemovesSelectedSourcesAfterWritingAndPreservesArchiveBytes() {
+        val root = Files.createTempDirectory("astracode-workspace-move-to-zip").toFile()
+        val storage = FileManagementSystem(root.toPath())
+        try {
+            storage.createDirectory("project/src")
+            val binaryBytes = byteArrayOf(0, 1, -1, -128, 12, 42)
+            storage.writeBytes("project/plan.docx", binaryBytes)
+            storage.writeText("project/src/Main.kt", "fun main() = Unit\\n")
+
+            WorkspaceArchive.moveToZip(
+                storage,
+                listOf("project/plan.docx", "project/src"),
+                "project/release.zip",
+                "project",
+            )
+
+            assertTrue(storage.exists("project/release.zip"))
+            assertFalse(storage.exists("project/plan.docx"))
+            assertFalse(storage.exists("project/src"))
+            WorkspaceArchive.extractZip(storage, "project/release.zip", "project/restored")
+            assertArrayEquals(binaryBytes, storage.readBytes("project/restored/plan.docx"))
+            assertEquals("fun main() = Unit\\n", storage.readText("project/restored/src/Main.kt").text)
+        } finally {
+            storage.close()
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun rejectsZipSlipAndRollsBackTheExtractionFolder() {
         val root = Files.createTempDirectory("astracode-workspace-zip-slip").toFile()
         val storage = FileManagementSystem(root.toPath())
