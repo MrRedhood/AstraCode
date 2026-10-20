@@ -460,7 +460,10 @@ class MainActivityUiTest {
         composeRule.waitUntil(timeoutMillis = 10_000) {
             !Files.exists(workspace.resolve("README-renamed.txt"))
         }
-        composeRule.onNodeWithText("Undo").assertIsDisplayed().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching { composeRule.onNodeWithText("Undo").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithText("Undo").performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             Files.exists(workspace.resolve("README-renamed.txt")) &&
                 workspace.resolve("README-renamed.txt").toFile().readText() == "Workspace fixture\n"
