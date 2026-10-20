@@ -1973,13 +1973,15 @@ private fun FileManagementScreen(
                             "move" -> "Move all selected items into a destination folder that already exists. Synced copies are moved too."
                             else -> "Move selected items and their contents to Trash. Linked copies are not changed by this bulk action."
                         })
-                        OutlinedTextField(
-                            value = bulkInput,
-                            onValueChange = { bulkInput = it },
-                            label = { Text("Destination folder path") },
-                            modifier = Modifier.fillMaxWidth().testTag("workspace-bulk-input"),
-                            enabled = !bulkActionInProgress,
-                        )
+                        if (kind != "delete") {
+                            OutlinedTextField(
+                                value = bulkInput,
+                                onValueChange = { bulkInput = it },
+                                label = { Text("Destination folder path") },
+                                modifier = Modifier.fillMaxWidth().testTag("workspace-bulk-input"),
+                                enabled = !bulkActionInProgress,
+                            )
+                        }
                     }
                 },
                 confirmButton = {
