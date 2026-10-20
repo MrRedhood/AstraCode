@@ -9,6 +9,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
@@ -393,6 +394,69 @@ class MainActivityUiTest {
             "fun main() = Unit\\n",
             String(Files.readAllBytes(restoredSource), Charsets.UTF_8),
         )
+    }
+
+    
+    @Test
+    fun workspaceSafetyToolsSearchPreviewBatchRenameAndTrashUndoWork() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workspace = context.filesDir.toPath().resolve("workspace")
+        Files.createDirectories(workspace.resolve("app/src"))
+        Files.write(workspace.resolve("README.txt"), "Workspace fixture\n".toByteArray(Charsets.UTF_8))
+        Files.write(workspace.resolve("app/src/Main.kt"), "fun main() = Unit\n".toByteArray(Charsets.UTF_8))
+        composeRule.activityRule.scenario.recreate()
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching { composeRule.onNodeWithTag("workspace-safety-tools").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("workspace-safety-tools").performClick()
+        composeRule.onNodeWithTag("workspace-safety-search-input").performTextReplacement("Main.kt")
+        composeRule.onNodeWithTag("workspace-safety-search").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("workspace-safety-results")
+                    .assertTextContains("app/src/Main.kt", substring = true)
+            }.isSuccess
+        }
+
+        composeRule.onNodeWithTag("workspace-preview-result-0").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("workspace-safety-preview-text")
+                    .assertTextContains("fun main() = Unit", substring = true)
+            }.isSuccess
+        }
+        composeRule.onNodeWithTag("workspace-safety-preview-close").performScrollTo().performClick()
+
+        composeRule.onNodeWithTag("workspace-batch-rename-input")
+            .performScrollTo()
+            .performTextReplacement("README.txt=README-renamed.txt")
+        composeRule.onNodeWithTag("workspace-batch-rename").performScrollTo().performClick()
+        composeRule.onNodeWithTag("workspace-batch-rename-confirm").assertIsDisplayed()
+        assertEquals(false, Files.exists(workspace.resolve("README-renamed.txt")))
+        composeRule.onNodeWithTag("workspace-batch-rename-confirm").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            Files.exists(workspace.resolve("README-renamed.txt")) &&
+                !Files.exists(workspace.resolve("README.txt"))
+        }
+        composeRule.onNodeWithTag("workspace-safety-close").performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("entry-README-renamed.txt").assertIsDisplayed()
+            }.isSuccess
+        }
+        composeRule.onNodeWithTag("entry-README-renamed.txt").performTouchInput { longClick() }
+        composeRule.onNodeWithTag("workspace-action-delete").performClick()
+        composeRule.onNodeWithText("Delete", substring = true).performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            !Files.exists(workspace.resolve("README-renamed.txt"))
+        }
+        composeRule.onNodeWithText("Undo").assertIsDisplayed().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            Files.exists(workspace.resolve("README-renamed.txt")) &&
+                workspace.resolve("README-renamed.txt").toFile().readText() == "Workspace fixture\n"
+        }
     }
 
 }
