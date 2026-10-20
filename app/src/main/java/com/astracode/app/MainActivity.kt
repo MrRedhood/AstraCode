@@ -91,6 +91,7 @@ import com.astracode.filesystem.WorkspaceStorageType
 import com.astracode.filesystem.Utf8RepairDecoder
 import com.astracode.app.storage.SafWorkspaceStorage
 import com.astracode.app.storage.WorkspaceArchive
+import com.astracode.app.storage.WorkspaceSafety
 import com.astracode.app.storage.WorkspaceSyncLink
 import com.astracode.app.storage.loadWorkspaceSyncLinks
 import com.astracode.app.storage.mapBetweenWorkspacePaths
