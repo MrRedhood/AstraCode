@@ -1119,6 +1119,7 @@ private fun FileManagementScreen(
     }
 
     LaunchedEffect(storage, selectedDocument) {
+        activeMainScreen = Screen.Files
         currentDirectory = ""
         openedFile = null
         editorText = ""
@@ -1216,86 +1217,232 @@ private fun FileManagementScreen(
                     )
                 }
             } else {
-                WorkspacePanel(
-                    currentDirectory = currentDirectory,
-                    rootName = storage.displayName,
-                    storageType = storage.storageType,
-                    entries = entries,
-                    folderCounts = folderCounts,
-                    savedWorkspaceFolders = savedWorkspaceFolders,
-                    activeWorkspaceId = activeWorkspaceId,
-                    selectionMode = selectionMode,
-                    selectedPaths = selectedPaths,
-                    onSelectionModeChanged = { enabled ->
-                        selectionMode = enabled
-                        if (!enabled) selectedPaths = emptySet()
-                    },
-                    onToggleSelection = { path ->
-                        selectedPaths = if (path in selectedPaths) selectedPaths - path else selectedPaths + path
-                    },
-                    onBulkAction = { kind ->
-                        bulkActionKind = kind
-                        bulkInput = when (kind) {
-                            "zip" -> "archive.zip"
-                            "copy", "move" -> parentPath(currentDirectory)
-                            else -> ""
-                        }
-                    },
-                    onAddWorkspace = { requestNavigation(onAddWorkspace) },
-                    onOpenStandaloneFile = { requestNavigation(onOpenStandaloneFile) },
-                    onManageSavedDocuments = { showSavedDocuments = true },
-                    onOpenSafetyTools = { showWorkspaceSafety = true },
-                    onManageWorkspaces = { showWorkspaceManager = true },
-                    onOpenEntry = { entry ->
-                        when (entry.type) {
-                            FileEntryType.DIRECTORY -> requestNavigation {
-                                currentDirectory = entry.path
+                when (activeMainScreen) {
+                    Screen.Files -> FilesScreen(
+                        modifier = Modifier.weight(1f),
+                        rootName = storage.displayName,
+                        currentDirectory = currentDirectory,
+                        storageLabel = if (storage.storageType == WorkspaceStorageType.DOCUMENT_TREE) {
+                            "External storage · provider-managed"
+                        } else {
+                            "Private app workspace"
+                        },
+                        items = entries.map { it.toAtelierFileItem(folderCounts[it.path]) },
+                        selectedPaths = selectedPaths,
+                        selectionMode = selectionMode,
+                        savedWorkspaceCount = savedWorkspaceFolders.size,
+                        onAddWorkspace = { requestNavigation(onAddWorkspace) },
+                        onManageWorkspaces = { showWorkspaceManager = true },
+                        onNewFile = {
+                            newFileName = ""
+                            showNewFileDialog = true
+                        },
+                        onNewFolder = {
+                            newFolderName = ""
+                            showNewFolderDialog = true
+                        },
+                        onOpenStandaloneFile = { requestNavigation(onOpenStandaloneFile) },
+                        onManageSavedDocuments = { showSavedDocuments = true },
+                        onOpenSafetyTools = {
+                            activeMainScreen = Screen.Safety
+                            refreshHealthScreen()
+                        },
+                        onSelectionModeChanged = { enabled ->
+                            selectionMode = enabled
+                            if (!enabled) selectedPaths = emptySet()
+                        },
+                        onToggleSelection = { path ->
+                            selectedPaths = if (path in selectedPaths) selectedPaths - path else selectedPaths + path
+                        },
+                        onBulkAction = { kind ->
+                            bulkActionKind = kind
+                            bulkInput = when (kind) {
+                                "zip" -> "archive.zip"
+                                "copy", "move" -> parentPath(currentDirectory)
+                                else -> ""
+                            }
+                        },
+                        onOpenEntry = ::openWorkspaceEntry,
+                        onLongClick = ::showWorkspaceEntryActions,
+                        onInspectEntry = { path ->
+                            inspectorEntry = runCatching { findWorkspaceEntry(storage, path) }.getOrNull()
+                        },
+                        onGoUp = {
+                            requestNavigation {
+                                selectionMode = false
+                                selectedPaths = emptySet()
+                                currentDirectory = parentPath(currentDirectory)
                                 refreshKey++
                             }
-                            FileEntryType.FILE -> requestNavigation {
-                                if (entry.name.endsWith(".zip", ignoreCase = true)) {
-                                    showOperationDialog(entry, "extract")
-                                } else {
-                                    openFile(entry.path)
+                        },
+                    )
+
+                    Screen.Search -> SearchScreen(
+                        modifier = Modifier.weight(1f),
+                        hits = searchResults,
+                        busy = searchBusy,
+                        statusMessage = searchMessage,
+                        duplicates = duplicateGroups,
+                        duplicatesScanned = duplicatesScanned,
+                        skippedDuplicateFiles = skippedDuplicateFiles,
+                        preview = searchPreview,
+                        onSearch = { query, extension, minimumBytes, maximumBytes, includeHidden ->
+                            val requestedStorage = storage
+                            searchBusy = true
+                            searchMessage = "Searching workspace…"
+                            searchPreview = null
+                            scope.launch {
+                                val result = runCatchingCancellable {
+                                    withContext(Dispatchers.IO) {
+                                        WorkspaceSafety.search(
+                                            requestedStorage,
+                                            com.astracode.app.storage.WorkspaceSearchOptions(
+                                                query = query,
+                                                extension = extension.trim().takeIf { it.isNotEmpty() },
+                                                minSizeBytes = minimumBytes.toLongOrNull(),
+                                                maxSizeBytes = maximumBytes.toLongOrNull(),
+                                                includeHidden = includeHidden,
+                                            ),
+                                        )
+                                    }
+                                }
+                                if (storage === requestedStorage) {
+                                    result.onSuccess { hits ->
+                                        searchResults = hits.map { it.toAtelierSearchResult() }
+                                        searchMessage = if (hits.isEmpty()) "No matching workspace items." else "Found ${hits.size} matching item(s)."
+                                    }.onFailure { error ->
+                                        searchResults = emptyList()
+                                        searchMessage = "Search failed: " + (error.message ?: "storage error")
+                                    }
+                                    searchBusy = false
                                 }
                             }
-                            FileEntryType.SYMBOLIC_LINK -> notify("Symbolic links are not opened from the workspace.")
-                            FileEntryType.OTHER -> notify("This file type is not supported yet.")
+                        },
+                        onFindDuplicates = {
+                            val requestedStorage = storage
+                            searchBusy = true
+                            searchMessage = "Scanning file contents for exact duplicates…"
+                            scope.launch {
+                                val result = runCatchingCancellable {
+                                    withContext(Dispatchers.IO) { WorkspaceSafety.findDuplicates(requestedStorage) }
+                                }
+                                if (storage === requestedStorage) {
+                                    result.onSuccess { scan ->
+                                        duplicateGroups = scan.groups.map {
+                                            AtelierDuplicateGroup(it.sha256, it.sizeBytes, it.paths)
+                                        }
+                                        skippedDuplicateFiles = scan.skippedFiles
+                                        duplicatesScanned = true
+                                        searchMessage = if (scan.groups.isEmpty()) {
+                                            "No exact duplicate groups found. Files skipped: ${scan.skippedFiles}."
+                                        } else {
+                                            "Found ${scan.groups.size} duplicate group(s). Nothing was deleted."
+                                        }
+                                    }.onFailure { error ->
+                                        searchMessage = "Duplicate scan failed: " + (error.message ?: "storage error")
+                                    }
+                                    searchBusy = false
+                                }
+                            }
+                        },
+                        onOpenPath = ::openWorkspaceEntry,
+                        onPreviewPath = { path ->
+                            val requestedStorage = storage
+                            searchBusy = true
+                            searchMessage = "Reading a bounded, read-only preview…"
+                            scope.launch {
+                                val result = runCatchingCancellable {
+                                    withContext(Dispatchers.IO) { WorkspaceSafety.preview(requestedStorage, path) }
+                                }
+                                if (storage === requestedStorage) {
+                                    result.onSuccess { item ->
+                                        searchPreview = AtelierPreview(
+                                            path = item.path,
+                                            sizeBytes = item.sizeBytes,
+                                            message = item.message,
+                                            text = item.text,
+                                            imageBytes = item.imageBytes,
+                                        )
+                                        searchMessage = "Preview is read-only. The original file was not changed."
+                                    }.onFailure { error ->
+                                        searchMessage = "Preview failed: " + (error.message ?: "storage error")
+                                    }
+                                    searchBusy = false
+                                }
+                            }
+                        },
+                        onClosePreview = { searchPreview = null },
+                    )
+
+                    Screen.Safety -> SafetyScreen(
+                        modifier = Modifier.weight(1f),
+                        health = healthReport,
+                        isLoading = healthLoading,
+                        message = healthMessage,
+                        onRefresh = ::refreshHealthScreen,
+                        onOpenAdvancedTools = { showWorkspaceSafety = true },
+                    )
+
+                    Screen.Trash -> TrashScreen(
+                        modifier = Modifier.weight(1f),
+                        items = trashScreenItems,
+                        isLoading = trashScreenLoading,
+                        message = trashScreenMessage,
+                        onRefresh = ::refreshTrashScreen,
+                        onRestore = { item, alternateDestination ->
+                            val requestedStorage = storage
+                            trashScreenLoading = true
+                            trashScreenMessage = "Restoring item…"
+                            scope.launch {
+                                val result = runCatchingCancellable {
+                                    withContext(Dispatchers.IO) {
+                                        WorkspaceSafety.restoreFromTrash(
+                                            requestedStorage,
+                                            item.id,
+                                            alternateDestination,
+                                        )
+                                    }
+                                }
+                                if (storage === requestedStorage) {
+                                    result.onSuccess { restoredPath ->
+                                        trashScreenItems = trashScreenItems.filterNot { it.id == item.id }
+                                        trashScreenMessage = "Restored " + restoredPath
+                                        refreshKey++
+                                        scope.launch {
+                                            val syncResult = runCatchingCancellable { propagateChangedPath(restoredPath) }
+                                            syncResult.onSuccess { updatedLinks ->
+                                                syncLinks = updatedLinks
+                                            }.onFailure { error ->
+                                                notify(
+                                                    "Restored locally, but the linked copy could not be updated: " +
+                                                        (error.message ?: "storage error"),
+                                                )
+                                            }
+                                        }
+                                    }.onFailure { error ->
+                                        trashScreenMessage = "Restore failed: " + (error.message ?: "storage error") +
+                                            ". The item remains in Trash."
+                                    }
+                                    trashScreenLoading = false
+                                }
+                            }
+                        },
+                    )
+                }
+
+                AstraCodeBottomNav(
+                    currentScreen = activeMainScreen,
+                    onTabSelected = { screen ->
+                        activeMainScreen = screen
+                        selectionMode = false
+                        selectedPaths = emptySet()
+                        when (screen) {
+                            Screen.Safety -> refreshHealthScreen()
+                            Screen.Trash -> refreshTrashScreen()
+                            else -> Unit
                         }
                     },
-                    onNewFile = {
-                        newFileName = ""
-                        showNewFileDialog = true
-                    },
-                    onNewFolder = {
-                        newFolderName = ""
-                        showNewFolderDialog = true
-                    },
-                    onDelete = { path -> pendingDeletePath = path },
-                    onLongClick = { entry ->
-                        actionEntry = entry
-                        val linked = if (activeWorkspaceId == PRIVATE_WORKSPACE_ID) {
-                            syncLinks.filter {
-                                entry.path == it.privatePath || entry.path.startsWith(it.privatePath + "/")
-                            }.maxByOrNull { it.privatePath.length }
-                        } else {
-                            syncLinks.filter {
-                                it.externalTreeUri == activeWorkspaceId &&
-                                    (entry.path == it.externalPath || entry.path.startsWith(it.externalPath + "/"))
-                            }.maxByOrNull { it.externalPath.length }
-                        }
-                        syncExternalUri = linked?.externalTreeUri
-                            ?: if (activeWorkspaceId != PRIVATE_WORKSPACE_ID) activeWorkspaceId
-                            else savedWorkspaceFolders.firstOrNull()?.id.orEmpty()
-                    },
-                    onGoUp = {
-                        requestNavigation {
-                            selectionMode = false
-                            selectedPaths = emptySet()
-                            currentDirectory = parentPath(currentDirectory)
-                            refreshKey++
-                        }
-                    },
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
