@@ -257,7 +257,7 @@ internal object WorkspaceSafety {
             if (sha256(storage.readBytes(destination)) != expected) throw IOException("SHA-256 verification failed after copy.")
             progress(bytes.size.toLong(), bytes.size.toLong())
             recordOperation(storage, "copy-verified", listOf(source, destination), "success")
-        
+    }
 
     fun preview(storage: WorkspaceStorage, path: String, maxBytes: Long = DEFAULT_PREVIEW_LIMIT_BYTES): WorkspacePreviewResult {
         require(maxBytes > 0)
