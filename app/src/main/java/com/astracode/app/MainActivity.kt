@@ -1787,7 +1787,7 @@ private fun FileManagementScreen(
         AlertDialog(
             onDismissRequest = { pendingDeletePath = null },
             title = { Text("Delete " + fileName(path) + "?") },
-            text = { Text("This deletes the item from this workspace. A synced copy is deleted too; folders include all their contents.") },
+            text = { Text("This moves the item and its contents to Trash in this workspace. A linked copy is left unchanged.") },
             confirmButton = {
                 TextButton(
                     onClick = {
