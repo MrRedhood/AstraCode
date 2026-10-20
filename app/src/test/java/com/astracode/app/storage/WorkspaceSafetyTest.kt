@@ -27,6 +27,61 @@ class WorkspaceSafetyTest {
         } finally { root.deleteRecursively() }
     }
 
+    @Test fun trashedDirectoryRestoresNestedFilesAndEmptyDirectories() {
+        val root = Files.createTempDirectory("safety-trash-directory").toFile()
+        try {
+            FileManagementSystem(root.toPath()).use { storage ->
+                storage.createDirectory("project")
+                storage.createDirectory("project/src")
+                storage.createDirectory("project/src/nested")
+                storage.createDirectory("project/empty")
+                storage.writeText("project/src/Main.kt", "fun main() = Unit")
+                storage.writeText("project/src/nested/config.json", "{\"enabled\":true}")
+
+                val record = WorkspaceSafety.moveToTrash(storage, "project")
+                assertFalse(storage.exists("project"))
+                assertTrue(WorkspaceSafety.listTrash(storage).any { it.id == record.id })
+
+                WorkspaceSafety.restoreFromTrash(storage, record.id)
+
+                assertEquals("fun main() = Unit", storage.readText("project/src/Main.kt").text)
+                assertEquals("{\"enabled\":true}", storage.readText("project/src/nested/config.json").text)
+                assertTrue(storage.exists("project/empty"))
+                assertTrue(WorkspaceSafety.listTrash(storage).none { it.id == record.id })
+            }
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test fun directoryRestoreCollisionKeepsNestedDataInTrashUntilAlternateRestore() {
+        val root = Files.createTempDirectory("safety-trash-directory-collision").toFile()
+        try {
+            FileManagementSystem(root.toPath()).use { storage ->
+                storage.createDirectory("project")
+                storage.createDirectory("project/src")
+                storage.writeText("project/src/Main.kt", "original data")
+                val record = WorkspaceSafety.moveToTrash(storage, "project")
+
+                storage.createDirectory("project")
+                storage.createDirectory("project/src")
+                storage.writeText("project/src/Main.kt", "newer data")
+                try {
+                    WorkspaceSafety.restoreFromTrash(storage, record.id)
+                    fail("Restore must not replace an existing directory.")
+                } catch (expected: java.io.IOException) {
+                    assertTrue(expected.message.orEmpty().contains("already exists"))
+                }
+
+                assertTrue(WorkspaceSafety.listTrash(storage).any { it.id == record.id })
+                assertEquals("newer data", storage.readText("project/src/Main.kt").text)
+
+                WorkspaceSafety.restoreFromTrash(storage, record.id, "project-recovered")
+                assertEquals("original data", storage.readText("project-recovered/src/Main.kt").text)
+                assertEquals("newer data", storage.readText("project/src/Main.kt").text)
+                assertTrue(WorkspaceSafety.listTrash(storage).none { it.id == record.id })
+            }
+        } finally { root.deleteRecursively() }
+    }
+
     @Test fun trashCanHandleMultipleItemsAndJournalEachOperation() {
         val root = Files.createTempDirectory("safety-multiple-trash").toFile()
         try {
