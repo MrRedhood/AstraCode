@@ -7,6 +7,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -66,6 +67,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -703,6 +705,7 @@ private fun FileManagementScreen(
     var showSavedDocuments by remember { mutableStateOf(false) }
     var showWorkspaceSafety by remember { mutableStateOf(false) }
     var activeMainScreen by remember { mutableStateOf<Screen>(Screen.Files) }
+    val screenBackStack = remember { mutableStateListOf<Screen>() }
     var inspectorEntry by remember { mutableStateOf<FileEntry?>(null) }
 
     var searchResults by remember(storage) { mutableStateOf(emptyList<AtelierSearchResult>()) }
@@ -973,6 +976,7 @@ private fun FileManagementScreen(
             return
         }
         requestNavigation {
+            if (activeMainScreen != Screen.Files) screenBackStack.add(activeMainScreen)
             activeMainScreen = Screen.Files
             when (selected.type) {
                 FileEntryType.DIRECTORY -> {
@@ -1102,6 +1106,7 @@ private fun FileManagementScreen(
 
     LaunchedEffect(storage, selectedDocument) {
         activeMainScreen = Screen.Files
+        screenBackStack.clear()
         currentDirectory = ""
         openedFile = null
         editorText = ""
@@ -1146,6 +1151,61 @@ private fun FileManagementScreen(
         val message = statusMessage ?: return@LaunchedEffect
         snackbarHostState.showSnackbar(message)
         statusMessage = null
+    }
+
+    val hasModalUi = showNewFileDialog || showNewFolderDialog || pendingDeletePath != null ||
+        operationEntry != null || syncEntry != null || showDiscardDialog || showWorkspaceManager ||
+        showSavedDocuments || showWorkspaceSafety || metadataEntry != null || bulkActionKind != null ||
+        bulkActionInProgress
+    val canNavigateBack = inspectorEntry != null || openedFile != null || selectedDocument != null ||
+        activeMainScreen != Screen.Files || screenBackStack.isNotEmpty() || currentDirectory.isNotEmpty() || selectionMode
+    BackHandler(enabled = !hasModalUi && canNavigateBack) {
+        when {
+            inspectorEntry != null -> inspectorEntry = null
+            openedFile != null || selectedDocument != null -> {
+                if (selectedDocument != null) {
+                    requestNavigation(onCloseStandaloneDocument)
+                } else {
+                    requestNavigation {
+                        openedFile = null
+                        editorText = ""
+                        savedText = ""
+                    }
+                }
+            }
+            activeMainScreen == Screen.Files && selectionMode -> {
+                selectionMode = false
+                selectedPaths = emptySet()
+            }
+            activeMainScreen == Screen.Files && currentDirectory.isNotEmpty() -> {
+                currentDirectory = parentPath(currentDirectory)
+                refreshKey++
+            }
+            screenBackStack.isNotEmpty() -> {
+                var previousScreen: Screen? = null
+                while (screenBackStack.isNotEmpty() && previousScreen == null) {
+                    val candidate = screenBackStack.removeAt(screenBackStack.lastIndex)
+                    if (candidate != activeMainScreen) previousScreen = candidate
+                }
+                activeMainScreen = previousScreen ?: Screen.Files
+                selectionMode = false
+                selectedPaths = emptySet()
+                when (activeMainScreen) {
+                    Screen.Safety -> refreshHealthScreen()
+                    Screen.Trash -> refreshTrashScreen()
+                    else -> Unit
+                }
+            }
+            activeMainScreen != Screen.Files -> {
+                activeMainScreen = Screen.Files
+                selectionMode = false
+                selectedPaths = emptySet()
+            }
+            selectionMode -> {
+                selectionMode = false
+                selectedPaths = emptySet()
+            }
+        }
     }
 
     Scaffold(
@@ -1409,6 +1469,7 @@ private fun FileManagementScreen(
                 AstraCodeBottomNav(
                     currentScreen = activeMainScreen,
                     onTabSelected = { screen ->
+                        if (screen != activeMainScreen) screenBackStack.add(activeMainScreen)
                         activeMainScreen = screen
                         selectionMode = false
                         selectedPaths = emptySet()

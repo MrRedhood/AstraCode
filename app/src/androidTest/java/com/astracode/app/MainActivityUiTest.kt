@@ -184,6 +184,21 @@ class MainActivityUiTest {
     }
 
     @Test
+    fun mobileBackReturnsToPreviousBottomNavigationScreen() {
+        composeRule.onNodeWithTag("bottom-nav-search").performClick()
+        composeRule.onNodeWithText("Search & inspect").assertIsDisplayed()
+
+        composeRule.activityRule.scenario.onActivity { activity ->
+            activity.onBackPressedDispatcher.onBackPressed()
+        }
+
+        composeRule.onNodeWithText("A clean workspace.").assertIsDisplayed()
+        composeRule.activityRule.scenario.onActivity { activity ->
+            assertEquals(false, activity.isFinishing)
+        }
+    }
+
+    @Test
     fun inspectorIsTheOnlyFileActionEntryAndSupportsRenameCopyMove() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val workspace = context.filesDir.toPath().resolve("workspace")
