@@ -347,9 +347,11 @@ class SafWorkspaceStorage(
     private fun findDocument(parent: DocumentFile, name: String, mimeType: String): DocumentFile? {
         parent.findFile(name)?.let { return it }
         val extension = fileExtensionForMimeType(mimeType) ?: return null
-        val suffix = ".$extension"
-        val candidate = if (name.endsWith(suffix, ignoreCase = true)) name else name + suffix
-        return if (candidate == name) null else parent.findFile(candidate)
+
+        // Some providers append the MIME-derived extension even when the requested
+        // display name already has that extension (for example, note.txt.txt).
+        val candidate = "$name.$extension"
+        return parent.findFile(candidate)
     }
 
     private fun fileExtensionSuffix(name: String): String? {
