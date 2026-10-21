@@ -635,7 +635,12 @@ private fun FileEntry.toAtelierFileItem(childCount: Int?): AtelierFileItem {
         modifiedLabel = formatAtelierTimestamp(modifiedAt.toEpochMilli()),
         childCount = childCount,
         createdLabel = createdAt?.let { formatAtelierTimestamp(it.toEpochMilli()) } ?: "Not recorded by provider",
-        formatLabel = kind,
+        formatLabel = when (type) {
+            FileEntryType.DIRECTORY -> "Folder"
+            FileEntryType.FILE -> formatFileTypeLabel(name)
+            FileEntryType.SYMBOLIC_LINK -> "Symbolic link"
+            FileEntryType.OTHER -> "Other"
+        },
     )
 }
 
@@ -946,16 +951,17 @@ private fun FileManagementScreen(
             result.onSuccess { saved ->
                 editorText = saved.persistedText
                 savedText = saved.persistedText
+                openedFile = saved.path
                 refreshKey++
                 notify(
                     if (saved.replacedUnpairedSurrogateCount > 0) {
                         "Saved with invalid characters repaired."
                     } else {
-                        "Saved " + fileName(path)
+                        "Saved " + fileName(saved.path)
                     },
                 )
                 scope.launch {
-                    val synced = runCatchingCancellable { propagateChangedPath(path) }
+                    val synced = runCatchingCancellable { propagateChangedPath(saved.path) }
                     synced.onSuccess { updatedLinks -> syncLinks = updatedLinks }
                         .onFailure { error ->
                             notify("Saved locally, but a synced copy could not be updated: " +
@@ -1555,23 +1561,28 @@ private fun FileManagementScreen(
             onValueChange = { newFileName = it },
             onDismiss = { showNewFileDialog = false },
             onConfirm = {
-                val name = newFileName.trim()
+                val name = normalizeNewTextFileName(newFileName)
                 if (!isSimpleName(name)) {
                     notify("Enter a file name without folders or path segments.")
                 } else {
                     val path = joinPath(currentDirectory, name)
                     scope.launch {
                         val result = runCatchingCancellable {
-                            withContext(Dispatchers.IO) { storage.writeText(path, "") }
+                            withContext(Dispatchers.IO) {
+                                if (storage.exists(path)) {
+                                    throw java.io.IOException("A file with that name already exists.")
+                                }
+                                storage.writeText(path, "")
+                            }
                         }
-                        result.onSuccess {
+                        result.onSuccess { saved ->
                             showNewFileDialog = false
-                            openedFile = path
+                            openedFile = saved.path
                             editorText = ""
                             savedText = ""
                             refreshKey++
                             scope.launch {
-                                val synced = runCatchingCancellable { propagateChangedPath(path) }
+                                val synced = runCatchingCancellable { propagateChangedPath(saved.path) }
                                 synced.onSuccess { updatedLinks -> syncLinks = updatedLinks }
                                     .onFailure { error ->
                                         notify("Created the file, but its synced copy could not be updated: " +

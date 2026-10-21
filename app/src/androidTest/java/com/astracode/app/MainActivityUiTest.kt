@@ -88,6 +88,38 @@ class MainActivityUiTest {
     }
 
     @Test
+    fun extensionlessNewFilesBecomeTxtAndInspectorShowsReadableFormat() {
+        composeRule.onNodeWithText("New file").performClick()
+        composeRule.onNodeWithTag("new-file-name-input").performTextInput("my file (1)")
+        composeRule.onNodeWithTag("confirm-create-file").performClick()
+
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val savedFile = context.filesDir.toPath().resolve("workspace/my file (1).txt")
+        composeRule.waitUntil(timeoutMillis = 10_000) { Files.isRegularFile(savedFile) }
+        val editor = composeRule.onNodeWithTag("file-editor-input")
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching { editor.assertIsDisplayed() }.isSuccess
+        }
+
+        val expectedText = "This is a plain text file."
+        editor.performTextInput(expectedText)
+        composeRule.onNodeWithTag("save-file-button").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                String(Files.readAllBytes(savedFile), Charsets.UTF_8) == expectedText
+            }.getOrDefault(false)
+        }
+        assertEquals(expectedText, String(Files.readAllBytes(savedFile), Charsets.UTF_8))
+
+        composeRule.onNodeWithContentDescription("Back").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching { composeRule.onNodeWithText("my file (1).txt").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithContentDescription("Inspect my file (1).txt").performClick()
+        composeRule.onNodeWithText("txt file (text file)").assertIsDisplayed()
+    }
+
+    @Test
     fun recreatingActivityDoesNotShowCancellationAsFolderLoadFailure() {
         composeRule.activityRule.scenario.recreate()
         composeRule.waitForIdle()

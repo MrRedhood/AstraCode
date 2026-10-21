@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.Uri
 import android.webkit.MimeTypeMap
 import androidx.documentfile.provider.DocumentFile
+import com.astracode.app.normalizeNewTextFileName
 import com.astracode.filesystem.FileChangeEvent
 import com.astracode.filesystem.FileChangeType
 import com.astracode.filesystem.FileEntry
@@ -149,19 +150,35 @@ class SafWorkspaceStorage(
 
     override fun writeText(relativePath: String, text: String): TextFileWriteResult {
         ensureOpen()
-        val parts = segments(relativePath)
-        if (parts.isEmpty()) throw IllegalArgumentException("A file name is required.")
-        val path = parts.joinToString("/")
+        val requestedParts = segments(relativePath)
+        if (requestedParts.isEmpty()) throw IllegalArgumentException("A file name is required.")
+        val parent = resolveParent(requestedParts, createParents = true)
+        val requestedName = requestedParts.last()
+        val exactExisting = parent.findFile(requestedName)
+        val normalizedName = normalizeNewTextFileName(requestedName)
+        val normalizedExisting = if (exactExisting == null && normalizedName != requestedName) {
+            parent.findFile(normalizedName)
+        } else {
+            null
+        }
+        val name = if (exactExisting != null) requestedName else normalizedName
+        val existing = exactExisting ?: normalizedExisting
+        val path = (requestedParts.dropLast(1) + name).joinToString("/")
         val (persistedText, replacedCount) = replaceUnpairedSurrogates(text)
         val bytes = persistedText.toByteArray(Charsets.UTF_8)
-        if (bytes.size.toLong() > options.maxFileBytes) throw FileTooLargeException(path, bytes.size.toLong(), options.maxFileBytes)
-        val parent = resolveParent(parts, createParents = true)
-        val existing = parent.findFile(parts.last())
-        if (existing?.isDirectory == true || existing?.isVirtual == true) throw IOException("Cannot write text to a directory or virtual document: $path")
-        if (existing != null && !existing.canWrite()) throw SecurityException("The storage provider does not allow writing '$path'.")
-        writeDocumentSafely(parent, parts.last(), mimeTypeFor(parts.last()), existing, bytes)
-        publish(FileChangeEvent(if (existing != null) FileChangeType.MODIFIED else FileChangeType.CREATED, path))
-        return TextFileWriteResult(path, bytes.size.toLong(), persistedText, replacedCount)
+        if (bytes.size.toLong() > options.maxFileBytes) {
+            throw FileTooLargeException(path, bytes.size.toLong(), options.maxFileBytes)
+        }
+        if (existing?.isDirectory == true || existing?.isVirtual == true) {
+            throw IOException("Cannot write text to a directory or virtual document: $path")
+        }
+        if (existing != null && !existing.canWrite()) {
+            throw SecurityException("The storage provider does not allow writing '$path'.")
+        }
+        val actualName = writeDocumentSafely(parent, name, mimeTypeFor(name), existing, bytes)
+        val actualPath = (requestedParts.dropLast(1) + actualName).joinToString("/")
+        publish(FileChangeEvent(if (existing != null) FileChangeType.MODIFIED else FileChangeType.CREATED, actualPath))
+        return TextFileWriteResult(actualPath, bytes.size.toLong(), persistedText, replacedCount)
     }
 
     override fun readBytes(relativePath: String): ByteArray {
@@ -206,60 +223,149 @@ class SafWorkspaceStorage(
         val existing = parent.findFile(parts.last())
         if (existing?.isDirectory == true || existing?.isVirtual == true) throw IOException("Cannot write bytes to a directory or virtual document: $path")
         if (existing != null && !existing.canWrite()) throw SecurityException("The storage provider does not allow writing '$path'.")
-        writeDocumentSafely(parent, parts.last(), mimeTypeFor(parts.last()), existing, bytes)
-        publish(FileChangeEvent(if (existing != null) FileChangeType.MODIFIED else FileChangeType.CREATED, path))
+        val actualName = writeDocumentSafely(parent, parts.last(), mimeTypeFor(parts.last()), existing, bytes)
+        val actualPath = (parts.dropLast(1) + actualName).joinToString("/")
+        publish(FileChangeEvent(if (existing != null) FileChangeType.MODIFIED else FileChangeType.CREATED, actualPath))
     }
 
     /**
-     * Providers do not guarantee atomic replacement. Verify a sibling temporary document,
-     * then keep the prior document in a same-folder backup until publication succeeds.
+     * Existing documents are updated in place after a verified recovery copy is made.
+     * New documents are written to a sibling temporary document and published only
+     * after the bytes have been verified. The returned name reflects the provider's
+     * actual display name because some document providers append extensions.
      */
-    private fun writeDocumentSafely(parent: DocumentFile, name: String, mimeType: String, original: DocumentFile?, bytes: ByteArray) {
-        val temporaryName = ".astracode-tmp-@@{UUID.randomUUID()}"
+    private fun writeDocumentSafely(
+        parent: DocumentFile,
+        name: String,
+        mimeType: String,
+        original: DocumentFile?,
+        bytes: ByteArray,
+    ): String {
+        if (original != null) {
+            return updateExistingDocumentSafely(parent, name, mimeType, original, bytes)
+        }
+
+        val temporarySuffix = fileExtensionSuffix(name)
+            ?: fileExtensionForMimeType(mimeType)?.let { ".$it" }
+            ?: ".tmp"
+        val temporaryName = ".astracode-tmp-${UUID.randomUUID()}$temporarySuffix"
         val temporary = parent.createFile(mimeType, temporaryName)
             ?: throw IOException("The storage provider could not create a temporary write file.")
-        var backupName: String? = null
         try {
             writeDocumentBytes(temporary.uri, bytes)
             verifyDocumentBytes(temporary.uri, bytes)
-            if (original == null) {
-                if (!temporary.renameTo(name)) throw IOException("This storage provider cannot safely publish a new file by rename. No file was published.")
-                val published = parent.findFile(name) ?: throw IOException("The saved document could not be found after publication.")
-                verifyDocumentBytes(published.uri, bytes)
-                return
+            if (!temporary.renameTo(name)) {
+                throw IOException("This storage provider cannot safely publish a new file by rename. No file was published.")
             }
-
-            val current = parent.findFile(name) ?: throw IOException("The file disappeared while it was being saved: $name")
-            if (current.uri != original.uri || current.length().coerceAtLeast(0L) != original.length().coerceAtLeast(0L) ||
-                current.lastModified() != original.lastModified()) {
-                throw IOException("The file changed outside AstraCode while it was being saved. Reopen it before saving again.")
-            }
-            if (!current.canWrite()) throw SecurityException("The storage provider no longer allows writing '$name'.")
-            backupName = ".astracode-backup-@@{UUID.randomUUID()}"
-            if (!current.renameTo(backupName)) throw IOException("Safe replacement is not supported by this provider; the existing file was left untouched.")
-            val backup = parent.findFile(backupName) ?: throw IOException("The previous file was moved but its recovery backup could not be found.")
-            try {
-                val tempNow = parent.findFile(temporaryName) ?: throw IOException("The temporary write file disappeared before publication.")
-                if (!tempNow.renameTo(name)) throw IOException("The provider could not publish the verified temporary file.")
-                val published = parent.findFile(name) ?: throw IOException("The new file could not be found after publication.")
-                verifyDocumentBytes(published.uri, bytes)
-            } catch (error: Exception) {
-                val partialTarget = parent.findFile(name)
-                if (partialTarget != null && partialTarget.uri != backup.uri) {
-                    if (!partialTarget.delete()) error.addSuppressed(IOException("The incomplete replacement could not be removed."))
-                }
-                val backupNow = parent.findFile(backupName)
-                if (parent.findFile(name) == null && backupNow != null && !backupNow.renameTo(name)) {
-                    throw IOException("Save failed; the previous file remains in recovery document '$backupName'.", error)
-                }
-                throw error
-            }
-            // If backup deletion fails, the new verified file stays valid and the backup remains recoverable.
-            runCatching { parent.findFile(backupName)?.delete() }
+            val published = findDocument(parent, name, mimeType)
+                ?: throw IOException("The saved document could not be found after publication. The provider may have changed its display name.")
+            verifyDocumentBytes(published.uri, bytes)
+            return published.name ?: name
         } finally {
-            runCatching { parent.findFile(temporaryName)?.delete() }
+            runCatching { findDocument(parent, temporaryName, mimeType)?.delete() }
         }
     }
+
+    private fun updateExistingDocumentSafely(
+        parent: DocumentFile,
+        name: String,
+        mimeType: String,
+        original: DocumentFile,
+        bytes: ByteArray,
+    ): String {
+        val current = parent.findFile(name)
+            ?: throw IOException("The file disappeared while it was being saved: $name")
+        if (current.uri != original.uri ||
+            current.length().coerceAtLeast(0L) != original.length().coerceAtLeast(0L) ||
+            current.lastModified() != original.lastModified()
+        ) {
+            throw IOException("The file changed outside AstraCode while it was being saved. Reopen it before saving again.")
+        }
+        if (!current.canWrite()) {
+            throw SecurityException("The storage provider no longer allows writing '$name'.")
+        }
+
+        val previousBytes = readDocumentBytes(current.uri, name)
+        val backupSuffix = fileExtensionSuffix(name)
+            ?: fileExtensionForMimeType(mimeType)?.let { ".$it" }
+            ?: ".bak"
+        val backupName = ".astracode-backup-${UUID.randomUUID()}$backupSuffix"
+        val backup = parent.createFile(mimeType, backupName)
+            ?: throw IOException("The storage provider could not create a recovery copy. The original file was not changed.")
+        try {
+            writeDocumentBytes(backup.uri, previousBytes)
+            verifyDocumentBytes(backup.uri, previousBytes)
+        } catch (error: Exception) {
+            runCatching { backup.delete() }
+            throw IOException("The existing file could not be backed up safely; it was not changed.", error)
+        }
+
+        try {
+            writeDocumentBytes(current.uri, bytes)
+            verifyDocumentBytes(current.uri, bytes)
+        } catch (error: Exception) {
+            try {
+                writeDocumentBytes(current.uri, previousBytes)
+                verifyDocumentBytes(current.uri, previousBytes)
+            } catch (restoreError: Exception) {
+                error.addSuppressed(restoreError)
+                throw IOException(
+                    "Save failed and automatic restoration could not be verified. A recovery copy remains at '$backupName'.",
+                    error,
+                )
+            }
+            runCatching { backup.delete() }
+            throw error
+        }
+
+        // A provider refusing deletion leaves a verified recovery copy, never a damaged target.
+        runCatching { backup.delete() }
+        return current.name ?: name
+    }
+
+    private fun readDocumentBytes(uri: Uri, path: String): ByteArray {
+        val input = resolver.openInputStream(uri)
+            ?: throw IOException("The storage provider could not open '$path' for recovery.")
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(options.defaultReadBufferSize)
+        var copied = 0L
+        input.use { stream ->
+            while (true) {
+                val count = stream.read(buffer)
+                if (count < 0) break
+                if (count == 0) continue
+                copied += count
+                if (copied > options.maxFileBytes) {
+                    throw FileTooLargeException(path, copied, options.maxFileBytes)
+                }
+                output.write(buffer, 0, count)
+            }
+        }
+        return output.toByteArray()
+    }
+
+    private fun findDocument(parent: DocumentFile, name: String, mimeType: String): DocumentFile? {
+        parent.findFile(name)?.let { return it }
+        val extension = fileExtensionForMimeType(mimeType) ?: return null
+        val suffix = ".$extension"
+        val candidate = if (name.endsWith(suffix, ignoreCase = true)) name else name + suffix
+        return if (candidate == name) null else parent.findFile(candidate)
+    }
+
+    private fun fileExtensionSuffix(name: String): String? {
+        val dot = name.lastIndexOf('.')
+        return if (dot > 0 && dot < name.lastIndex) name.substring(dot) else null
+    }
+
+    private fun fileExtensionForMimeType(mimeType: String): String? =
+        MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType)
+            ?.lowercase()
+            ?.takeIf { it.isNotBlank() }
+            ?: when (mimeType.lowercase()) {
+                "text/plain" -> "txt"
+                "application/octet-stream" -> "bin"
+                else -> null
+            }
 
     private fun writeDocumentBytes(uri: Uri, bytes: ByteArray) {
         val output = resolver.openOutputStream(uri, "wt") ?: throw IOException("The storage provider could not open a temporary file for writing.")
