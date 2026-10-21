@@ -1155,7 +1155,7 @@ private fun FileManagementScreen(
 
     val hasModalUi = showNewFileDialog || showNewFolderDialog || pendingDeletePath != null ||
         operationEntry != null || syncEntry != null || showDiscardDialog || showWorkspaceManager ||
-        showSavedDocuments || showWorkspaceSafety || metadataEntry != null || bulkActionKind != null ||
+        showSavedDocuments || showWorkspaceSafety || bulkActionKind != null ||
         bulkActionInProgress
     val canNavigateBack = inspectorEntry != null || openedFile != null || selectedDocument != null ||
         activeMainScreen != Screen.Files || screenBackStack.isNotEmpty() || currentDirectory.isNotEmpty() || selectionMode
