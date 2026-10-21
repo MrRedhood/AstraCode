@@ -9,9 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -734,7 +732,6 @@ private fun FileManagementScreen(
     var showNewFileDialog by remember { mutableStateOf(false) }
     var showNewFolderDialog by remember { mutableStateOf(false) }
     var pendingDeletePath by remember { mutableStateOf<String?>(null) }
-    var actionEntry by remember { mutableStateOf<FileEntry?>(null) }
     var metadataEntry by remember { mutableStateOf<FileEntry?>(null) }
     var metadataDetails by remember { mutableStateOf<String?>(null) }
     var metadataLoading by remember { mutableStateOf(false) }
@@ -820,7 +817,6 @@ private fun FileManagementScreen(
             "extract" -> joinPath(parentPath(entry.path), entry.name.replace(Regex("(?i)\\.zip$"), ""))
             else -> entry.path
         }
-        actionEntry = null
     }
 
     fun startBulkAction(kind: String) {
@@ -1046,13 +1042,7 @@ private fun FileManagementScreen(
         }
     }
 
-    fun showWorkspaceEntryActions(path: String) {
-        val entry = runCatching { findWorkspaceEntry(storage, path) }.getOrNull() ?: run {
-            notify("This item is no longer available.")
-            refreshKey++
-            return
-        }
-        actionEntry = entry
+    fun prepareWorkspaceSync(entry: FileEntry) {
         val linked = if (activeWorkspaceId == PRIVATE_WORKSPACE_ID) {
             syncLinks.filter {
                 entry.path == it.privatePath || entry.path.startsWith(it.privatePath + "/")
@@ -1066,6 +1056,30 @@ private fun FileManagementScreen(
         syncExternalUri = linked?.externalTreeUri
             ?: if (activeWorkspaceId != PRIVATE_WORKSPACE_ID) activeWorkspaceId
             else savedWorkspaceFolders.firstOrNull()?.id.orEmpty()
+        syncEntry = entry
+    }
+
+    fun showWorkspaceMetadata(entry: FileEntry) {
+        val requestedStorage = storage
+        inspectorEntry = null
+        metadataEntry = entry
+        metadataDetails = null
+        metadataError = null
+        metadataLoading = true
+        scope.launch {
+            val result = runCatchingCancellable {
+                withContext(Dispatchers.IO) {
+                    workspaceMetadataText(requestedStorage, entry)
+                }
+            }
+            if (storage === requestedStorage && metadataEntry?.path == entry.path) {
+                metadataLoading = false
+                result.onSuccess { details -> metadataDetails = details }
+                    .onFailure { error ->
+                        metadataError = error.message ?: "Could not read metadata."
+                    }
+            }
+        }
     }
 
     fun refreshTrashScreen() {
@@ -1303,7 +1317,6 @@ private fun FileManagementScreen(
                             }
                         },
                         onOpenEntry = ::openWorkspaceEntry,
-                        onLongClick = ::showWorkspaceEntryActions,
                         onInspectEntry = { path ->
                             inspectorEntry = runCatching { findWorkspaceEntry(storage, path) }.getOrNull()
                         },
@@ -1660,82 +1673,6 @@ private fun FileManagementScreen(
                     modifier = Modifier.testTag("workspace-metadata-close"),
                 ) { Text("Close") }
             },
-        )
-    }
-
-    actionEntry?.let { entry ->
-        AlertDialog(
-            onDismissRequest = { actionEntry = null },
-            title = { Text(entry.name + " options") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    TextButton(
-                        onClick = {
-                            selectedPaths = setOf(entry.path)
-                            bulkActionKind = "zip"
-                            bulkInput = if (entry.name.endsWith(".zip", ignoreCase = true)) {
-                                entry.name.dropLast(4) + "-copy.zip"
-                            } else {
-                                entry.name + ".zip"
-                            }
-                            actionEntry = null
-                        },
-                        modifier = Modifier.fillMaxWidth().testTag("workspace-action-zip"),
-                    ) { Text("Move into ZIP") }
-                    TextButton(
-                        onClick = {
-                            val requestedStorage = storage
-                            actionEntry = null
-                            metadataEntry = entry
-                            metadataDetails = null
-                            metadataError = null
-                            metadataLoading = true
-                            scope.launch {
-                                val result = runCatchingCancellable {
-                                    withContext(Dispatchers.IO) {
-                                        workspaceMetadataText(requestedStorage, entry)
-                                    }
-                                }
-                                if (storage === requestedStorage && metadataEntry?.path == entry.path) {
-                                    metadataLoading = false
-                                    result.onSuccess { details -> metadataDetails = details }
-                                        .onFailure { error ->
-                                            metadataError = error.message ?: "Could not read metadata."
-                                        }
-                                }
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth().testTag("workspace-action-metadata"),
-                    ) { Text("Metadata") }
-                    if (entry.type == FileEntryType.FILE && entry.name.endsWith(".zip", ignoreCase = true)) {
-                        TextButton(
-                            onClick = { showOperationDialog(entry, "extract") },
-                            modifier = Modifier.fillMaxWidth().testTag("workspace-action-extract"),
-                        ) { Text("Extract ZIP") }
-                    }
-                    TextButton(
-                        onClick = { syncEntry = entry; actionEntry = null },
-                        modifier = Modifier.fillMaxWidth().testTag("workspace-action-sync"),
-                    ) { Text("Sync") }
-                    TextButton(
-                        onClick = { pendingDeletePath = entry.path; actionEntry = null },
-                        modifier = Modifier.fillMaxWidth().testTag("workspace-action-delete"),
-                    ) { Text("Delete") }
-                    TextButton(
-                        onClick = { showOperationDialog(entry, "rename") },
-                        modifier = Modifier.fillMaxWidth().testTag("workspace-action-rename"),
-                    ) { Text("Rename") }
-                    TextButton(
-                        onClick = { showOperationDialog(entry, "copy") },
-                        modifier = Modifier.fillMaxWidth().testTag("workspace-action-copy"),
-                    ) { Text("Copy") }
-                    TextButton(
-                        onClick = { showOperationDialog(entry, "move") },
-                        modifier = Modifier.fillMaxWidth().testTag("workspace-action-move"),
-                    ) { Text("Move") }
-                }
-            },
-            confirmButton = { TextButton(onClick = { actionEntry = null }) { Text("Cancel") } },
         )
     }
 
@@ -2251,6 +2188,11 @@ private fun FileManagementScreen(
                 inspectorEntry = null
                 pendingDeletePath = entry.path
             },
+            onSync = {
+                inspectorEntry = null
+                prepareWorkspaceSync(entry)
+            },
+            onShowMetadata = { showWorkspaceMetadata(entry) },
         )
     }
 
@@ -2343,7 +2285,6 @@ private fun WorkspacePanel(
     onNewFile: () -> Unit,
     onNewFolder: () -> Unit,
     onDelete: (String) -> Unit,
-    onLongClick: (FileEntry) -> Unit,
     onGoUp: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
@@ -2531,7 +2472,6 @@ private fun WorkspacePanel(
                         onToggleSelection = { onToggleSelection(entry.path) },
                         onClick = { if (selectionMode) onToggleSelection(entry.path) else onOpenEntry(entry) },
                         onDelete = { onDelete(entry.path) },
-                        onLongClick = { if (selectionMode) onToggleSelection(entry.path) else onLongClick(entry) },
                     )
                 }
             }
@@ -2803,7 +2743,6 @@ private fun EmptyWorkspace(onCreateFile: () -> Unit) {
 }
 
 @Composable
-@OptIn(ExperimentalFoundationApi::class)
 private fun FileEntryRow(
     entry: FileEntry,
     folderCount: Int?,
@@ -2813,14 +2752,13 @@ private fun FileEntryRow(
     onToggleSelection: () -> Unit,
     onClick: () -> Unit,
     onDelete: () -> Unit,
-    onLongClick: () -> Unit,
 ) {
     val isDirectory = entry.type == FileEntryType.DIRECTORY
     val isSupported = isDirectory || entry.type == FileEntryType.FILE
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .combinedClickable(enabled = isSupported, onClick = onClick, onLongClick = onLongClick)
+            .clickable(enabled = isSupported, onClick = onClick)
             .testTag("entry-" + entry.name),
         shape = RoundedCornerShape(15.dp),
         colors = CardDefaults.cardColors(containerColor = Panel),

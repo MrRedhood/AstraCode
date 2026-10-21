@@ -1,6 +1,8 @@
 package com.astracode.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +23,7 @@ import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.MoveToInbox
+import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -50,6 +53,8 @@ fun QuickInspectorSheet(
     onCopy: () -> Unit,
     onMove: () -> Unit,
     onMoveToTrash: () -> Unit,
+    onSync: () -> Unit,
+    onShowMetadata: () -> Unit,
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -63,7 +68,7 @@ fun QuickInspectorSheet(
         },
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp),
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text("QUICK INSPECTOR", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall, letterSpacing = 1.5.sp)
@@ -107,6 +112,10 @@ fun QuickInspectorSheet(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 ActionButton("Copy", onCopy, Modifier.weight(1f), Icons.Outlined.ContentCopy)
                 ActionButton("Move", onMove, Modifier.weight(1f), Icons.Outlined.MoveToInbox)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                ActionButton("Sync", onSync, Modifier.weight(1f), Icons.Outlined.Sync)
+                ActionButton("Metadata", onShowMetadata, Modifier.weight(1f), Icons.Outlined.Info)
             }
             OutlinedButton(
                 onClick = onMoveToTrash,
