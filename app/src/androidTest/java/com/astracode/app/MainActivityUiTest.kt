@@ -198,6 +198,13 @@ class MainActivityUiTest {
         composeRule.onNodeWithTag("entry-sample.txt").performTouchInput { longClick() }
         assertEquals(false, runCatching { composeRule.onNodeWithText("QUICK INSPECTOR").assertIsDisplayed() }.isSuccess)
         assertEquals(false, runCatching { composeRule.onNodeWithTag("workspace-entry-options-sample.txt").assertIsDisplayed() }.isSuccess)
+        // With no long-click handler, a long hold may complete as the row's ordinary click.
+        if (runCatching { composeRule.onNodeWithTag("editor-back").assertIsDisplayed() }.isSuccess) {
+            composeRule.onNodeWithTag("editor-back").performClick()
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                runCatching { composeRule.onNodeWithTag("entry-sample.txt").assertIsDisplayed() }.isSuccess
+            }
+        }
 
         composeRule.onNodeWithContentDescription("Inspect sample.txt").performClick()
         composeRule.onNodeWithText("Sync").performScrollTo().performClick()
