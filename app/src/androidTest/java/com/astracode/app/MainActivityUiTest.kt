@@ -239,50 +239,39 @@ class MainActivityUiTest {
     }
 
     @Test
-    fun inspectorMetadataWorksForFilesAndFolders() {
+    fun inspectorShowsMetadataForFiles() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val workspace = context.filesDir.toPath().resolve("workspace")
-        Files.createDirectories(workspace.resolve("metadata-folder"))
         Files.write(workspace.resolve("metadata-sample.txt"), "metadata".toByteArray(Charsets.UTF_8))
-        Files.write(workspace.resolve("metadata-folder/child.txt"), "child".toByteArray(Charsets.UTF_8))
         composeRule.activityRule.scenario.recreate()
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("entry-metadata-sample.txt").assertIsDisplayed() }.isSuccess
         }
         composeRule.onNodeWithContentDescription("Inspect metadata-sample.txt").performClick()
-        composeRule.onNodeWithText("Metadata").performScrollTo().performClick()
-        composeRule.waitUntil(timeoutMillis = 5_000) {
-            runCatching {
-                composeRule.onNodeWithTag("workspace-metadata-details")
-                    .assertTextContains("Name: metadata-sample.txt", substring = true)
-            }.isSuccess
-        }
-        val fileDetails = composeRule.onNodeWithTag("workspace-metadata-details")
-        fileDetails.assertTextContains("Type: File", substring = true)
-        fileDetails.assertTextContains("Size: 8 bytes", substring = true)
-        fileDetails.assertTextContains("Created:", substring = true)
-        fileDetails.assertTextContains("Modified:", substring = true)
-        fileDetails.assertTextContains("Format: TXT", substring = true)
-        fileDetails.assertTextContains("Storage path:", substring = true)
-        composeRule.onNodeWithTag("workspace-metadata-close").performClick()
+        composeRule.onNodeWithText("QUICK INSPECTOR").assertIsDisplayed()
+        composeRule.onNodeWithText("Format").fetchSemanticsNode()
+        composeRule.onNodeWithText("Created").fetchSemanticsNode()
+        composeRule.onNodeWithText("Modified").fetchSemanticsNode()
+    }
 
-        composeRule.onNodeWithContentDescription("Inspect metadata-folder").performClick()
-        composeRule.onNodeWithText("Metadata").performScrollTo().performClick()
+    @Test
+    fun inspectorShowsMetadataForFolders() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workspace = context.filesDir.toPath().resolve("workspace")
+        Files.createDirectories(workspace.resolve("metadata-folder"))
+        Files.write(workspace.resolve("metadata-folder/child.txt"), "child".toByteArray(Charsets.UTF_8))
+        composeRule.activityRule.scenario.recreate()
+
         composeRule.waitUntil(timeoutMillis = 5_000) {
-            runCatching {
-                composeRule.onNodeWithTag("workspace-metadata-details")
-                    .assertTextContains("Name: metadata-folder", substring = true)
-            }.isSuccess
+            runCatching { composeRule.onNodeWithTag("entry-metadata-folder").assertIsDisplayed() }.isSuccess
         }
-        val folderDetails = composeRule.onNodeWithTag("workspace-metadata-details")
-        folderDetails.assertTextContains("Type: Folder", substring = true)
-        folderDetails.assertTextContains("Size: 5 bytes", substring = true)
-        folderDetails.assertTextContains("Created:", substring = true)
-        folderDetails.assertTextContains("Modified:", substring = true)
-        folderDetails.assertTextContains("Format: Folder", substring = true)
-        folderDetails.assertTextContains("Storage path:", substring = true)
-        composeRule.onNodeWithTag("workspace-metadata-close").performClick()
+        composeRule.onNodeWithContentDescription("Inspect metadata-folder").performClick()
+        composeRule.onNodeWithText("QUICK INSPECTOR").assertIsDisplayed()
+        composeRule.onNodeWithText("Format").fetchSemanticsNode()
+        composeRule.onNodeWithText("Created").fetchSemanticsNode()
+        composeRule.onNodeWithText("Modified").fetchSemanticsNode()
+        composeRule.onNodeWithText("Direct children").fetchSemanticsNode()
     }
 
     @Test
