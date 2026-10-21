@@ -199,21 +199,21 @@ class MainActivityUiTest {
         assertEquals(false, runCatching { composeRule.onNodeWithText("QUICK INSPECTOR").assertIsDisplayed() }.isSuccess)
         assertEquals(false, runCatching { composeRule.onNodeWithTag("workspace-entry-options-sample.txt").assertIsDisplayed() }.isSuccess)
 
-        composeRule.onNodeWithTag("workspace-inspect-sample.txt").performClick()
+        composeRule.onNodeWithContentDescription("Inspect sample.txt").performClick()
         composeRule.onNodeWithText("Sync").performScrollTo().performClick()
         composeRule.onNodeWithTag("sync-app-to-external").assertIsDisplayed()
         composeRule.onNodeWithTag("sync-external-to-app").assertIsDisplayed()
         composeRule.onNodeWithTag("sync-add-external-folder").assertIsDisplayed()
         composeRule.onNodeWithText("Cancel").performClick()
 
-        composeRule.onNodeWithTag("workspace-inspect-sample.txt").performClick()
+        composeRule.onNodeWithContentDescription("Inspect sample.txt").performClick()
         composeRule.onNodeWithText("Rename").performScrollTo().performClick()
         composeRule.onNodeWithTag("workspace-operation-input").performTextReplacement("renamed.txt")
         composeRule.onNodeWithTag("confirm-workspace-operation").performClick()
         val renamed = workspace.resolve("renamed.txt")
         composeRule.waitUntil(timeoutMillis = 5_000) { Files.exists(renamed) && !Files.exists(workspace.resolve("sample.txt")) }
 
-        composeRule.onNodeWithTag("workspace-inspect-renamed.txt").performClick()
+        composeRule.onNodeWithContentDescription("Inspect renamed.txt").performClick()
         composeRule.onNodeWithText("Copy").performScrollTo().performClick()
         composeRule.onNodeWithTag("workspace-operation-input").performTextReplacement("copy.txt")
         composeRule.onNodeWithTag("confirm-workspace-operation").performClick()
@@ -222,7 +222,7 @@ class MainActivityUiTest {
         assertEquals("original", String(Files.readAllBytes(copied), Charsets.UTF_8))
         assertEquals("original", String(Files.readAllBytes(renamed), Charsets.UTF_8))
 
-        composeRule.onNodeWithTag("workspace-inspect-renamed.txt").performClick()
+        composeRule.onNodeWithContentDescription("Inspect renamed.txt").performClick()
         composeRule.onNodeWithText("Move").performScrollTo().performClick()
         composeRule.onNodeWithTag("workspace-operation-input").performTextReplacement("folder/moved.txt")
         composeRule.onNodeWithTag("confirm-workspace-operation").performClick()
@@ -243,7 +243,7 @@ class MainActivityUiTest {
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("entry-metadata-sample.txt").assertIsDisplayed() }.isSuccess
         }
-        composeRule.onNodeWithTag("workspace-inspect-metadata-sample.txt").performClick()
+        composeRule.onNodeWithContentDescription("Inspect metadata-sample.txt").performClick()
         composeRule.onNodeWithText("Metadata").performScrollTo().performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching {
@@ -260,7 +260,7 @@ class MainActivityUiTest {
         fileDetails.assertTextContains("Storage path:", substring = true)
         composeRule.onNodeWithTag("workspace-metadata-close").performClick()
 
-        composeRule.onNodeWithTag("workspace-inspect-metadata-folder").performClick()
+        composeRule.onNodeWithContentDescription("Inspect metadata-folder").performClick()
         composeRule.onNodeWithText("Metadata").performScrollTo().performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching {
@@ -452,7 +452,7 @@ class MainActivityUiTest {
                 composeRule.onNodeWithTag("entry-README-renamed.txt").assertIsDisplayed()
             }.isSuccess
         }
-        composeRule.onNodeWithTag("workspace-inspect-README-renamed.txt").performClick()
+        composeRule.onNodeWithContentDescription("Inspect README-renamed.txt").performClick()
         composeRule.onNodeWithText("Move to Trash").performScrollTo().performClick()
         composeRule.onNodeWithTag("confirm-workspace-delete").performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
