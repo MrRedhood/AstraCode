@@ -11,6 +11,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
@@ -193,12 +195,9 @@ class MainActivityUiTest {
         composeRule.activityRule.scenario.recreate()
 
         (1..25).forEach { index ->
-            composeRule.waitUntil(timeoutMillis = 5_000) {
-                runCatching {
-                    composeRule.onNodeWithTag("entry-tab-$index.txt").performScrollTo().assertIsDisplayed()
-                }.isSuccess
-            }
-            composeRule.onNodeWithTag("entry-tab-$index.txt").performScrollTo().performClick()
+            composeRule.onNodeWithTag("workspace-file-list")
+                .performScrollToNode(hasTestTag("entry-tab-$index.txt"))
+            composeRule.onNodeWithTag("entry-tab-$index.txt").performClick()
             composeRule.waitUntil(timeoutMillis = 5_000) {
                 runCatching {
                     composeRule.onNodeWithTag("file-editor-input")
@@ -208,7 +207,9 @@ class MainActivityUiTest {
             composeRule.onNodeWithTag("editor-back").performClick()
         }
 
-        composeRule.onNodeWithTag("entry-tab-1.txt").performScrollTo().performClick()
+        composeRule.onNodeWithTag("workspace-file-list")
+            .performScrollToNode(hasTestTag("entry-tab-1.txt"))
+        composeRule.onNodeWithTag("entry-tab-1.txt").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching {
                 composeRule.onNodeWithTag("file-editor-input")
@@ -218,7 +219,9 @@ class MainActivityUiTest {
         composeRule.onNodeWithTag("file-editor-input").performTextReplacement("tab 1 autosaved draft")
         composeRule.onNodeWithTag("editor-back").performClick()
 
-        composeRule.onNodeWithTag("entry-tab-26.txt").performScrollTo().performClick()
+        composeRule.onNodeWithTag("workspace-file-list")
+            .performScrollToNode(hasTestTag("entry-tab-26.txt"))
+        composeRule.onNodeWithTag("entry-tab-26.txt").performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
             runCatching {
                 composeRule.onNodeWithTag("file-editor-input")
