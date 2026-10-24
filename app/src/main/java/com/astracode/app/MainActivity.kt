@@ -1415,7 +1415,7 @@ private fun FileManagementScreen(
                         selectedPaths = selectedPaths,
                         selectionMode = selectionMode,
                         savedWorkspaceCount = savedWorkspaceFolders.size,
-                        onAddWorkspace = { requestNavigation(onAddWorkspace) },
+                        onAddWorkspace = { requestWorkspaceSwitch(onAddWorkspace) },
                         onManageWorkspaces = { showWorkspaceManager = true },
                         onNewFile = {
                             newFileName = ""
