@@ -193,6 +193,10 @@ class MainActivityUiTest {
             Files.write(workspace.resolve("tab-$index.txt"), "tab content $index".toByteArray(Charsets.UTF_8))
         }
         composeRule.activityRule.scenario.recreate()
+        composeRule.onNodeWithTag("open-workspace-browser-button").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("workspace-file-list").assertIsDisplayed() }.isSuccess
+        }
 
         (1..25).forEach { index ->
             composeRule.onNodeWithTag("workspace-file-list")
