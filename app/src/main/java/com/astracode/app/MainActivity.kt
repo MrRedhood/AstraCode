@@ -715,6 +715,8 @@ private fun FileManagementScreen(
     var editorTabs by remember(storage) { mutableStateOf(emptyList<EditorTab>()) }
     var firstDirtyAt by remember(storage) { mutableStateOf(emptyMap<String, Long>()) }
     var lastEditedAt by remember(storage) { mutableStateOf(emptyMap<String, Long>()) }
+    var autosaveRetryAt by remember(storage) { mutableStateOf(emptyMap<String, Long>()) }
+    var autosaveInProgress by remember(storage) { mutableStateOf(false) }
     var replacingOldestTab by remember(storage) { mutableStateOf(false) }
     var pendingEditorEviction by remember(storage) { mutableStateOf<Pair<String, String>?>(null) }
     var standaloneEditorText by remember { mutableStateOf("") }
@@ -780,6 +782,7 @@ private fun FileManagementScreen(
     fun clearEditorAutosaveSchedule(path: String) {
         firstDirtyAt = firstDirtyAt - path
         lastEditedAt = lastEditedAt - path
+        autosaveRetryAt = autosaveRetryAt - path
     }
 
     fun updateCurrentEditorText(newText: String) {
@@ -801,13 +804,11 @@ private fun FileManagementScreen(
         }
 
         val now = SystemClock.elapsedRealtime()
-        val firstEdit = firstDirtyAt[path]
-        if (currentTab.text == currentTab.savedText || firstEdit == null ||
-            now - firstEdit >= EDITOR_AUTOSAVE_MAX_WAIT_MS
-        ) {
+        if (currentTab.text == currentTab.savedText || firstDirtyAt[path] == null || path in autosaveRetryAt) {
             firstDirtyAt = firstDirtyAt + (path to now)
         }
         lastEditedAt = lastEditedAt + (path to now)
+        autosaveRetryAt = autosaveRetryAt - path
         editorTabs = editorTabs.map { tab ->
             if (tab.path == path) tab.copy(text = newText) else tab
         }
@@ -922,6 +923,7 @@ private fun FileManagementScreen(
                 val latestText = editorTabs.firstOrNull { it.path == result.path }?.text
                 firstDirtyAt = firstDirtyAt - path - result.path
                 lastEditedAt = lastEditedAt - path - result.path
+                autosaveRetryAt = autosaveRetryAt - path - result.path
                 if (latestText != null && latestText != result.persistedText) {
                     val now = SystemClock.elapsedRealtime()
                     firstDirtyAt = firstDirtyAt + (result.path to now)
@@ -1407,43 +1409,71 @@ private fun FileManagementScreen(
         }
     }
 
-    LaunchedEffect(storage, editorTabs, firstDirtyAt, lastEditedAt, replacingOldestTab) {
-        if (replacingOldestTab) return@LaunchedEffect
+    LaunchedEffect(
+        storage,
+        editorTabs,
+        firstDirtyAt,
+        lastEditedAt,
+        autosaveRetryAt,
+        autosaveInProgress,
+        replacingOldestTab,
+    ) {
+        if (replacingOldestTab || autosaveInProgress) return@LaunchedEffect
 
-        val dirtyTabs = editorTabs.filter { !it.isLoading && it.text != it.savedText }
-        val dirtyPaths = dirtyTabs.map { it.path }.toSet()
+        val allDirtyTabs = editorTabs.filter { !it.isLoading && it.text != it.savedText }
+        val dirtyPaths = allDirtyTabs.map { it.path }.toSet()
         val retainedFirstDirtyAt = firstDirtyAt.filterKeys { it in dirtyPaths }
         val retainedLastEditedAt = lastEditedAt.filterKeys { it in dirtyPaths }
+        val retainedRetryAt = autosaveRetryAt.filterKeys { it in dirtyPaths }
         if (retainedFirstDirtyAt != firstDirtyAt) firstDirtyAt = retainedFirstDirtyAt
         if (retainedLastEditedAt != lastEditedAt) lastEditedAt = retainedLastEditedAt
-        if (dirtyTabs.isEmpty()) return@LaunchedEffect
+        if (retainedRetryAt != autosaveRetryAt) autosaveRetryAt = retainedRetryAt
+        if (allDirtyTabs.isEmpty()) return@LaunchedEffect
 
         val now = SystemClock.elapsedRealtime()
-        val nextSave = dirtyTabs.map { tab ->
+        val nextSave = allDirtyTabs.map { tab ->
             val firstEdit = firstDirtyAt[tab.path] ?: now
             val lastEdit = lastEditedAt[tab.path] ?: firstEdit
-            val dueAt = minOf(
+            val normalDueAt = minOf(
                 lastEdit + EDITOR_AUTOSAVE_DEBOUNCE_MS,
                 firstEdit + EDITOR_AUTOSAVE_MAX_WAIT_MS,
             )
-            tab.path to dueAt
+            tab.path to maxOf(normalDueAt, autosaveRetryAt[tab.path] ?: Long.MIN_VALUE)
         }.minByOrNull { it.second } ?: return@LaunchedEffect
 
         delay((nextSave.second - now).coerceAtLeast(0L))
         val tabToSave = editorTabs.firstOrNull { it.path == nextSave.first }
-        if (tabToSave != null && !tabToSave.isLoading && tabToSave.text != tabToSave.savedText) {
-            saveWorkspaceEditorTab(tabToSave.path, tabToSave.text)
-                .onSuccess { outcome ->
-                    if (outcome.syncError != null) {
-                        notify("Autosaved locally, but linked copy sync failed: " + outcome.syncError)
-                    }
+        if (tabToSave != null && !tabToSave.isLoading && tabToSave.text != tabToSave.savedText &&
+            !autosaveInProgress && !replacingOldestTab
+        ) {
+            val pathToSave = tabToSave.path
+            val contentToSave = tabToSave.text
+            autosaveInProgress = true
+            autosaveRetryAt = autosaveRetryAt - pathToSave
+            // Keep one autosave operation in flight, including linked-workspace synchronization.
+            scope.launch {
+                try {
+                    saveWorkspaceEditorTab(pathToSave, contentToSave)
+                        .onSuccess { outcome ->
+                            if (outcome.syncError != null) {
+                                notify("Autosaved locally, but linked copy sync failed: " + outcome.syncError)
+                            }
+                        }
+                        .onFailure { error ->
+                            val retryNow = SystemClock.elapsedRealtime()
+                            firstDirtyAt = firstDirtyAt + (pathToSave to retryNow)
+                            lastEditedAt = lastEditedAt + (pathToSave to retryNow)
+                            autosaveRetryAt = autosaveRetryAt +
+                                (pathToSave to (retryNow + EDITOR_AUTOSAVE_MAX_WAIT_MS))
+                            notify(
+                                "Autosave failed for " + fileName(pathToSave) +
+                                    "; your draft remains open. " + (error.message ?: "Unknown save error."),
+                            )
+                        }
+                } finally {
+                    autosaveInProgress = false
                 }
-                .onFailure { error ->
-                    notify(
-                        "Autosave failed for " + fileName(tabToSave.path) + "; your draft is still open. " +
-                            (error.message ?: "Unknown save error."),
-                    )
-                }
+            }
         }
     }
 

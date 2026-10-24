@@ -1,10 +1,10 @@
 package com.astracode.app
 
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -228,7 +228,7 @@ class MainActivityUiTest {
         composeRule.waitUntil(timeoutMillis = 10_000) {
             String(Files.readAllBytes(workspace.resolve("tab-1.txt")), Charsets.UTF_8) == "tab 1 autosaved draft"
         }
-        composeRule.onNodeWithTag("editor-tab-close-tab-1.txt").assertDoesNotExist()
+        composeRule.onAllNodesWithTag("editor-tab-close-tab-1.txt").assertCountEquals(0)
         assertEquals("tab 1 autosaved draft", String(Files.readAllBytes(workspace.resolve("tab-1.txt")), Charsets.UTF_8))
         assertEquals(26, (1..26).count { Files.isRegularFile(workspace.resolve("tab-$it.txt")) })
     }
