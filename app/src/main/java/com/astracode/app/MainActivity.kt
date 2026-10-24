@@ -702,8 +702,8 @@ private fun FileManagementScreen(
     var editorTabs by remember(storage) { mutableStateOf(emptyList<EditorTab>()) }
     var standaloneEditorText by remember { mutableStateOf("") }
     var standaloneSavedText by remember { mutableStateOf("") }
-    var pendingEditorTabClosePath by remember { mutableStateOf<String?>(null) }
-    var showEditorTabDiscardDialog by remember { mutableStateOf(false) }
+    var pendingEditorTabClosePath by remember(storage) { mutableStateOf<String?>(null) }
+    var showEditorTabDiscardDialog by remember(storage) { mutableStateOf(false) }
     var entries by remember { mutableStateOf<List<FileEntry>>(emptyList()) }
     var folderCounts by remember { mutableStateOf<Map<String, Int?>>(emptyMap()) }
     var refreshKey by remember { mutableStateOf(0) }
@@ -813,6 +813,16 @@ private fun FileManagementScreen(
         }
     }
 
+    fun requestWorkspaceSwitch(action: () -> Unit) {
+        val hasUnsavedWorkspaceTab = editorTabs.any { it.text != it.savedText }
+        val hasUnsavedStandaloneDocument = selectedDocument != null && editorText != savedText
+        if (hasUnsavedWorkspaceTab || hasUnsavedStandaloneDocument) {
+            pendingNavigation = action
+            showDiscardDialog = true
+        } else {
+            action()
+        }
+    }
 
     suspend fun propagateChangedPath(
         path: String,
@@ -1035,8 +1045,10 @@ private fun FileManagementScreen(
                         )
                     }
                 }
-                openedFile = saved.path
-                currentDirectory = parentPath(saved.path)
+                if (openedFile == path) {
+                    openedFile = saved.path
+                    currentDirectory = parentPath(saved.path)
+                }
                 refreshKey++
                 notify(
                     if (saved.replacedUnpairedSurrogateCount > 0) {
@@ -1374,6 +1386,8 @@ private fun FileManagementScreen(
             if (openedFile != null || selectedDocument != null) {
                 if (selectedDocument != null && standaloneDocumentLoading) {
                     StandaloneDocumentLoadingPanel(selectedDocument.name)
+                } else if (selectedDocument == null && activeEditorTab?.isLoading == true) {
+                    StandaloneDocumentLoadingPanel(fileName(openedFile.orEmpty()))
                 } else {
                     EditorPanel(
                         path = selectedDocument?.name ?: openedFile.orEmpty(),
@@ -1640,17 +1654,31 @@ private fun FileManagementScreen(
             onDismiss = { showWorkspaceManager = false },
             onAddFolder = {
                 showWorkspaceManager = false
-                onAddWorkspace()
+                requestWorkspaceSwitch(onAddWorkspace)
             },
             onSelectPrivate = {
                 showWorkspaceManager = false
-                onSelectPrivateWorkspace()
+                if (activeWorkspaceId == PRIVATE_WORKSPACE_ID) {
+                    onSelectPrivateWorkspace()
+                } else {
+                    requestWorkspaceSwitch(onSelectPrivateWorkspace)
+                }
             },
             onSelectFolder = { bookmark ->
                 showWorkspaceManager = false
-                onSelectSavedWorkspace(bookmark)
+                if (bookmark.id == activeWorkspaceId) {
+                    onSelectSavedWorkspace(bookmark)
+                } else {
+                    requestWorkspaceSwitch { onSelectSavedWorkspace(bookmark) }
+                }
             },
-            onRemoveFolder = onRemoveSavedWorkspace,
+            onRemoveFolder = { bookmark ->
+                if (bookmark.id == activeWorkspaceId) {
+                    requestWorkspaceSwitch { onRemoveSavedWorkspace(bookmark) }
+                } else {
+                    onRemoveSavedWorkspace(bookmark)
+                }
+            },
         )
     }
 
