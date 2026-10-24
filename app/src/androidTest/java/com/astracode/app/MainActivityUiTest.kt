@@ -784,4 +784,45 @@ class MainActivityUiTest {
         }
     }
 
+
+    @Test
+    fun editorCanFindReplaceAndKeepsLineNumbersOutOfSavedText() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workspace = context.filesDir.toPath().resolve("workspace")
+        Files.createDirectories(workspace)
+        val sample = workspace.resolve("SearchReplace.kt")
+        Files.write(sample, "val target = 1\nval target = 2\n".toByteArray(Charsets.UTF_8))
+        composeRule.activityRule.scenario.recreate()
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching { composeRule.onNodeWithTag("entry-SearchReplace.kt").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("entry-SearchReplace.kt").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("file-editor-input")
+                    .assertTextContains("val target = 1", substring = true)
+            }.isSuccess
+        }
+
+        composeRule.onNodeWithTag("editor-find-toggle").performClick()
+        composeRule.onNodeWithTag("editor-find-input").performTextReplacement("target")
+        composeRule.onNodeWithTag("editor-replace-input").performTextReplacement("answer")
+        composeRule.onNodeWithTag("editor-find-next").performClick()
+        composeRule.onNodeWithTag("editor-replace-one").performClick()
+        composeRule.onNodeWithTag("file-editor-input").assertTextContains("val answer = 1", substring = true)
+        composeRule.onNodeWithTag("file-editor-input").assertTextContains("val target = 2", substring = true)
+
+        composeRule.onNodeWithTag("editor-replace-input").performTextReplacement("item")
+        composeRule.onNodeWithTag("editor-replace-all").performClick()
+        composeRule.onNodeWithTag("file-editor-input").assertTextContains("val item = 2", substring = true)
+        composeRule.onNodeWithTag("file-editor-input").assertTextContains("val answer = 1", substring = true)
+
+        composeRule.onNodeWithTag("save-file-button").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            String(Files.readAllBytes(sample), Charsets.UTF_8) == "val answer = 1\nval item = 2\n"
+        }
+        assertEquals("val answer = 1\nval item = 2\n", String(Files.readAllBytes(sample), Charsets.UTF_8))
+    }
+
 }

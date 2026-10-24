@@ -78,6 +78,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -786,22 +790,22 @@ private fun FileManagementScreen(
         autosaveRetryAt = autosaveRetryAt - path
     }
 
-    fun updateCurrentEditorText(newText: String) {
+    fun updateCurrentEditorText(newText: String): Boolean {
         if (selectedDocument != null) {
             standaloneEditorText = newText
-            return
+            return true
         }
-        if (replacingOldestTab) return
-        val path = openedFile ?: return
-        val currentTab = editorTabs.firstOrNull { it.path == path } ?: return
-        if (newText == currentTab.text) return
+        if (replacingOldestTab) return false
+        val path = openedFile ?: return false
+        val currentTab = editorTabs.firstOrNull { it.path == path } ?: return false
+        if (newText == currentTab.text) return true
         val otherBufferUnits = editorTabs.asSequence()
             .filterNot { it.path == path }
             .sumOf(::editorTabBufferUnits)
         val requestedUnits = otherBufferUnits + newText.length.toLong() + currentTab.savedText.length.toLong()
         if (requestedUnits > MAX_OPEN_EDITOR_BUFFER_UNITS) {
             notify("Editor memory limit reached. Save and close another tab before adding more text.")
-            return
+            return false
         }
 
         val now = SystemClock.elapsedRealtime()
@@ -813,6 +817,7 @@ private fun FileManagementScreen(
         editorTabs = editorTabs.map { tab ->
             if (tab.path == path) tab.copy(text = newText) else tab
         }
+        return true
     }
 
     fun closeEditorTab(path: String) {
@@ -3289,9 +3294,23 @@ private fun EditorPanel(
     tabs: List<EditorTab> = emptyList(),
     onSelectTab: (String) -> Unit = {},
     onCloseTab: (String) -> Unit = {},
-    onTextChange: (String) -> Unit,
+    onTextChange: (String) -> Boolean,
     onSave: () -> Unit,
 ) {
+    var editorFieldValue by remember(path) { mutableStateOf(TextFieldValue(text)) }
+    var showFindReplace by remember(path) { mutableStateOf(false) }
+    var findQuery by remember(path) { mutableStateOf("") }
+    var replacementText by remember(path) { mutableStateOf("") }
+    var editorToolMessage by remember(path) { mutableStateOf("") }
+    val editorFocusRequester = remember(path) { FocusRequester() }
+    val lineNumberTransformation = remember { lineNumberVisualTransformation() }
+
+    LaunchedEffect(path, text) {
+        if (editorFieldValue.text != text) {
+            editorFieldValue = TextFieldValue(text, selection = TextRange(text.length))
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -3337,13 +3356,155 @@ private fun EditorPanel(
             }
         }
         Spacer(Modifier.height(10.dp))
+        TextButton(
+            onClick = {
+                showFindReplace = !showFindReplace
+                editorToolMessage = ""
+            },
+            modifier = Modifier.testTag("editor-find-toggle"),
+        ) { Text(if (showFindReplace) "Hide Find / Replace" else "Find / Replace") }
+        if (showFindReplace) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OutlinedTextField(
+                        value = findQuery,
+                        onValueChange = { findQuery = it; editorToolMessage = "" },
+                        modifier = Modifier.weight(1f).testTag("editor-find-input"),
+                        label = { Text("Find word, symbol, or line") },
+                        maxLines = 2,
+                    )
+                    TextButton(
+                        onClick = {
+                            if (countMatches(editorFieldValue.text, findQuery) == 0) {
+                                editorToolMessage = if (findQuery.isEmpty()) "Enter text to search for." else "No matches found."
+                            } else {
+                                editorFieldValue = findNextMatch(editorFieldValue, findQuery)
+                                editorFocusRequester.requestFocus()
+                            }
+                        },
+                        enabled = findQuery.isNotEmpty(),
+                        modifier = Modifier.testTag("editor-find-next"),
+                    ) { Text("Next") }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OutlinedTextField(
+                        value = replacementText,
+                        onValueChange = { replacementText = it; editorToolMessage = "" },
+                        modifier = Modifier.weight(1f).testTag("editor-replace-input"),
+                        label = { Text("Replace with") },
+                        maxLines = 2,
+                    )
+                    TextButton(
+                        onClick = {
+                            if (countMatches(editorFieldValue.text, findQuery) == 0) {
+                                editorToolMessage = if (findQuery.isEmpty()) "Enter text to search for." else "No matches found."
+                            } else {
+                                editorFieldValue = findPreviousMatch(editorFieldValue, findQuery)
+                                editorFocusRequester.requestFocus()
+                            }
+                        },
+                        enabled = findQuery.isNotEmpty(),
+                        modifier = Modifier.testTag("editor-find-previous"),
+                    ) { Text("Previous") }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "${countMatches(editorFieldValue.text, findQuery)} matches",
+                        modifier = Modifier.weight(1f).testTag("editor-find-count"),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    TextButton(
+                        onClick = {
+                            val (updated, didReplace) = replaceOneMatch(editorFieldValue, findQuery, replacementText)
+                            if (didReplace) {
+                                if (onTextChange(updated.text)) {
+                                    editorFieldValue = updated
+                                    editorToolMessage = "Replaced one occurrence."
+                                    editorFocusRequester.requestFocus()
+                                } else {
+                                    editorFieldValue = TextFieldValue(
+                                        text,
+                                        selection = TextRange(updated.selection.end.coerceIn(0, text.length)),
+                                    )
+                                    editorToolMessage = "Replacement blocked by the editor memory limit."
+                                }
+                            } else {
+                                editorToolMessage = if (findQuery.isEmpty()) "Enter text to search for." else "No matches found."
+                            }
+                        },
+                        enabled = !readOnly && findQuery.isNotEmpty(),
+                        modifier = Modifier.testTag("editor-replace-one"),
+                    ) { Text("Replace") }
+                    TextButton(
+                        onClick = {
+                            val matches = countMatches(editorFieldValue.text, findQuery)
+                            val projectedLength = editorFieldValue.text.length.toLong() +
+                                matches.toLong() * (replacementText.length.toLong() - findQuery.length.toLong())
+                            if (projectedLength > MAX_OPEN_EDITOR_BUFFER_UNITS) {
+                                editorToolMessage = "Replace all blocked: the result would exceed the editor safety limit."
+                            } else {
+                                val (updated, count) = replaceAllMatches(editorFieldValue, findQuery, replacementText)
+                                if (count > 0) {
+                                    if (onTextChange(updated.text)) {
+                                        editorFieldValue = updated
+                                        editorToolMessage = "Replaced ${count} occurrence(s)."
+                                    } else {
+                                        editorFieldValue = TextFieldValue(
+                                            text,
+                                            selection = TextRange(updated.selection.end.coerceIn(0, text.length)),
+                                        )
+                                        editorToolMessage = "Replacement blocked by the editor memory limit."
+                                    }
+                                } else {
+                                    editorToolMessage = if (findQuery.isEmpty()) "Enter text to search for." else "No matches found."
+                                }
+                            }
+                        },
+                        enabled = !readOnly && findQuery.isNotEmpty(),
+                        modifier = Modifier.testTag("editor-replace-all"),
+                    ) { Text("Replace all") }
+                }
+                if (editorToolMessage.isNotEmpty()) {
+                    Text(
+                        editorToolMessage,
+                        color = MutedText,
+                        fontSize = 11.sp,
+                        modifier = Modifier.testTag("editor-find-message"),
+                    )
+                }
+            }
+        }
         OutlinedTextField(
-            value = text,
-            onValueChange = onTextChange,
+            value = editorFieldValue,
+            onValueChange = { newValue ->
+                if (onTextChange(newValue.text)) {
+                    editorFieldValue = newValue
+                } else {
+                    editorFieldValue = TextFieldValue(
+                        text,
+                        selection = TextRange(newValue.selection.end.coerceIn(0, text.length)),
+                    )
+                    editorToolMessage = "Edit blocked by the editor memory limit."
+                }
+            },
             readOnly = readOnly,
+            visualTransformation = lineNumberTransformation,
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
+                .focusRequester(editorFocusRequester)
                 .testTag("file-editor-input"),
             label = { Text("File contents") },
             placeholder = { Text("Start writing…") },
