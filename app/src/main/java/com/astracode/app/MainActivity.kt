@@ -3298,12 +3298,23 @@ private fun EditorPanel(
     onSave: () -> Unit,
 ) {
     var editorFieldValue by remember(path) { mutableStateOf(TextFieldValue(text)) }
+    var collapsedFoldStarts by remember(path, editorFieldValue.text) { mutableStateOf(emptySet<Int>()) }
+    val foldableRegions = remember(editorFieldValue.text) { findCodeFoldRegions(editorFieldValue.text) }
+    val visibleFoldableRegions = foldableRegions.filter { candidate ->
+        foldableRegions.none { parent ->
+            parent.startLine in collapsedFoldStarts &&
+                parent.startLine < candidate.startLine &&
+                parent.endLine >= candidate.startLine
+        }
+    }
     var showFindReplace by remember(path) { mutableStateOf(false) }
     var findQuery by remember(path) { mutableStateOf("") }
     var replacementText by remember(path) { mutableStateOf("") }
     var editorToolMessage by remember(path) { mutableStateOf("") }
     val editorFocusRequester = remember(path) { FocusRequester() }
-    val lineNumberTransformation = remember { lineNumberVisualTransformation() }
+    val lineNumberTransformation = remember(foldableRegions, collapsedFoldStarts) {
+        codeFoldingVisualTransformation(foldableRegions, collapsedFoldStarts)
+    }
 
     LaunchedEffect(path, text) {
         if (editorFieldValue.text != text) {
@@ -3483,6 +3494,33 @@ private fun EditorPanel(
                         fontSize = 11.sp,
                         modifier = Modifier.testTag("editor-find-message"),
                     )
+                }
+            }
+        }
+        if (visibleFoldableRegions.isNotEmpty()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                visibleFoldableRegions.forEach { region ->
+                    val isCollapsed = region.startLine in collapsedFoldStarts
+                    TextButton(
+                        onClick = {
+                            collapsedFoldStarts = if (isCollapsed) {
+                                collapsedFoldStarts - region.startLine
+                            } else {
+                                collapsedFoldStarts + region.startLine
+                            }
+                        },
+                        modifier = Modifier.testTag("editor-fold-toggle-${region.startLine}"),
+                    ) {
+                        Text(
+                            "${if (isCollapsed) "▸" else "▾"} L${region.startLine} ${region.label}",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
         }

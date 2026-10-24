@@ -786,6 +786,38 @@ class MainActivityUiTest {
 
 
     @Test
+    fun editorCanCollapseAndExpandCodeWithoutChangingSavedText() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workspace = context.filesDir.toPath().resolve("workspace")
+        Files.createDirectories(workspace)
+        val sample = workspace.resolve("FoldSample.kt")
+        val source = "fun main() {\n    println(\"first\")\n    println(\"second\")\n}\n"
+        Files.write(sample, source.toByteArray(Charsets.UTF_8))
+        composeRule.activityRule.scenario.recreate()
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching { composeRule.onNodeWithTag("entry-FoldSample.kt").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("entry-FoldSample.kt").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("file-editor-input")
+                    .assertTextContains("fun main()", substring = true)
+            }.isSuccess
+        }
+
+        val foldButton = composeRule.onNodeWithTag("editor-fold-toggle-1")
+        foldButton.assertIsDisplayed()
+        foldButton.performClick()
+        foldButton.assertTextContains("▸", substring = true)
+        assertEquals(source, String(Files.readAllBytes(sample), Charsets.UTF_8))
+
+        foldButton.performClick()
+        foldButton.assertTextContains("▾", substring = true)
+        assertEquals(source, String(Files.readAllBytes(sample), Charsets.UTF_8))
+    }
+
+    @Test
     fun editorCanFindReplaceAndKeepsLineNumbersOutOfSavedText() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val workspace = context.filesDir.toPath().resolve("workspace")
