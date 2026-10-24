@@ -717,6 +717,7 @@ private fun FileManagementScreen(
     var lastEditedAt by remember(storage) { mutableStateOf(emptyMap<String, Long>()) }
     var autosaveRetryAt by remember(storage) { mutableStateOf(emptyMap<String, Long>()) }
     var autosaveInProgress by remember(storage) { mutableStateOf(false) }
+    var savingEditorPath by remember(storage) { mutableStateOf<String?>(null) }
     var replacingOldestTab by remember(storage) { mutableStateOf(false) }
     var pendingEditorEviction by remember(storage) { mutableStateOf<Pair<String, String>?>(null) }
     var standaloneEditorText by remember { mutableStateOf("") }
@@ -829,6 +830,24 @@ private fun FileManagementScreen(
         showEditorTabDiscardDialog = false
     }
 
+    fun dismissEditorTabClosePrompt() {
+        val path = pendingEditorTabClosePath
+        showEditorTabDiscardDialog = false
+        pendingEditorTabClosePath = null
+        if (path != null) {
+            val tab = editorTabs.firstOrNull { it.path == path }
+            if (tab != null && tab.text != tab.savedText) {
+                // Give the user a fresh debounce window after choosing to keep editing.
+                val now = SystemClock.elapsedRealtime()
+                firstDirtyAt = firstDirtyAt + (path to now)
+                lastEditedAt = lastEditedAt + (path to now)
+                autosaveRetryAt = autosaveRetryAt - path
+            } else {
+                clearEditorAutosaveSchedule(path)
+            }
+        }
+    }
+
     fun requestCloseEditorTab(path: String) {
         if (replacingOldestTab) return
         val tab = editorTabs.firstOrNull { it.path == path } ?: return
@@ -886,6 +905,7 @@ private fun FileManagementScreen(
         val requestedStorage = storage
         val saved = try {
             editorSaveMutex.lock()
+            savingEditorPath = path
             try {
                 val tabBeforeSave = editorTabs.firstOrNull { it.path == path }
                     ?: return Result.failure(java.io.IOException("This editor tab is no longer open."))
@@ -932,6 +952,7 @@ private fun FileManagementScreen(
                 refreshKey++
                 result
             } finally {
+                savingEditorPath = null
                 editorSaveMutex.unlock()
             }
         } catch (cancelled: CancellationException) {
@@ -1416,9 +1437,16 @@ private fun FileManagementScreen(
         lastEditedAt,
         autosaveRetryAt,
         autosaveInProgress,
+        savingEditorPath,
         replacingOldestTab,
+        pendingEditorTabClosePath,
+        showEditorTabDiscardDialog,
     ) {
-        if (replacingOldestTab || autosaveInProgress) return@LaunchedEffect
+        // Do not start another save while the user is deciding whether to discard a draft.
+        // Any save already in flight is tracked and disables the destructive action.
+        if (replacingOldestTab || autosaveInProgress || savingEditorPath != null || showEditorTabDiscardDialog) {
+            return@LaunchedEffect
+        }
 
         val allDirtyTabs = editorTabs.filter { !it.isLoading && it.text != it.savedText }
         val dirtyPaths = allDirtyTabs.map { it.path }.toSet()
@@ -1444,7 +1472,8 @@ private fun FileManagementScreen(
         delay((nextSave.second - now).coerceAtLeast(0L))
         val tabToSave = editorTabs.firstOrNull { it.path == nextSave.first }
         if (tabToSave != null && !tabToSave.isLoading && tabToSave.text != tabToSave.savedText &&
-            !autosaveInProgress && !replacingOldestTab
+            !autosaveInProgress && !replacingOldestTab &&
+            savingEditorPath == null && !showEditorTabDiscardDialog
         ) {
             val pathToSave = tabToSave.path
             val contentToSave = tabToSave.text
@@ -2470,34 +2499,41 @@ private fun FileManagementScreen(
 
     if (showEditorTabDiscardDialog) {
         val pathToClose = pendingEditorTabClosePath
+        val tabToClose = editorTabs.firstOrNull { it.path == pathToClose }
+        val hasUnsavedChanges = tabToClose != null && tabToClose.text != tabToClose.savedText
+        val saveStillRunning = pathToClose != null && savingEditorPath == pathToClose
         AlertDialog(
-            onDismissRequest = {
-                showEditorTabDiscardDialog = false
-                pendingEditorTabClosePath = null
+            onDismissRequest = { dismissEditorTabClosePrompt() },
+            title = {
+                Text(if (hasUnsavedChanges) "Discard unsaved changes?" else "File saved automatically")
             },
-            title = { Text("Discard unsaved changes?") },
             text = {
-                Text("Close " + (pathToClose?.let(::fileName) ?: "this file") + " and discard its unsaved edits?")
+                val name = pathToClose?.let(::fileName) ?: "this file"
+                Text(
+                    if (hasUnsavedChanges) {
+                        "Close $name and discard edits that have not been saved?"
+                    } else {
+                        "The latest changes to $name have been saved. Close the tab?"
+                    },
+                )
             },
             confirmButton = {
                 TextButton(
                     onClick = {
                         val path = pendingEditorTabClosePath
-                        if (path != null) closeEditorTab(path)
-                        else {
-                            showEditorTabDiscardDialog = false
-                            pendingEditorTabClosePath = null
+                        if (path != null && path != savingEditorPath) {
+                            // If autosave completed while the dialog was open, close the clean tab.
+                            // Otherwise this is the user's explicit discard decision.
+                            closeEditorTab(path)
                         }
                     },
+                    enabled = !saveStillRunning,
                     modifier = Modifier.testTag("editor-tab-discard-confirm"),
-                ) { Text("Discard changes") }
+                ) { Text(if (hasUnsavedChanges) "Discard changes" else "Close tab") }
             },
             dismissButton = {
                 TextButton(
-                    onClick = {
-                        showEditorTabDiscardDialog = false
-                        pendingEditorTabClosePath = null
-                    },
+                    onClick = { dismissEditorTabClosePrompt() },
                     modifier = Modifier.testTag("editor-tab-discard-cancel"),
                 ) { Text("Keep editing") }
             },

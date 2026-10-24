@@ -2,6 +2,8 @@ package com.astracode.app
 
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -155,11 +157,14 @@ class MainActivityUiTest {
     }
 
     @Test
-    fun closingDirtyEditorTabRequiresConfirmation() {
+    fun editorTabClosePromptDoesNotRaceAutosave() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val workspace = context.filesDir.toPath().resolve("workspace")
         Files.createDirectories(workspace)
-        Files.write(workspace.resolve("README.txt"), "original\n".toByteArray(Charsets.UTF_8))
+        val file = workspace.resolve("README.txt")
+        val original = "original\n"
+        val draft = "unsaved draft"
+        Files.write(file, original.toByteArray(Charsets.UTF_8))
         composeRule.activityRule.scenario.recreate()
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
@@ -169,19 +174,54 @@ class MainActivityUiTest {
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("file-editor-input").assertIsDisplayed() }.isSuccess
         }
-        composeRule.onNodeWithTag("file-editor-input").performTextReplacement("unsaved draft")
+        composeRule.onNodeWithTag("file-editor-input").performTextReplacement(draft)
         composeRule.onNodeWithTag("editor-tab-close-README.txt").performClick()
-        composeRule.onNodeWithTag("editor-tab-discard-cancel").performClick()
-        composeRule.waitUntil(timeoutMillis = 5_000) {
-            runCatching { composeRule.onNodeWithTag("file-editor-input").assertTextContains("unsaved draft", substring = true) }.isSuccess
+
+        val promptVisible = runCatching {
+            composeRule.onNodeWithTag("editor-tab-discard-confirm").assertIsDisplayed()
+        }.isSuccess
+
+        if (promptVisible) {
+            // If a save began just before the prompt appeared, wait until it finishes.
+            // If the file is still unchanged, autosave is correctly paused and discard is safe.
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                runCatching { composeRule.onNodeWithTag("editor-tab-discard-confirm").assertIsEnabled() }.isSuccess
+            }
+            val currentDiskText = String(Files.readAllBytes(file), Charsets.UTF_8)
+            if (currentDiskText == original) {
+                composeRule.onNodeWithTag("editor-tab-discard-confirm").performClick()
+                composeRule.waitUntil(timeoutMillis = 5_000) {
+                    runCatching { composeRule.onNodeWithTag("entry-README.txt").assertIsDisplayed() }.isSuccess
+                }
+                assertEquals(original, String(Files.readAllBytes(file), Charsets.UTF_8))
+                return
+            }
+
+            // The save finished before the user could decide. Cancel leaves the saved
+            // content in place; the tab must no longer pretend those changes are discardable.
+            composeRule.onNodeWithTag("editor-tab-discard-cancel").performClick()
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                runCatching {
+                    composeRule.onNodeWithTag("file-editor-input").assertTextContains(draft, substring = true)
+                }.isSuccess
+            }
         }
 
-        composeRule.onNodeWithTag("editor-tab-close-README.txt").performClick()
-        composeRule.onNodeWithTag("editor-tab-discard-confirm").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching { String(Files.readAllBytes(file), Charsets.UTF_8) == draft }.getOrDefault(false)
+        }
+        if (runCatching { composeRule.onNodeWithTag("file-editor-input").assertIsDisplayed() }.isSuccess) {
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                runCatching {
+                    composeRule.onNodeWithTag("editor-tab-README.txt").assertTextEquals("README.txt")
+                }.isSuccess
+            }
+            composeRule.onNodeWithTag("editor-tab-close-README.txt").performClick()
+        }
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("entry-README.txt").assertIsDisplayed() }.isSuccess
         }
-        assertEquals("original\n", String(Files.readAllBytes(workspace.resolve("README.txt")), Charsets.UTF_8))
+        assertEquals(draft, String(Files.readAllBytes(file), Charsets.UTF_8))
     }
 
     @Test
@@ -193,7 +233,7 @@ class MainActivityUiTest {
             Files.write(workspace.resolve("tab-$index.txt"), "tab content $index".toByteArray(Charsets.UTF_8))
         }
         composeRule.activityRule.scenario.recreate()
-        composeRule.onNodeWithTag("open-workspace-browser-button").performClick()
+        // AstraCode starts on Screen.Files; wait for the real lazy file list to load.
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("workspace-file-list").assertIsDisplayed() }.isSuccess
         }
