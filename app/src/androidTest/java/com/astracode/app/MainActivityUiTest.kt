@@ -420,7 +420,9 @@ class MainActivityUiTest {
         }
         composeRule.onNodeWithTag("entry-.env").assertTextContains("Hidden file · 14 B", substring = true)
         composeRule.onNodeWithTag("entry-.env").performClick()
-        composeRule.onNodeWithTag("file-editor-input").assertIsDisplayed()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching { composeRule.onNodeWithTag("file-editor-input").assertIsDisplayed() }.isSuccess
+        }
         composeRule.onNodeWithTag("file-editor-input").performTextReplacement("TOKEN=updated")
         composeRule.onNodeWithTag("save-file-button").performClick()
 

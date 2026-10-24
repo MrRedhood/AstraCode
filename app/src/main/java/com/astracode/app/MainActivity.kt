@@ -2869,7 +2869,7 @@ private fun WorkspacePanel(
             EmptyWorkspace(onCreateFile = onNewFile)
         } else {
             LazyColumn(
-                modifier = Modifier.fillMaxSize().testTag("workspace-file-list"),
+                modifier = Modifier.fillMaxSize(),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(7.dp),
             ) {

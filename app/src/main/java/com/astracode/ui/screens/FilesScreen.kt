@@ -237,7 +237,7 @@ fun FilesScreen(
             }
         } else {
             LazyColumn(
-                modifier = Modifier.weight(1f).fillMaxWidth(),
+                modifier = Modifier.weight(1f).fillMaxWidth().testTag("workspace-file-list"),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 18.dp, end = 10.dp, top = 10.dp, bottom = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
