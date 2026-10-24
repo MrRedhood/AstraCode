@@ -225,7 +225,7 @@ class MainActivityUiTest {
     }
 
     @Test
-    fun workspaceRowsCanCloseAndReopenEditorTabs() {
+    fun editorTabsCanCloseAndFilesCanReopenFromWorkspace() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val workspace = context.filesDir.toPath().resolve("workspace")
         Files.createDirectories(workspace)
@@ -242,15 +242,16 @@ class MainActivityUiTest {
                     .assertTextContains("Workspace close fixture", substring = true)
             }.isSuccess
         }
+        composeRule.onNodeWithTag("editor-tab-close-WorkspaceClose.txt").assertIsDisplayed()
+
+        // Going back to Workspace keeps the tab open, but the file row itself has no close control.
         composeRule.onNodeWithTag("editor-back").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
-            runCatching {
-                composeRule.onNodeWithTag("workspace-close-open-file-WorkspaceClose.txt").assertIsDisplayed()
-            }.isSuccess
+            runCatching { composeRule.onNodeWithTag("entry-WorkspaceClose.txt").assertIsDisplayed() }.isSuccess
         }
-
-        composeRule.onNodeWithTag("workspace-close-open-file-WorkspaceClose.txt").performClick()
         composeRule.onAllNodesWithTag("workspace-close-open-file-WorkspaceClose.txt").assertCountEquals(0)
+
+        // Reopen the existing tab, then close it with the control beside its editor-tab filename.
         composeRule.onNodeWithTag("entry-WorkspaceClose.txt").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching {
@@ -258,10 +259,22 @@ class MainActivityUiTest {
                     .assertTextContains("Workspace close fixture", substring = true)
             }.isSuccess
         }
-        composeRule.onNodeWithTag("editor-back").performClick()
-        composeRule.onNodeWithTag("workspace-close-open-file-WorkspaceClose.txt").assertIsDisplayed()
-    }
+        composeRule.onNodeWithTag("editor-tab-close-WorkspaceClose.txt").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("entry-WorkspaceClose.txt").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onAllNodesWithTag("editor-tab-close-WorkspaceClose.txt").assertCountEquals(0)
+        composeRule.onAllNodesWithTag("workspace-close-open-file-WorkspaceClose.txt").assertCountEquals(0)
 
+        composeRule.onNodeWithTag("entry-WorkspaceClose.txt").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("file-editor-input")
+                    .assertTextContains("Workspace close fixture", substring = true)
+            }.isSuccess
+        }
+        composeRule.onNodeWithTag("editor-tab-close-WorkspaceClose.txt").assertIsDisplayed()
+    }
     @Test
     fun editorKeeps25TabsAndAutoSavesOldestBeforeOpening26th() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext

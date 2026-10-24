@@ -56,7 +56,6 @@ fun FilesScreen(
     currentDirectory: String,
     storageLabel: String,
     items: List<AtelierFileItem>,
-    openEditorPaths: Set<String>,
     selectedPaths: Set<String>,
     selectionMode: Boolean,
     savedWorkspaceCount: Int,
@@ -71,7 +70,6 @@ fun FilesScreen(
     onToggleSelection: (String) -> Unit,
     onBulkAction: (String) -> Unit,
     onOpenEntry: (String) -> Unit,
-    onCloseEditorTab: (String) -> Unit,
     onInspectEntry: (String) -> Unit,
     onGoUp: () -> Unit,
 ) {
@@ -248,9 +246,7 @@ fun FilesScreen(
                         item = item,
                         selected = item.path in selectedPaths,
                         selectionMode = selectionMode,
-                        openInEditor = item.path in openEditorPaths,
                         onClick = { if (selectionMode) onToggleSelection(item.path) else onOpenEntry(item.path) },
-                        onCloseEditorTab = { onCloseEditorTab(item.path) },
                         onInspect = { onInspectEntry(item.path) },
                     )
                 }
@@ -264,9 +260,7 @@ private fun AtelierFileRow(
     item: AtelierFileItem,
     selected: Boolean,
     selectionMode: Boolean,
-    openInEditor: Boolean,
     onClick: () -> Unit,
-    onCloseEditorTab: () -> Unit,
     onInspect: () -> Unit,
 ) {
     Surface(
@@ -301,25 +295,7 @@ private fun AtelierFileRow(
                 )
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    Text(
-                        item.name,
-                        modifier = Modifier.weight(1f),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (openInEditor && !selectionMode) {
-                        TextButton(
-                            onClick = onCloseEditorTab,
-                            modifier = Modifier.testTag("workspace-close-open-file-${item.name}"),
-                        ) { Text("×") }
-                    }
-                }
+                Text(item.name, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     buildString {
                         if (item.name.startsWith(".") && item.isDirectory) append("Hidden folder · ")
