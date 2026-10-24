@@ -3516,32 +3516,10 @@ private fun EditorPanel(
                 }
             }
         }
-        val editorInsertTokens = listOf("😀", "🎉", "✅", "🚀", "🔥", "→", "⇒", "λ", "π", "✓", "{}")
-        Row(
-            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            TextButton(
-                onClick = { wordWrapEnabled = !wordWrapEnabled },
-                modifier = Modifier.testTag("editor-word-wrap-toggle"),
-            ) { Text(if (wordWrapEnabled) "Word wrap: On" else "Word wrap: Off") }
-            editorInsertTokens.forEachIndexed { index, symbol ->
-                TextButton(
-                    onClick = {
-                        val updated = insertTextAtSelection(editorFieldValue, symbol)
-                        if (onTextChange(updated.text)) {
-                            editorFieldValue = updated
-                            editorFocusRequester.requestFocus()
-                        } else {
-                            editorToolMessage = "Insertion blocked by the editor memory limit."
-                        }
-                    },
-                    enabled = !readOnly,
-                    modifier = Modifier.testTag("editor-insert-$index"),
-                ) { Text(symbol) }
-            }
-        }
+        TextButton(
+            onClick = { wordWrapEnabled = !wordWrapEnabled },
+            modifier = Modifier.testTag("editor-word-wrap-toggle"),
+        ) { Text(if (wordWrapEnabled) "Word wrap: On" else "Word wrap: Off") }
         Text(
             if (readOnly) "Read-only · autosave unavailable" else "Autosave on · saves after typing pauses",
             color = MutedText,

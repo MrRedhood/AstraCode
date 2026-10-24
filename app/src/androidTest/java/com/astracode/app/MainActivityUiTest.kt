@@ -838,7 +838,7 @@ class MainActivityUiTest {
         }
 
         composeRule.onNodeWithTag("file-editor-input").performTextReplacement("hello ")
-        composeRule.onNodeWithTag("editor-insert-0").performClick()
+        composeRule.onNodeWithTag("file-editor-input").performTextInput("😀")
         composeRule.onNodeWithTag("file-editor-input").assertTextContains("hello 😀", substring = true)
 
         composeRule.onNodeWithTag("editor-word-wrap-toggle").assertTextContains("Word wrap: On")
