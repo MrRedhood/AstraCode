@@ -12,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +29,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -157,6 +159,20 @@ private const val ACTIVE_WORKSPACE_KEY = "active_workspace_id"
 private const val SAVED_DOCUMENTS_KEY = "saved_document_uris"
 private const val ACTIVE_DOCUMENT_KEY = "active_document_uri"
 private const val MAX_STANDALONE_DOCUMENT_BYTES = 8L * 1024L * 1024L
+private const val MAX_EDITOR_FILE_BYTES = 8L * 1024L * 1024L
+private const val MAX_OPEN_EDITOR_TABS = 4
+// Count both each draft and its saved snapshot to keep retained editor text bounded.
+private const val MAX_OPEN_EDITOR_BUFFER_UNITS = 16L * 1024L * 1024L
+
+private data class EditorTab(
+    val path: String,
+    val text: String = "",
+    val savedText: String = "",
+    val isLoading: Boolean = true,
+)
+
+private fun editorTabBufferUnits(tab: EditorTab): Long =
+    tab.text.length.toLong() + tab.savedText.length.toLong()
 
 private data class WorkspaceBookmark(
     val uri: Uri,
@@ -683,8 +699,11 @@ private fun FileManagementScreen(
 
     var currentDirectory by remember { mutableStateOf("") }
     var openedFile by remember { mutableStateOf<String?>(null) }
-    var editorText by remember { mutableStateOf("") }
-    var savedText by remember { mutableStateOf("") }
+    var editorTabs by remember(storage) { mutableStateOf(emptyList<EditorTab>()) }
+    var standaloneEditorText by remember { mutableStateOf("") }
+    var standaloneSavedText by remember { mutableStateOf("") }
+    var pendingEditorTabClosePath by remember { mutableStateOf<String?>(null) }
+    var showEditorTabDiscardDialog by remember { mutableStateOf(false) }
     var entries by remember { mutableStateOf<List<FileEntry>>(emptyList()) }
     var folderCounts by remember { mutableStateOf<Map<String, Int?>>(emptyMap()) }
     var refreshKey by remember { mutableStateOf(0) }
@@ -733,8 +752,56 @@ private fun FileManagementScreen(
         mutableStateOf(selectedDocument != null)
     }
 
+    val activeEditorTab = editorTabs.firstOrNull { it.path == openedFile }
+    val editorText = if (selectedDocument != null) standaloneEditorText else activeEditorTab?.text.orEmpty()
+    val savedText = if (selectedDocument != null) standaloneSavedText else activeEditorTab?.savedText.orEmpty()
+
     fun notify(message: String) {
         scope.launch { snackbarHostState.showSnackbar(message) }
+    }
+
+    fun updateCurrentEditorText(newText: String) {
+        if (selectedDocument != null) {
+            standaloneEditorText = newText
+            return
+        }
+        val path = openedFile ?: return
+        val currentTab = editorTabs.firstOrNull { it.path == path } ?: return
+        val otherBufferUnits = editorTabs.asSequence()
+            .filterNot { it.path == path }
+            .sumOf(::editorTabBufferUnits)
+        val requestedUnits = otherBufferUnits + newText.length.toLong() + currentTab.savedText.length.toLong()
+        if (requestedUnits > MAX_OPEN_EDITOR_BUFFER_UNITS) {
+            notify("Editor memory limit reached. Save and close another tab before adding more text.")
+            return
+        }
+        editorTabs = editorTabs.map { tab ->
+            if (tab.path == path) tab.copy(text = newText) else tab
+        }
+    }
+
+    fun closeEditorTab(path: String) {
+        val oldIndex = editorTabs.indexOfFirst { it.path == path }
+        if (oldIndex < 0) return
+        val remaining = editorTabs.filterNot { it.path == path }
+        editorTabs = remaining
+        if (openedFile == path) {
+            val nextPath = remaining.getOrNull(oldIndex.coerceAtMost(remaining.lastIndex))?.path
+            currentDirectory = nextPath?.let(::parentPath) ?: parentPath(path)
+            openedFile = nextPath
+        }
+        pendingEditorTabClosePath = null
+        showEditorTabDiscardDialog = false
+    }
+
+    fun requestCloseEditorTab(path: String) {
+        val tab = editorTabs.firstOrNull { it.path == path } ?: return
+        if (tab.text != tab.savedText) {
+            pendingEditorTabClosePath = path
+            showEditorTabDiscardDialog = true
+        } else {
+            closeEditorTab(path)
+        }
     }
 
     fun requestNavigation(action: () -> Unit) {
@@ -901,26 +968,34 @@ private fun FileManagementScreen(
         }
     }
 
-    fun openFile(path: String) {
-        scope.launch {
-            val result = runCatchingCancellable {
-                withContext(Dispatchers.IO) { storage.readText(path) }
-            }
-            result.onSuccess { snapshot ->
-                openedFile = snapshot.path
-                currentDirectory = parentPath(snapshot.path)
-                editorText = snapshot.text
-                savedText = snapshot.text
-                statusMessage = if (snapshot.wasRepaired) {
-                    "Invalid UTF-8 was repaired while opening this file."
-                } else {
-                    null
-                }
-                refreshKey++
-            }.onFailure { error ->
-                notify("Could not open file: " + (error.message ?: "unknown error"))
-            }
+    fun openFile(path: String, expectedSizeBytes: Long? = null) {
+        if (editorTabs.any { it.path == path }) {
+            currentDirectory = parentPath(path)
+            openedFile = path
+            return
         }
+        if (editorTabs.size >= MAX_OPEN_EDITOR_TABS) {
+            notify("You can keep up to $MAX_OPEN_EDITOR_TABS files open. Close a tab before opening another.")
+            return
+        }
+        val sizeBytes = expectedSizeBytes
+            ?: runCatching { findWorkspaceEntry(storage, path)?.sizeBytes }.getOrNull()
+        if (sizeBytes == null) {
+            notify("Could not verify the file size. Refresh the workspace and try again.")
+            return
+        }
+        if (sizeBytes > MAX_EDITOR_FILE_BYTES) {
+            notify("Files larger than 8 MiB cannot be opened in the editor yet.")
+            return
+        }
+        val currentBufferUnits = editorTabs.sumOf(::editorTabBufferUnits)
+        if (currentBufferUnits + sizeBytes * 2L > MAX_OPEN_EDITOR_BUFFER_UNITS) {
+            notify("The open-file memory limit is reached. Save and close another tab before opening this file.")
+            return
+        }
+        editorTabs = editorTabs + EditorTab(path = path, isLoading = true)
+        currentDirectory = parentPath(path)
+        openedFile = path
     }
 
     fun saveFile() {
@@ -934,8 +1009,8 @@ private fun FileManagementScreen(
                     }
                 }
                 result.onSuccess { persistedText ->
-                    editorText = persistedText
-                    savedText = persistedText
+                    standaloneEditorText = persistedText
+                    standaloneSavedText = persistedText
                     notify("Saved " + document.name)
                 }.onFailure { error ->
                     notify("Could not save file: " + (error.message ?: "unknown error"))
@@ -949,9 +1024,19 @@ private fun FileManagementScreen(
                 withContext(Dispatchers.IO) { storage.writeText(path, content) }
             }
             result.onSuccess { saved ->
-                editorText = saved.persistedText
-                savedText = saved.persistedText
+                editorTabs = editorTabs.map { tab ->
+                    if (tab.path != path) {
+                        tab
+                    } else {
+                        tab.copy(
+                            path = saved.path,
+                            text = if (tab.text == content) saved.persistedText else tab.text,
+                            savedText = saved.persistedText,
+                        )
+                    }
+                }
                 openedFile = saved.path
+                currentDirectory = parentPath(saved.path)
                 refreshKey++
                 notify(
                     if (saved.replacedUnpairedSurrogateCount > 0) {
@@ -993,7 +1078,7 @@ private fun FileManagementScreen(
                     if (selected.name.endsWith(".zip", ignoreCase = true)) {
                         showOperationDialog(selected, "extract")
                     } else {
-                        openFile(selected.path)
+                        openFile(selected.path, selected.sizeBytes)
                     }
                 }
                 FileEntryType.SYMBOLIC_LINK -> notify("Symbolic links are not opened from the workspace.")
@@ -1110,13 +1195,59 @@ private fun FileManagementScreen(
         }
     }
 
+    LaunchedEffect(storage, openedFile) {
+        val path = openedFile ?: return@LaunchedEffect
+        val tab = editorTabs.firstOrNull { it.path == path } ?: return@LaunchedEffect
+        if (!tab.isLoading) return@LaunchedEffect
+        try {
+            val snapshot = withContext(Dispatchers.IO) { storage.readText(path) }
+            if (snapshot.sourceByteLength > MAX_EDITOR_FILE_BYTES) {
+                throw java.io.IOException("Files larger than 8 MiB cannot be opened in the editor yet.")
+            }
+            val otherBufferUnits = editorTabs.asSequence()
+                .filterNot { it.path == path }
+                .sumOf(::editorTabBufferUnits)
+            if (otherBufferUnits + snapshot.text.length.toLong() * 2L > MAX_OPEN_EDITOR_BUFFER_UNITS) {
+                throw java.io.IOException("Opening this file would exceed the editor memory limit. Close another tab first.")
+            }
+            editorTabs = editorTabs.map { current ->
+                if (current.path == path) {
+                    current.copy(
+                        path = snapshot.path,
+                        text = snapshot.text,
+                        savedText = snapshot.text,
+                        isLoading = false,
+                    )
+                } else {
+                    current
+                }
+            }
+            if (openedFile == path) {
+                openedFile = snapshot.path
+                currentDirectory = parentPath(snapshot.path)
+            }
+            statusMessage = if (snapshot.wasRepaired) {
+                "Invalid UTF-8 was repaired while opening this file."
+            } else {
+                null
+            }
+            refreshKey++
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            editorTabs = editorTabs.filterNot { it.path == path }
+            if (openedFile == path) openedFile = null
+            notify("Could not open file: " + (error.message ?: "unknown error"))
+        }
+    }
+
     LaunchedEffect(storage, selectedDocument) {
         activeMainScreen = Screen.Files
         screenBackStack.clear()
         currentDirectory = ""
         openedFile = null
-        editorText = ""
-        savedText = ""
+        standaloneEditorText = ""
+        standaloneSavedText = ""
         entries = emptyList()
         folderCounts = emptyMap()
         selectionMode = false
@@ -1132,8 +1263,8 @@ private fun FileManagementScreen(
                 }
             }
             result.onSuccess { snapshot ->
-                editorText = snapshot.text
-                savedText = snapshot.text
+                standaloneEditorText = snapshot.text
+                standaloneSavedText = snapshot.text
                 standaloneDocumentLoading = false
                 statusMessage = if (snapshot.wasRepaired) {
                     "Invalid UTF-8 was repaired while opening this file."
@@ -1160,7 +1291,7 @@ private fun FileManagementScreen(
     }
 
     val hasModalUi = showNewFileDialog || showNewFolderDialog || pendingDeletePath != null ||
-        operationEntry != null || syncEntry != null || showDiscardDialog || showWorkspaceManager ||
+        operationEntry != null || syncEntry != null || showDiscardDialog || showEditorTabDiscardDialog || showWorkspaceManager ||
         showSavedDocuments || showWorkspaceSafety || bulkActionKind != null ||
         bulkActionInProgress
     val canNavigateBack = inspectorEntry != null || openedFile != null || selectedDocument != null ||
@@ -1172,11 +1303,7 @@ private fun FileManagementScreen(
                 if (selectedDocument != null) {
                     requestNavigation(onCloseStandaloneDocument)
                 } else {
-                    requestNavigation {
-                        openedFile = null
-                        editorText = ""
-                        savedText = ""
-                    }
+                    openedFile = null
                 }
             }
             activeMainScreen == Screen.Files && selectionMode -> {
@@ -1231,17 +1358,13 @@ private fun FileManagementScreen(
                     (openedFile != null || selectedDocument != null) && editorText != savedText,
                 canSave = !standaloneDocumentLoading && selectedDocument?.writable != false,
                 onBack = {
-                    requestNavigation {
-                        if (selectedDocument != null) {
-                            onCloseStandaloneDocument()
-                        } else if (openedFile != null) {
-                            openedFile = null
-                            editorText = ""
-                            savedText = ""
-                        } else if (currentDirectory.isNotEmpty()) {
-                            currentDirectory = parentPath(currentDirectory)
-                            refreshKey++
-                        }
+                    if (selectedDocument != null) {
+                        requestNavigation(onCloseStandaloneDocument)
+                    } else if (openedFile != null) {
+                        openedFile = null
+                    } else if (currentDirectory.isNotEmpty()) {
+                        currentDirectory = parentPath(currentDirectory)
+                        refreshKey++
                     }
                 },
                 onSave = ::saveFile,
@@ -1256,7 +1379,10 @@ private fun FileManagementScreen(
                         path = selectedDocument?.name ?: openedFile.orEmpty(),
                         text = editorText,
                         readOnly = selectedDocument?.writable == false,
-                        onTextChange = { editorText = it },
+                        tabs = if (selectedDocument == null) editorTabs else emptyList(),
+                        onSelectTab = { path -> openFile(path) },
+                        onCloseTab = ::requestCloseEditorTab,
+                        onTextChange = ::updateCurrentEditorText,
                         onSave = ::saveFile,
                     )
                 }
@@ -1577,9 +1703,7 @@ private fun FileManagementScreen(
                         }
                         result.onSuccess { saved ->
                             showNewFileDialog = false
-                            openedFile = saved.path
-                            editorText = ""
-                            savedText = ""
+                            openFile(saved.path, 0L)
                             refreshKey++
                             scope.launch {
                                 val synced = runCatchingCancellable { propagateChangedPath(saved.path) }
@@ -2088,6 +2212,42 @@ private fun FileManagementScreen(
             },
             dismissButton = {
                 TextButton(onClick = { pendingDeletePath = null }) { Text("Cancel") }
+            },
+        )
+    }
+
+    if (showEditorTabDiscardDialog) {
+        val pathToClose = pendingEditorTabClosePath
+        AlertDialog(
+            onDismissRequest = {
+                showEditorTabDiscardDialog = false
+                pendingEditorTabClosePath = null
+            },
+            title = { Text("Discard unsaved changes?") },
+            text = {
+                Text("Close " + (pathToClose?.let(::fileName) ?: "this file") + " and discard its unsaved edits?")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val path = pendingEditorTabClosePath
+                        if (path != null) closeEditorTab(path)
+                        else {
+                            showEditorTabDiscardDialog = false
+                            pendingEditorTabClosePath = null
+                        }
+                    },
+                    modifier = Modifier.testTag("editor-tab-discard-confirm"),
+                ) { Text("Discard changes") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showEditorTabDiscardDialog = false
+                        pendingEditorTabClosePath = null
+                    },
+                    modifier = Modifier.testTag("editor-tab-discard-cancel"),
+                ) { Text("Keep editing") }
             },
         )
     }
@@ -2838,6 +2998,9 @@ private fun EditorPanel(
     path: String,
     text: String,
     readOnly: Boolean = false,
+    tabs: List<EditorTab> = emptyList(),
+    onSelectTab: (String) -> Unit = {},
+    onCloseTab: (String) -> Unit = {},
     onTextChange: (String) -> Unit,
     onSave: () -> Unit,
 ) {
@@ -2860,6 +3023,30 @@ private fun EditorPanel(
         ) {
             Text("EDITOR", color = Mint, fontSize = 11.sp, letterSpacing = 1.4.sp, fontWeight = FontWeight.Bold)
             Text(if (readOnly) "READ ONLY" else "UTF-8", color = MutedText, fontSize = 11.sp)
+        }
+        if (tabs.isNotEmpty()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                tabs.forEach { tab ->
+                    val tagSuffix = tab.path.replace("/", "__")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(
+                            onClick = { onSelectTab(tab.path) },
+                            modifier = Modifier.testTag("editor-tab-$tagSuffix"),
+                        ) {
+                            val dirtyMarker = if (tab.text != tab.savedText) " •" else ""
+                            Text(fileName(tab.path) + dirtyMarker, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        TextButton(
+                            onClick = { onCloseTab(tab.path) },
+                            modifier = Modifier.testTag("editor-tab-close-$tagSuffix"),
+                        ) { Text("×") }
+                    }
+                }
+            }
         }
         Spacer(Modifier.height(10.dp))
         OutlinedTextField(

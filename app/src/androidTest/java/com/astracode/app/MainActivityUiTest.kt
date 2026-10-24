@@ -87,6 +87,142 @@ class MainActivityUiTest {
         composeRule.onNodeWithTag("file-editor-input").assertTextContains("fun main() = println(\"AstraCode\")")
     }
 
+
+    @Test
+    fun multipleWorkspaceEditorTabsKeepDraftsSeparateAndSaveCorrectFiles() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workspace = context.filesDir.toPath().resolve("workspace")
+        Files.createDirectories(workspace)
+        Files.write(workspace.resolve("README.txt"), "Workspace fixture\n".toByteArray(Charsets.UTF_8))
+        Files.write(workspace.resolve("Main.kt"), "fun main() = Unit\n".toByteArray(Charsets.UTF_8))
+        composeRule.activityRule.scenario.recreate()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("entry-README.txt").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("entry-README.txt").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("file-editor-input")
+                    .assertTextContains("Workspace fixture", substring = true)
+            }.isSuccess
+        }
+        composeRule.onNodeWithTag("file-editor-input").performTextReplacement("README unsaved draft")
+        composeRule.onNodeWithTag("editor-back").performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("entry-Main.kt").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("entry-Main.kt").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("file-editor-input")
+                    .assertTextContains("fun main() = Unit", substring = true)
+            }.isSuccess
+        }
+        composeRule.onNodeWithTag("file-editor-input").performTextReplacement("fun main() = 42")
+
+        composeRule.onNodeWithTag("editor-tab-README.txt").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("file-editor-input")
+                    .assertTextContains("README unsaved draft", substring = true)
+            }.isSuccess
+        }
+        composeRule.onNodeWithTag("editor-tab-Main.kt").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("file-editor-input")
+                    .assertTextContains("fun main() = 42", substring = true)
+            }.isSuccess
+        }
+        composeRule.onNodeWithTag("save-file-button").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching { String(Files.readAllBytes(workspace.resolve("Main.kt")), Charsets.UTF_8) == "fun main() = 42" }.getOrDefault(false)
+        }
+
+        composeRule.onNodeWithTag("editor-tab-README.txt").performClick()
+        composeRule.onNodeWithTag("save-file-button").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching { String(Files.readAllBytes(workspace.resolve("README.txt")), Charsets.UTF_8) == "README unsaved draft" }.getOrDefault(false)
+        }
+        assertEquals("fun main() = 42", String(Files.readAllBytes(workspace.resolve("Main.kt")), Charsets.UTF_8))
+        assertEquals("README unsaved draft", String(Files.readAllBytes(workspace.resolve("README.txt")), Charsets.UTF_8))
+    }
+
+    @Test
+    fun closingDirtyEditorTabRequiresConfirmation() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workspace = context.filesDir.toPath().resolve("workspace")
+        Files.createDirectories(workspace)
+        Files.write(workspace.resolve("README.txt"), "original\n".toByteArray(Charsets.UTF_8))
+        composeRule.activityRule.scenario.recreate()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("entry-README.txt").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("entry-README.txt").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("file-editor-input").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("file-editor-input").performTextReplacement("unsaved draft")
+        composeRule.onNodeWithTag("editor-tab-close-README.txt").performClick()
+        composeRule.onNodeWithTag("editor-tab-discard-cancel").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("file-editor-input").assertTextContains("unsaved draft", substring = true) }.isSuccess
+        }
+
+        composeRule.onNodeWithTag("editor-tab-close-README.txt").performClick()
+        composeRule.onNodeWithTag("editor-tab-discard-confirm").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("entry-README.txt").assertIsDisplayed() }.isSuccess
+        }
+        assertEquals("original\n", String(Files.readAllBytes(workspace.resolve("README.txt")), Charsets.UTF_8))
+    }
+
+    @Test
+    fun editorLimitsOpenTabsAndAllowsAnotherFileAfterClosingOne() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workspace = context.filesDir.toPath().resolve("workspace")
+        Files.createDirectories(workspace)
+        (1..5).forEach { index ->
+            Files.write(workspace.resolve("tab-$index.txt"), "tab content $index".toByteArray(Charsets.UTF_8))
+        }
+        composeRule.activityRule.scenario.recreate()
+
+        (1..4).forEach { index ->
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                runCatching { composeRule.onNodeWithTag("entry-tab-$index.txt").performScrollTo().assertIsDisplayed() }.isSuccess
+            }
+            composeRule.onNodeWithTag("entry-tab-$index.txt").performScrollTo().performClick()
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                runCatching {
+                    composeRule.onNodeWithTag("file-editor-input")
+                        .assertTextContains("tab content $index", substring = true)
+                }.isSuccess
+            }
+            composeRule.onNodeWithTag("editor-back").performClick()
+        }
+
+        composeRule.onNodeWithTag("entry-tab-5.txt").performScrollTo().performClick()
+        assertTrue(
+            "The fifth file must not open while four tabs are retained.",
+            runCatching { composeRule.onNodeWithTag("file-editor-input").assertIsDisplayed() }.isFailure,
+        )
+
+        composeRule.onNodeWithTag("entry-tab-1.txt").performScrollTo().performClick()
+        composeRule.onNodeWithTag("editor-tab-close-tab-1.txt").performClick()
+        composeRule.onNodeWithTag("editor-back").performClick()
+        composeRule.onNodeWithTag("entry-tab-5.txt").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("file-editor-input")
+                    .assertTextContains("tab content 5", substring = true)
+            }.isSuccess
+        }
+        assertEquals(5, (1..5).count { Files.isRegularFile(workspace.resolve("tab-$it.txt")) })
+    }
+
     @Test
     fun extensionlessNewFilesBecomeTxtAndInspectorShowsReadableFormat() {
         composeRule.onNodeWithText("New file").performClick()
