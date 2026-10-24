@@ -818,6 +818,42 @@ class MainActivityUiTest {
     }
 
     @Test
+    fun editorCanInsertEmojiAndSymbolsToggleWordWrapAndAutosave() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workspace = context.filesDir.toPath().resolve("workspace")
+        Files.createDirectories(workspace)
+        val sample = workspace.resolve("UnicodeEditor.txt")
+        Files.write(sample, "start".toByteArray(Charsets.UTF_8))
+        composeRule.activityRule.scenario.recreate()
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching { composeRule.onNodeWithTag("entry-UnicodeEditor.txt").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("entry-UnicodeEditor.txt").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("file-editor-input")
+                    .assertTextContains("start", substring = true)
+            }.isSuccess
+        }
+
+        composeRule.onNodeWithTag("file-editor-input").performTextReplacement("hello ")
+        composeRule.onNodeWithTag("editor-insert-0").performClick()
+        composeRule.onNodeWithTag("file-editor-input").assertTextContains("hello 😀", substring = true)
+
+        composeRule.onNodeWithTag("editor-word-wrap-toggle").assertTextContains("Word wrap: On")
+        composeRule.onNodeWithTag("editor-word-wrap-toggle").performClick()
+        composeRule.onNodeWithTag("editor-word-wrap-toggle").assertTextContains("Word wrap: Off")
+        composeRule.onNodeWithTag("editor-word-wrap-toggle").performClick()
+        composeRule.onNodeWithTag("editor-word-wrap-toggle").assertTextContains("Word wrap: On")
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            String(Files.readAllBytes(sample), Charsets.UTF_8) == "hello 😀"
+        }
+        assertEquals("hello 😀", String(Files.readAllBytes(sample), Charsets.UTF_8))
+    }
+
+    @Test
     fun editorCanFindReplaceAndKeepsLineNumbersOutOfSavedText() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val workspace = context.filesDir.toPath().resolve("workspace")

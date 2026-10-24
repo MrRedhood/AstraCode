@@ -126,6 +126,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 private val Ink = Color(0xFF101311)
 private val Panel = Color(0xFF1C211D)
@@ -183,6 +184,8 @@ private fun editorTabBufferUnits(tab: EditorTab): Long =
 
 private const val EDITOR_AUTOSAVE_DEBOUNCE_MS = 300L
 private const val EDITOR_AUTOSAVE_MAX_WAIT_MS = 15_000L
+private const val EDITOR_LOADING_TIMEOUT_MS = 15_000L
+private const val EDITOR_SAVE_TIMEOUT_MS = 15_000L
 
 private data class EditorTabSaveOutcome(
     val path: String,
@@ -920,9 +923,15 @@ private fun FileManagementScreen(
                     )
                 }
 
-                val result = withContext(Dispatchers.IO) {
-                    requestedStorage.writeText(path, contentToSave)
-                }
+                val result = withTimeoutOrNull(EDITOR_SAVE_TIMEOUT_MS) {
+                    withContext(Dispatchers.IO) {
+                        requestedStorage.writeText(path, contentToSave)
+                    }
+                } ?: return Result.failure(
+                    java.io.IOException(
+                        "Saving timed out after 15 seconds. Your draft remains open; try saving again.",
+                    ),
+                )
                 if (storage !== requestedStorage) {
                     return Result.failure(
                         java.io.IOException("The active workspace changed while this file was saving."),
@@ -967,7 +976,11 @@ private fun FileManagementScreen(
         }
 
         val syncResult = try {
-            runCatchingCancellable { propagateChangedPath(saved.path) }
+            withTimeoutOrNull(EDITOR_SAVE_TIMEOUT_MS) {
+                runCatchingCancellable { propagateChangedPath(saved.path) }
+            } ?: Result.failure(
+                java.io.IOException("Linked workspace sync timed out; the file was saved locally."),
+            )
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
@@ -1365,7 +1378,11 @@ private fun FileManagementScreen(
         val tab = editorTabs.firstOrNull { it.path == path } ?: return@LaunchedEffect
         if (!tab.isLoading) return@LaunchedEffect
         try {
-            val snapshot = withContext(Dispatchers.IO) { storage.readText(path) }
+            val snapshot = withTimeoutOrNull(EDITOR_LOADING_TIMEOUT_MS) {
+                withContext(Dispatchers.IO) { storage.readText(path) }
+            } ?: throw java.io.IOException(
+                "Opening this file timed out after 15 seconds. Try opening it again.",
+            )
             if (snapshot.sourceByteLength > MAX_EDITOR_FILE_BYTES) {
                 throw java.io.IOException("Files larger than 8 MiB cannot be opened in the editor yet.")
             }
@@ -3298,6 +3315,8 @@ private fun EditorPanel(
     onSave: () -> Unit,
 ) {
     var editorFieldValue by remember(path) { mutableStateOf(TextFieldValue(text)) }
+    var wordWrapEnabled by remember(path) { mutableStateOf(true) }
+    val editorHorizontalScrollState = rememberScrollState()
     var collapsedFoldStarts by remember(path, editorFieldValue.text) { mutableStateOf(emptySet<Int>()) }
     val foldableRegions = remember(editorFieldValue.text) { findCodeFoldRegions(editorFieldValue.text) }
     val visibleFoldableRegions = foldableRegions.filter { candidate ->
@@ -3497,6 +3516,38 @@ private fun EditorPanel(
                 }
             }
         }
+        val editorInsertTokens = listOf("😀", "🎉", "✅", "🚀", "🔥", "→", "⇒", "λ", "π", "✓", "{}")
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(
+                onClick = { wordWrapEnabled = !wordWrapEnabled },
+                modifier = Modifier.testTag("editor-word-wrap-toggle"),
+            ) { Text(if (wordWrapEnabled) "Word wrap: On" else "Word wrap: Off") }
+            editorInsertTokens.forEachIndexed { index, symbol ->
+                TextButton(
+                    onClick = {
+                        val updated = insertTextAtSelection(editorFieldValue, symbol)
+                        if (onTextChange(updated.text)) {
+                            editorFieldValue = updated
+                            editorFocusRequester.requestFocus()
+                        } else {
+                            editorToolMessage = "Insertion blocked by the editor memory limit."
+                        }
+                    },
+                    enabled = !readOnly,
+                    modifier = Modifier.testTag("editor-insert-$index"),
+                ) { Text(symbol) }
+            }
+        }
+        Text(
+            if (readOnly) "Read-only · autosave unavailable" else "Autosave on · saves after typing pauses",
+            color = MutedText,
+            fontSize = 11.sp,
+            modifier = Modifier.testTag("editor-autosave-status"),
+        )
         if (visibleFoldableRegions.isNotEmpty()) {
             Row(
                 modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -3542,6 +3593,10 @@ private fun EditorPanel(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
+                .then(
+                    if (wordWrapEnabled) Modifier
+                    else Modifier.horizontalScroll(editorHorizontalScrollState),
+                )
                 .focusRequester(editorFocusRequester)
                 .testTag("file-editor-input"),
             label = { Text("File contents") },
