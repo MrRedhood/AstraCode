@@ -1665,6 +1665,7 @@ private fun FileManagementScreen(
                             "Private app workspace"
                         },
                         items = entries.map { it.toAtelierFileItem(folderCounts[it.path]) },
+                        openEditorPaths = editorTabs.map { it.path }.toSet(),
                         selectedPaths = selectedPaths,
                         selectionMode = selectionMode,
                         savedWorkspaceCount = savedWorkspaceFolders.size,
@@ -1699,6 +1700,7 @@ private fun FileManagementScreen(
                             }
                         },
                         onOpenEntry = ::openWorkspaceEntry,
+                        onCloseEditorTab = ::requestCloseEditorTab,
                         onInspectEntry = { path ->
                             inspectorEntry = runCatching { findWorkspaceEntry(storage, path) }.getOrNull()
                         },

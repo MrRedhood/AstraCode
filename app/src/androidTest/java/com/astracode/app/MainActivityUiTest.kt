@@ -225,6 +225,44 @@ class MainActivityUiTest {
     }
 
     @Test
+    fun workspaceRowsCanCloseAndReopenEditorTabs() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workspace = context.filesDir.toPath().resolve("workspace")
+        Files.createDirectories(workspace)
+        Files.write(workspace.resolve("WorkspaceClose.txt"), "Workspace close fixture\n".toByteArray(Charsets.UTF_8))
+        composeRule.activityRule.scenario.recreate()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("entry-WorkspaceClose.txt").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("entry-WorkspaceClose.txt").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("file-editor-input")
+                    .assertTextContains("Workspace close fixture", substring = true)
+            }.isSuccess
+        }
+        composeRule.onNodeWithTag("editor-back").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("workspace-close-open-file-WorkspaceClose.txt").assertIsDisplayed()
+            }.isSuccess
+        }
+
+        composeRule.onNodeWithTag("workspace-close-open-file-WorkspaceClose.txt").performClick()
+        composeRule.onAllNodesWithTag("workspace-close-open-file-WorkspaceClose.txt").assertCountEquals(0)
+        composeRule.onNodeWithTag("entry-WorkspaceClose.txt").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("file-editor-input")
+                    .assertTextContains("Workspace close fixture", substring = true)
+            }.isSuccess
+        }
+        composeRule.onNodeWithTag("editor-back").performClick()
+        composeRule.onNodeWithTag("workspace-close-open-file-WorkspaceClose.txt").assertIsDisplayed()
+    }
+
+    @Test
     fun editorKeeps25TabsAndAutoSavesOldestBeforeOpening26th() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val workspace = context.filesDir.toPath().resolve("workspace")
