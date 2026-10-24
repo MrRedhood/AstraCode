@@ -1,6 +1,7 @@
 package com.astracode.app
 
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -182,18 +183,20 @@ class MainActivityUiTest {
     }
 
     @Test
-    fun editorLimitsOpenTabsAndAllowsAnotherFileAfterClosingOne() {
+    fun editorKeeps25TabsAndAutoSavesOldestBeforeOpening26th() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val workspace = context.filesDir.toPath().resolve("workspace")
         Files.createDirectories(workspace)
-        (1..5).forEach { index ->
+        (1..26).forEach { index ->
             Files.write(workspace.resolve("tab-$index.txt"), "tab content $index".toByteArray(Charsets.UTF_8))
         }
         composeRule.activityRule.scenario.recreate()
 
-        (1..4).forEach { index ->
+        (1..25).forEach { index ->
             composeRule.waitUntil(timeoutMillis = 5_000) {
-                runCatching { composeRule.onNodeWithTag("entry-tab-$index.txt").performScrollTo().assertIsDisplayed() }.isSuccess
+                runCatching {
+                    composeRule.onNodeWithTag("entry-tab-$index.txt").performScrollTo().assertIsDisplayed()
+                }.isSuccess
             }
             composeRule.onNodeWithTag("entry-tab-$index.txt").performScrollTo().performClick()
             composeRule.waitUntil(timeoutMillis = 5_000) {
@@ -205,23 +208,56 @@ class MainActivityUiTest {
             composeRule.onNodeWithTag("editor-back").performClick()
         }
 
-        composeRule.onNodeWithTag("entry-tab-5.txt").performScrollTo().performClick()
-        assertTrue(
-            "The fifth file must not open while four tabs are retained.",
-            runCatching { composeRule.onNodeWithTag("file-editor-input").assertIsDisplayed() }.isFailure,
-        )
-
         composeRule.onNodeWithTag("entry-tab-1.txt").performScrollTo().performClick()
-        composeRule.onNodeWithTag("editor-tab-close-tab-1.txt").performClick()
-        composeRule.onNodeWithTag("editor-back").performClick()
-        composeRule.onNodeWithTag("entry-tab-5.txt").performScrollTo().performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching {
                 composeRule.onNodeWithTag("file-editor-input")
-                    .assertTextContains("tab content 5", substring = true)
+                    .assertTextContains("tab content 1", substring = true)
             }.isSuccess
         }
-        assertEquals(5, (1..5).count { Files.isRegularFile(workspace.resolve("tab-$it.txt")) })
+        composeRule.onNodeWithTag("file-editor-input").performTextReplacement("tab 1 autosaved draft")
+        composeRule.onNodeWithTag("editor-back").performClick()
+
+        composeRule.onNodeWithTag("entry-tab-26.txt").performScrollTo().performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithTag("file-editor-input")
+                    .assertTextContains("tab content 26", substring = true)
+            }.isSuccess
+        }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            String(Files.readAllBytes(workspace.resolve("tab-1.txt")), Charsets.UTF_8) == "tab 1 autosaved draft"
+        }
+        composeRule.onNodeWithTag("editor-tab-close-tab-1.txt").assertDoesNotExist()
+        assertEquals("tab 1 autosaved draft", String(Files.readAllBytes(workspace.resolve("tab-1.txt")), Charsets.UTF_8))
+        assertEquals(26, (1..26).count { Files.isRegularFile(workspace.resolve("tab-$it.txt")) })
+    }
+
+    @Test
+    fun workspaceEditorAutoSavesDraftWithoutPressingSave() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workspace = context.filesDir.toPath().resolve("workspace")
+        Files.createDirectories(workspace)
+        val file = workspace.resolve("autosave-sample.txt")
+        Files.write(file, "before".toByteArray(Charsets.UTF_8))
+        composeRule.activityRule.scenario.recreate()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("entry-autosave-sample.txt").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("entry-autosave-sample.txt").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("file-editor-input").assertTextContains("before", substring = true)
+            }.isSuccess
+        }
+        composeRule.onNodeWithTag("file-editor-input").performTextReplacement("saved by autosave")
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                String(Files.readAllBytes(file), Charsets.UTF_8) == "saved by autosave"
+            }.getOrDefault(false)
+        }
+        assertEquals("saved by autosave", String(Files.readAllBytes(file), Charsets.UTF_8))
     }
 
     @Test

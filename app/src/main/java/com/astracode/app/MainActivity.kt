@@ -2,6 +2,7 @@ package com.astracode.app
 
 import android.content.Context
 import android.os.Bundle
+import android.os.SystemClock
 import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -117,7 +118,9 @@ import com.astracode.ui.screens.TrashScreen
 import com.astracode.ui.theme.AstraCodeTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 
 private val Ink = Color(0xFF101311)
@@ -160,7 +163,7 @@ private const val SAVED_DOCUMENTS_KEY = "saved_document_uris"
 private const val ACTIVE_DOCUMENT_KEY = "active_document_uri"
 private const val MAX_STANDALONE_DOCUMENT_BYTES = 8L * 1024L * 1024L
 private const val MAX_EDITOR_FILE_BYTES = 8L * 1024L * 1024L
-private const val MAX_OPEN_EDITOR_TABS = 4
+private const val MAX_OPEN_EDITOR_TABS = 25
 // Count both each draft and its saved snapshot to keep retained editor text bounded.
 private const val MAX_OPEN_EDITOR_BUFFER_UNITS = 16L * 1024L * 1024L
 
@@ -173,6 +176,15 @@ private data class EditorTab(
 
 private fun editorTabBufferUnits(tab: EditorTab): Long =
     tab.text.length.toLong() + tab.savedText.length.toLong()
+
+private const val EDITOR_AUTOSAVE_DEBOUNCE_MS = 300L
+private const val EDITOR_AUTOSAVE_MAX_WAIT_MS = 15_000L
+
+private data class EditorTabSaveOutcome(
+    val path: String,
+    val replacedUnpairedSurrogateCount: Int,
+    val syncError: String? = null,
+)
 
 private data class WorkspaceBookmark(
     val uri: Uri,
@@ -696,10 +708,15 @@ private fun FileManagementScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
+    val editorSaveMutex = remember(storage) { Mutex() }
 
     var currentDirectory by remember { mutableStateOf("") }
     var openedFile by remember { mutableStateOf<String?>(null) }
     var editorTabs by remember(storage) { mutableStateOf(emptyList<EditorTab>()) }
+    var firstDirtyAt by remember(storage) { mutableStateOf(emptyMap<String, Long>()) }
+    var lastEditedAt by remember(storage) { mutableStateOf(emptyMap<String, Long>()) }
+    var replacingOldestTab by remember(storage) { mutableStateOf(false) }
+    var pendingEditorEviction by remember(storage) { mutableStateOf<Pair<String, String>?>(null) }
     var standaloneEditorText by remember { mutableStateOf("") }
     var standaloneSavedText by remember { mutableStateOf("") }
     var pendingEditorTabClosePath by remember(storage) { mutableStateOf<String?>(null) }
@@ -760,13 +777,20 @@ private fun FileManagementScreen(
         scope.launch { snackbarHostState.showSnackbar(message) }
     }
 
+    fun clearEditorAutosaveSchedule(path: String) {
+        firstDirtyAt = firstDirtyAt - path
+        lastEditedAt = lastEditedAt - path
+    }
+
     fun updateCurrentEditorText(newText: String) {
         if (selectedDocument != null) {
             standaloneEditorText = newText
             return
         }
+        if (replacingOldestTab) return
         val path = openedFile ?: return
         val currentTab = editorTabs.firstOrNull { it.path == path } ?: return
+        if (newText == currentTab.text) return
         val otherBufferUnits = editorTabs.asSequence()
             .filterNot { it.path == path }
             .sumOf(::editorTabBufferUnits)
@@ -775,6 +799,15 @@ private fun FileManagementScreen(
             notify("Editor memory limit reached. Save and close another tab before adding more text.")
             return
         }
+
+        val now = SystemClock.elapsedRealtime()
+        val firstEdit = firstDirtyAt[path]
+        if (currentTab.text == currentTab.savedText || firstEdit == null ||
+            now - firstEdit >= EDITOR_AUTOSAVE_MAX_WAIT_MS
+        ) {
+            firstDirtyAt = firstDirtyAt + (path to now)
+        }
+        lastEditedAt = lastEditedAt + (path to now)
         editorTabs = editorTabs.map { tab ->
             if (tab.path == path) tab.copy(text = newText) else tab
         }
@@ -785,6 +818,7 @@ private fun FileManagementScreen(
         if (oldIndex < 0) return
         val remaining = editorTabs.filterNot { it.path == path }
         editorTabs = remaining
+        clearEditorAutosaveSchedule(path)
         if (openedFile == path) {
             val nextPath = remaining.getOrNull(oldIndex.coerceAtMost(remaining.lastIndex))?.path
             currentDirectory = nextPath?.let(::parentPath) ?: parentPath(path)
@@ -795,6 +829,7 @@ private fun FileManagementScreen(
     }
 
     fun requestCloseEditorTab(path: String) {
+        if (replacingOldestTab) return
         val tab = editorTabs.firstOrNull { it.path == path } ?: return
         if (tab.text != tab.savedText) {
             pendingEditorTabClosePath = path
@@ -841,6 +876,103 @@ private fun FileManagementScreen(
                 movedTo = movedTo,
             )
         }
+    }
+
+    suspend fun saveWorkspaceEditorTab(
+        path: String,
+        contentToSave: String,
+    ): Result<EditorTabSaveOutcome> {
+        val requestedStorage = storage
+        val saved = try {
+            editorSaveMutex.lock()
+            try {
+                val tabBeforeSave = editorTabs.firstOrNull { it.path == path }
+                    ?: return Result.failure(java.io.IOException("This editor tab is no longer open."))
+                if (tabBeforeSave.text == contentToSave && tabBeforeSave.savedText == contentToSave) {
+                    return Result.success(
+                        EditorTabSaveOutcome(path, replacedUnpairedSurrogateCount = 0),
+                    )
+                }
+
+                val result = withContext(Dispatchers.IO) {
+                    requestedStorage.writeText(path, contentToSave)
+                }
+                if (storage !== requestedStorage) {
+                    return Result.failure(
+                        java.io.IOException("The active workspace changed while this file was saving."),
+                    )
+                }
+
+                editorTabs = editorTabs.map { tab ->
+                    if (tab.path != path) {
+                        tab
+                    } else {
+                        tab.copy(
+                            path = result.path,
+                            text = if (tab.text == contentToSave) result.persistedText else tab.text,
+                            savedText = result.persistedText,
+                        )
+                    }
+                }
+                if (openedFile == path) {
+                    openedFile = result.path
+                    currentDirectory = parentPath(result.path)
+                }
+
+                val latestText = editorTabs.firstOrNull { it.path == result.path }?.text
+                firstDirtyAt = firstDirtyAt - path - result.path
+                lastEditedAt = lastEditedAt - path - result.path
+                if (latestText != null && latestText != result.persistedText) {
+                    val now = SystemClock.elapsedRealtime()
+                    firstDirtyAt = firstDirtyAt + (result.path to now)
+                    lastEditedAt = lastEditedAt + (result.path to now)
+                }
+                refreshKey++
+                result
+            } finally {
+                editorSaveMutex.unlock()
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            return Result.failure(error)
+        }
+
+        val syncResult = try {
+            runCatchingCancellable { propagateChangedPath(saved.path) }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+        syncResult.onSuccess { updatedLinks ->
+            if (storage === requestedStorage) syncLinks = updatedLinks
+        }
+        return Result.success(
+            EditorTabSaveOutcome(
+                path = saved.path,
+                replacedUnpairedSurrogateCount = saved.replacedUnpairedSurrogateCount,
+                syncError = syncResult.exceptionOrNull()?.message,
+            ),
+        )
+    }
+
+    fun replaceOldestTabAndOpen(oldestPath: String, newPath: String) {
+        if (editorTabs.none { it.path == oldestPath }) {
+            replacingOldestTab = false
+            pendingEditorEviction = null
+            notify("Could not replace the oldest tab. It has been kept open.")
+            return
+        }
+        editorTabs = editorTabs.filterNot { it.path == oldestPath } +
+            EditorTab(path = newPath, isLoading = true)
+        clearEditorAutosaveSchedule(oldestPath)
+        currentDirectory = parentPath(newPath)
+        openedFile = newPath
+        pendingEditorEviction = null
+        replacingOldestTab = false
+        pendingEditorTabClosePath = null
+        showEditorTabDiscardDialog = false
     }
 
     fun showOperationDialog(entry: FileEntry, kind: String) {
@@ -979,13 +1111,10 @@ private fun FileManagementScreen(
     }
 
     fun openFile(path: String, expectedSizeBytes: Long? = null) {
+        if (replacingOldestTab) return
         if (editorTabs.any { it.path == path }) {
             currentDirectory = parentPath(path)
             openedFile = path
-            return
-        }
-        if (editorTabs.size >= MAX_OPEN_EDITOR_TABS) {
-            notify("You can keep up to $MAX_OPEN_EDITOR_TABS files open. Close a tab before opening another.")
             return
         }
         val sizeBytes = expectedSizeBytes
@@ -998,6 +1127,25 @@ private fun FileManagementScreen(
             notify("Files larger than 8 MiB cannot be opened in the editor yet.")
             return
         }
+
+        if (editorTabs.size >= MAX_OPEN_EDITOR_TABS) {
+            val oldest = editorTabs.first()
+            val remainingBufferUnits = editorTabs.drop(1).sumOf(::editorTabBufferUnits)
+            if (remainingBufferUnits + sizeBytes * 2L > MAX_OPEN_EDITOR_BUFFER_UNITS) {
+                notify("The editor memory limit would still be exceeded after closing the oldest tab.")
+                return
+            }
+            if (oldest.text == oldest.savedText) {
+                replaceOldestTabAndOpen(oldest.path, path)
+                return
+            }
+
+            // The oldest dirty draft is saved before its tab is removed. On failure, keep it open.
+            replacingOldestTab = true
+            pendingEditorEviction = oldest.path to path
+            return
+        }
+
         val currentBufferUnits = editorTabs.sumOf(::editorTabBufferUnits)
         if (currentBufferUnits + sizeBytes * 2L > MAX_OPEN_EDITOR_BUFFER_UNITS) {
             notify("The open-file memory limit is reached. Save and close another tab before opening this file.")
@@ -1030,44 +1178,21 @@ private fun FileManagementScreen(
         }
         val path = openedFile ?: return
         scope.launch {
-            val result = runCatchingCancellable {
-                withContext(Dispatchers.IO) { storage.writeText(path, content) }
-            }
-            result.onSuccess { saved ->
-                editorTabs = editorTabs.map { tab ->
-                    if (tab.path != path) {
-                        tab
-                    } else {
-                        tab.copy(
-                            path = saved.path,
-                            text = if (tab.text == content) saved.persistedText else tab.text,
-                            savedText = saved.persistedText,
-                        )
-                    }
-                }
-                if (openedFile == path) {
-                    openedFile = saved.path
-                    currentDirectory = parentPath(saved.path)
-                }
-                refreshKey++
-                notify(
-                    if (saved.replacedUnpairedSurrogateCount > 0) {
+            saveWorkspaceEditorTab(path, content)
+                .onSuccess { outcome ->
+                    val savedMessage = if (outcome.replacedUnpairedSurrogateCount > 0) {
                         "Saved with invalid characters repaired."
                     } else {
-                        "Saved " + fileName(saved.path)
-                    },
-                )
-                scope.launch {
-                    val synced = runCatchingCancellable { propagateChangedPath(saved.path) }
-                    synced.onSuccess { updatedLinks -> syncLinks = updatedLinks }
-                        .onFailure { error ->
-                            notify("Saved locally, but a synced copy could not be updated: " +
-                                (error.message ?: "unknown error"))
-                        }
+                        "Saved " + fileName(outcome.path)
+                    }
+                    notify(
+                        if (outcome.syncError == null) savedMessage
+                        else savedMessage + " Linked copy warning: " + outcome.syncError,
+                    )
                 }
-            }.onFailure { error ->
-                notify("Could not save file: " + (error.message ?: "unknown error"))
-            }
+                .onFailure { error ->
+                    notify("Could not save file: " + (error.message ?: "unknown error"))
+                }
         }
     }
 
@@ -1248,8 +1373,77 @@ private fun FileManagementScreen(
             throw cancelled
         } catch (error: Exception) {
             editorTabs = editorTabs.filterNot { it.path == path }
+            clearEditorAutosaveSchedule(path)
             if (openedFile == path) openedFile = null
             notify("Could not open file: " + (error.message ?: "unknown error"))
+        }
+    }
+
+    LaunchedEffect(storage, pendingEditorEviction) {
+        val pending = pendingEditorEviction ?: return@LaunchedEffect
+        val requestedStorage = storage
+        val oldest = editorTabs.firstOrNull { it.path == pending.first }
+        if (oldest == null) {
+            pendingEditorEviction = null
+            replacingOldestTab = false
+            notify("Could not find the oldest editor tab; no tab was discarded.")
+            return@LaunchedEffect
+        }
+
+        val result = saveWorkspaceEditorTab(oldest.path, oldest.text)
+        if (storage !== requestedStorage || pendingEditorEviction != pending) return@LaunchedEffect
+        result.onSuccess { outcome ->
+            replaceOldestTabAndOpen(outcome.path, pending.second)
+            if (outcome.syncError != null) {
+                notify("Saved locally, but linked copy sync failed: " + outcome.syncError)
+            }
+        }.onFailure { error ->
+            pendingEditorEviction = null
+            replacingOldestTab = false
+            notify(
+                "Could not save the oldest tab, so it was kept open. " +
+                    (error.message ?: "Unknown save error."),
+            )
+        }
+    }
+
+    LaunchedEffect(storage, editorTabs, firstDirtyAt, lastEditedAt, replacingOldestTab) {
+        if (replacingOldestTab) return@LaunchedEffect
+
+        val dirtyTabs = editorTabs.filter { !it.isLoading && it.text != it.savedText }
+        val dirtyPaths = dirtyTabs.map { it.path }.toSet()
+        val retainedFirstDirtyAt = firstDirtyAt.filterKeys { it in dirtyPaths }
+        val retainedLastEditedAt = lastEditedAt.filterKeys { it in dirtyPaths }
+        if (retainedFirstDirtyAt != firstDirtyAt) firstDirtyAt = retainedFirstDirtyAt
+        if (retainedLastEditedAt != lastEditedAt) lastEditedAt = retainedLastEditedAt
+        if (dirtyTabs.isEmpty()) return@LaunchedEffect
+
+        val now = SystemClock.elapsedRealtime()
+        val nextSave = dirtyTabs.map { tab ->
+            val firstEdit = firstDirtyAt[tab.path] ?: now
+            val lastEdit = lastEditedAt[tab.path] ?: firstEdit
+            val dueAt = minOf(
+                lastEdit + EDITOR_AUTOSAVE_DEBOUNCE_MS,
+                firstEdit + EDITOR_AUTOSAVE_MAX_WAIT_MS,
+            )
+            tab.path to dueAt
+        }.minByOrNull { it.second } ?: return@LaunchedEffect
+
+        delay((nextSave.second - now).coerceAtLeast(0L))
+        val tabToSave = editorTabs.firstOrNull { it.path == nextSave.first }
+        if (tabToSave != null && !tabToSave.isLoading && tabToSave.text != tabToSave.savedText) {
+            saveWorkspaceEditorTab(tabToSave.path, tabToSave.text)
+                .onSuccess { outcome ->
+                    if (outcome.syncError != null) {
+                        notify("Autosaved locally, but linked copy sync failed: " + outcome.syncError)
+                    }
+                }
+                .onFailure { error ->
+                    notify(
+                        "Autosave failed for " + fileName(tabToSave.path) + "; your draft is still open. " +
+                            (error.message ?: "Unknown save error."),
+                    )
+                }
         }
     }
 
@@ -1392,7 +1586,7 @@ private fun FileManagementScreen(
                     EditorPanel(
                         path = selectedDocument?.name ?: openedFile.orEmpty(),
                         text = editorText,
-                        readOnly = selectedDocument?.writable == false,
+                        readOnly = replacingOldestTab || selectedDocument?.writable == false,
                         tabs = if (selectedDocument == null) editorTabs else emptyList(),
                         onSelectTab = { path -> openFile(path) },
                         onCloseTab = ::requestCloseEditorTab,
