@@ -23,6 +23,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.longClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import java.io.File
 import java.nio.file.Files
 import java.util.Comparator
 import org.junit.Assert.assertArrayEquals
@@ -1062,14 +1063,15 @@ class MainActivityUiTest {
 
     @Test
     fun floatingEditorToolsCanMoveAndApplyBasicAndAstraCodeActions() {
+        val workspaceRoot = File(InstrumentationRegistry.getInstrumentation().targetContext.filesDir, "workspace")
         val sample = File(workspaceRoot, "FloatingTools.kt")
         sample.writeText("val answer = 42")
         composeRule.onNodeWithTag("open-workspace-browser-button").performClick()
-        waitForUiStage("floating tools sample appears") {
+        composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("entry-FloatingTools.kt").assertIsDisplayed() }.isSuccess
         }
         composeRule.onNodeWithTag("entry-FloatingTools.kt").performClick()
-        waitForUiStage("floating tools editor opens") {
+        composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("file-editor-input").assertIsDisplayed() }.isSuccess
         }
 
@@ -1082,7 +1084,7 @@ class MainActivityUiTest {
         composeRule.onNodeWithTag("editor-tools-group-basic").assertIsDisplayed()
         composeRule.onNodeWithTag("editor-tool-duplicate_line").performClick()
         composeRule.onNodeWithTag("workspace-save-file").performClick()
-        waitForUiStage("duplicated line saves through normal editor storage") {
+        composeRule.waitUntil(timeoutMillis = 5_000) {
             sample.isFile && sample.readText() == "val answer = 42\nval answer = 42"
         }
         assertEquals("val answer = 42\nval answer = 42", sample.readText())
