@@ -117,11 +117,16 @@ private fun mirrorNode(
                 targetStorage.createDirectory(targetPath)
             }
 
+            // Internal recovery data is not workspace content. Do not copy it or
+            // delete a destination's private recovery data during a mirror.
             val sourceChildren = sourceStorage.listDirectory(sourceEntry.path)
+                .filterNot { WorkspaceSafety.isReservedPath(it.path) }
             val targetChildren = targetStorage.listDirectory(targetPath)
             val sourceNames = sourceChildren.map { it.name }.toSet()
             if (overwriteExisting) {
-                targetChildren.filterNot { it.name in sourceNames }.forEach { extra ->
+                targetChildren.filterNot {
+                    WorkspaceSafety.isReservedPath(it.path) || it.name in sourceNames
+                }.forEach { extra ->
                     targetStorage.delete(extra.path, recursive = true)
                 }
             }
