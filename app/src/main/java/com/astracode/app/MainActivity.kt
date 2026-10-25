@@ -3630,67 +3630,67 @@ private fun EditorPanel(
                 testTag = "file-editor-input",
             )
         } else {
-        BasicTextField(
-            value = editorFieldValue,
-            onValueChange = { newValue ->
-                if (onTextChange(newValue.text)) {
-                    editorFieldValue = newValue
-                } else {
-                    editorFieldValue = TextFieldValue(
-                        text,
-                        selection = TextRange(newValue.selection.end.coerceIn(0, text.length)),
-                    )
-                    editorToolMessage = "Edit blocked by the editor memory limit."
-                }
-            },
-            readOnly = readOnly,
-            visualTransformation = lineNumberTransformation,
-            onTextLayout = viewportTracker::onTextLayout,
-            interactionSource = editorInteractionSource,
-            cursorBrush = SolidColor(Mint),
-            textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-            keyboardOptions = KeyboardOptions(
-                capitalization = KeyboardCapitalization.None,
-                keyboardType = KeyboardType.Text,
-                autoCorrectEnabled = false,
-            ),
-            modifier = Modifier
-                .nestedScroll(viewportTracker)
-                .onGloballyPositioned { coordinates ->
-                    viewportTracker.updateViewportHeight(coordinates.size.height.toFloat())
-                }
-                .fillMaxWidth()
-                .weight(1f)
-                .then(
-                    if (wordWrapEnabled) Modifier
-                    else Modifier.horizontalScroll(editorHorizontalScrollState),
-                )
-                .focusRequester(editorFocusRequester)
-                .testTag("file-editor-input"),
-            decorationBox = { innerTextField ->
-                OutlinedTextFieldDefaults.DecorationBox(
-                    value = editorFieldValue.text,
-                    innerTextField = innerTextField,
-                    enabled = true,
-                    singleLine = false,
-                    visualTransformation = VisualTransformation.None,
-                    interactionSource = editorInteractionSource,
-                    label = { Text("File contents") },
-                    placeholder = { Text("Start writing…") },
-                    colors = editorColors,
-                    container = {
-                        OutlinedTextFieldDefaults.Container(
-                            enabled = true,
-                            isError = false,
-                            interactionSource = editorInteractionSource,
-                            colors = editorColors,
-                            shape = RoundedCornerShape(16.dp),
+            BasicTextField(
+                value = editorFieldValue,
+                onValueChange = { newValue ->
+                    if (onTextChange(newValue.text)) {
+                        editorFieldValue = newValue
+                    } else {
+                        editorFieldValue = TextFieldValue(
+                            text,
+                            selection = TextRange(newValue.selection.end.coerceIn(0, text.length)),
                         )
-                    },
-                )
-            },
-        )
-
+                        editorToolMessage = "Edit blocked by the editor memory limit."
+                    }
+                },
+                readOnly = readOnly,
+                visualTransformation = lineNumberTransformation,
+                onTextLayout = viewportTracker::onTextLayout,
+                interactionSource = editorInteractionSource,
+                cursorBrush = SolidColor(Mint),
+                textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.None,
+                    keyboardType = KeyboardType.Text,
+                    autoCorrectEnabled = false,
+                ),
+                modifier = Modifier
+                    .nestedScroll(viewportTracker)
+                    .onGloballyPositioned { coordinates ->
+                        viewportTracker.updateViewportHeight(coordinates.size.height.toFloat())
+                    }
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .then(
+                        if (wordWrapEnabled) Modifier
+                        else Modifier.horizontalScroll(editorHorizontalScrollState),
+                    )
+                    .focusRequester(editorFocusRequester)
+                    .testTag("file-editor-input"),
+                decorationBox = { innerTextField ->
+                    OutlinedTextFieldDefaults.DecorationBox(
+                        value = editorFieldValue.text,
+                        innerTextField = innerTextField,
+                        enabled = true,
+                        singleLine = false,
+                        visualTransformation = VisualTransformation.None,
+                        interactionSource = editorInteractionSource,
+                        label = { Text("File contents") },
+                        placeholder = { Text("Start writing…") },
+                        colors = editorColors,
+                        container = {
+                            OutlinedTextFieldDefaults.Container(
+                                enabled = true,
+                                isError = false,
+                                interactionSource = editorInteractionSource,
+                                colors = editorColors,
+                                shape = RoundedCornerShape(16.dp),
+                            )
+                        },
+                    )
+                },
+            )
+    
         }
         Spacer(Modifier.height(10.dp))
         Text(
