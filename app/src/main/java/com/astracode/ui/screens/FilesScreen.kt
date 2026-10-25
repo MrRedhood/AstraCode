@@ -1,6 +1,8 @@
 package com.astracode.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,6 +32,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Divider
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -38,6 +42,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -71,8 +79,10 @@ fun FilesScreen(
     onBulkAction: (String) -> Unit,
     onOpenEntry: (String) -> Unit,
     onInspectEntry: (String) -> Unit,
+    onLongPressEntry: (String) -> Unit,
     onGoUp: () -> Unit,
 ) {
+    var createMenuExpanded by remember { mutableStateOf(false) }
     Column(
         modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
     ) {
@@ -118,16 +128,29 @@ fun FilesScreen(
             IconButton(onClick = onManageWorkspaces, modifier = Modifier.testTag("manage-workspaces-button")) {
                 Icon(Icons.Outlined.Folder, contentDescription = "Manage workspaces", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            IconButton(onClick = onNewFolder, modifier = Modifier.testTag("new-folder-button")) {
-                Icon(Icons.Outlined.Add, contentDescription = "New folder", tint = MaterialTheme.colorScheme.primary)
+            Box {
+                IconButton(
+                    onClick = { createMenuExpanded = true },
+                    modifier = Modifier.testTag("workspace-create-menu-button"),
+                ) {
+                    Icon(Icons.Outlined.Add, contentDescription = "Create file or folder", tint = MaterialTheme.colorScheme.primary)
+                }
+                DropdownMenu(
+                    expanded = createMenuExpanded,
+                    onDismissRequest = { createMenuExpanded = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("New file") },
+                        onClick = { createMenuExpanded = false; onNewFile() },
+                        modifier = Modifier.testTag("new-file-button"),
+                    )
+                    DropdownMenuItem(
+                        text = { Text("New folder") },
+                        onClick = { createMenuExpanded = false; onNewFolder() },
+                        modifier = Modifier.testTag("new-folder-button"),
+                    )
+                }
             }
-            Button(
-                onClick = onNewFile,
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.testTag("new-file-button"),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-            ) { Text("New file", maxLines = 1) }
         }
 
         Row(
@@ -248,6 +271,7 @@ fun FilesScreen(
                         selectionMode = selectionMode,
                         onClick = { if (selectionMode) onToggleSelection(item.path) else onOpenEntry(item.path) },
                         onInspect = { onInspectEntry(item.path) },
+                        onLongPress = if (selectionMode) null else { { onLongPressEntry(item.path) } },
                     )
                 }
             }
@@ -255,6 +279,7 @@ fun FilesScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun AtelierFileRow(
     item: AtelierFileItem,
@@ -262,11 +287,14 @@ private fun AtelierFileRow(
     selectionMode: Boolean,
     onClick: () -> Unit,
     onInspect: () -> Unit,
+    onLongPress: (() -> Unit)?,
 ) {
     Surface(
         color = if (selected) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surfaceContainerLow,
         shape = RoundedCornerShape(14.dp),
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).testTag("entry-${item.name}"),
+        modifier = Modifier.fillMaxWidth()
+            .combinedClickable(onClick = onClick, onLongClick = onLongPress)
+            .testTag("entry-${item.name}"),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 11.dp),
