@@ -749,6 +749,14 @@ private fun FileManagementScreen(
     var newFolderName by remember { mutableStateOf("") }
     var showNewFileDialog by remember { mutableStateOf(false) }
     var showNewFolderDialog by remember { mutableStateOf(false) }
+    var newItemParentDirectory by remember(storage) { mutableStateOf<String?>(null) }
+    var contextMenuEntry by remember(storage) { mutableStateOf<FileEntry?>(null) }
+    var changePathEntry by remember(storage) { mutableStateOf<FileEntry?>(null) }
+    var destinationDirectories by remember(storage) { mutableStateOf(emptyList<String>()) }
+    var destinationDirectoriesLoading by remember(storage) { mutableStateOf(false) }
+    var destinationFolderName by remember(storage) { mutableStateOf("") }
+    var creatingDestinationFolder by remember(storage) { mutableStateOf(false) }
+    var changingWorkspacePath by remember(storage) { mutableStateOf(false) }
     var pendingDeletePath by remember { mutableStateOf<String?>(null) }
     var operationEntry by remember { mutableStateOf<FileEntry?>(null) }
     var operationKind by remember { mutableStateOf<String?>(null) }
