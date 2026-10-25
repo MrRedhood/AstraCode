@@ -12,6 +12,8 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -52,11 +54,13 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Divider
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarDuration
@@ -73,15 +77,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -3303,6 +3313,7 @@ private fun StandaloneDocumentLoadingPanel(name: String) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun EditorPanel(
     path: String,
@@ -3331,8 +3342,29 @@ private fun EditorPanel(
     var replacementText by remember(path) { mutableStateOf("") }
     var editorToolMessage by remember(path) { mutableStateOf("") }
     val editorFocusRequester = remember(path) { FocusRequester() }
-    val lineNumberTransformation = remember(foldableRegions, collapsedFoldStarts, path) {
-        codeFoldingVisualTransformation(foldableRegions, collapsedFoldStarts, path)
+    val sourceLineCount = remember(editorFieldValue.text) {
+        editorFieldValue.text.count { it == '\n' } + 1
+    }
+    val sourceLineCountState = rememberUpdatedState(sourceLineCount)
+    var syntaxHighlightLines by remember(path) { mutableStateOf(1..35) }
+    val density = LocalDensity.current
+    val editorChromeHeightPx = with(density) { 44.dp.toPx() }
+    val viewportTracker = remember(path, editorChromeHeightPx) {
+        EditorViewportTracker(chromeHeightPx = editorChromeHeightPx) { firstLine, lastLine ->
+            val nextWindow = syntaxHighlightWindow(
+                firstVisibleLine = firstLine,
+                lastVisibleLine = lastLine,
+                totalLines = sourceLineCountState.value,
+            )
+            if (nextWindow != syntaxHighlightLines) syntaxHighlightLines = nextWindow
+        }
+    }
+    val lineNumberTransformation = remember(
+        foldableRegions, collapsedFoldStarts, path, syntaxHighlightLines,
+    ) {
+        codeFoldingVisualTransformation(
+            foldableRegions, collapsedFoldStarts, path, syntaxHighlightLines,
+        )
     }
 
     LaunchedEffect(path, text) {
@@ -3553,7 +3585,17 @@ private fun EditorPanel(
                 }
             }
         }
-        OutlinedTextField(
+        val editorInteractionSource = remember(path) { MutableInteractionSource() }
+        val editorColors = OutlinedTextFieldDefaults.colors(
+            focusedTextColor = PrimaryText,
+            unfocusedTextColor = PrimaryText,
+            focusedBorderColor = Mint,
+            unfocusedBorderColor = Border,
+            cursorColor = Mint,
+            focusedLabelColor = Mint,
+            unfocusedLabelColor = MutedText,
+        )
+        BasicTextField(
             value = editorFieldValue,
             onValueChange = { newValue ->
                 if (onTextChange(newValue.text)) {
@@ -3568,7 +3610,20 @@ private fun EditorPanel(
             },
             readOnly = readOnly,
             visualTransformation = lineNumberTransformation,
+            onTextLayout = viewportTracker::onTextLayout,
+            interactionSource = editorInteractionSource,
+            cursorBrush = SolidColor(Mint),
+            textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.None,
+                keyboardType = KeyboardType.Text,
+                autoCorrectEnabled = false,
+            ),
             modifier = Modifier
+                .nestedScroll(viewportTracker)
+                .onGloballyPositioned { coordinates ->
+                    viewportTracker.updateViewportHeight(coordinates.size.height.toFloat())
+                }
                 .fillMaxWidth()
                 .weight(1f)
                 .then(
@@ -3577,25 +3632,28 @@ private fun EditorPanel(
                 )
                 .focusRequester(editorFocusRequester)
                 .testTag("file-editor-input"),
-            label = { Text("File contents") },
-            placeholder = { Text("Start writing…") },
-            textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-            keyboardOptions = KeyboardOptions(
-                capitalization = KeyboardCapitalization.None,
-                keyboardType = KeyboardType.Text,
-                autoCorrectEnabled = false,
-            ),
-            shape = RoundedCornerShape(16.dp),
-            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                focusedTextColor = PrimaryText,
-                unfocusedTextColor = PrimaryText,
-                focusedBorderColor = Mint,
-                unfocusedBorderColor = Border,
-                cursorColor = Mint,
-                focusedLabelColor = Mint,
-                unfocusedLabelColor = MutedText,
-            ),
-            singleLine = false,
+            decorationBox = { innerTextField ->
+                OutlinedTextFieldDefaults.DecorationBox(
+                    value = editorFieldValue.text,
+                    innerTextField = innerTextField,
+                    enabled = true,
+                    singleLine = false,
+                    visualTransformation = VisualTransformation.None,
+                    interactionSource = editorInteractionSource,
+                    label = { Text("File contents") },
+                    placeholder = { Text("Start writing…") },
+                    colors = editorColors,
+                    container = {
+                        OutlinedTextFieldDefaults.Container(
+                            enabled = true,
+                            isError = false,
+                            interactionSource = editorInteractionSource,
+                            colors = editorColors,
+                            shape = RoundedCornerShape(16.dp),
+                        )
+                    },
+                )
+            },
         )
         Spacer(Modifier.height(10.dp))
         Text(
