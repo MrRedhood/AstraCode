@@ -1046,6 +1046,229 @@ private fun FileManagementScreen(
         }
     }
 
+    fun rewriteWorkspacePath(path: String, sourcePath: String, destinationPath: String): String = when {
+        path == sourcePath -> destinationPath
+        path.startsWith(sourcePath + "/") -> destinationPath + path.removePrefix(sourcePath)
+        else -> path
+    }
+
+    fun updateWorkspacePathReferences(sourcePath: String, destinationPath: String) {
+        editorTabs = editorTabs.map { tab ->
+            tab.copy(path = rewriteWorkspacePath(tab.path, sourcePath, destinationPath))
+        }
+        openedFile = openedFile?.let { rewriteWorkspacePath(it, sourcePath, destinationPath) }
+        currentDirectory = rewriteWorkspacePath(currentDirectory, sourcePath, destinationPath)
+        selectedPaths = selectedPaths.mapTo(linkedSetOf()) {
+            rewriteWorkspacePath(it, sourcePath, destinationPath)
+        }
+        firstDirtyAt = firstDirtyAt.entries.associate {
+            rewriteWorkspacePath(it.key, sourcePath, destinationPath) to it.value
+        }
+        lastEditedAt = lastEditedAt.entries.associate {
+            rewriteWorkspacePath(it.key, sourcePath, destinationPath) to it.value
+        }
+        autosaveRetryAt = autosaveRetryAt.entries.associate {
+            rewriteWorkspacePath(it.key, sourcePath, destinationPath) to it.value
+        }
+        pendingEditorTabClosePath = pendingEditorTabClosePath?.let {
+            rewriteWorkspacePath(it, sourcePath, destinationPath)
+        }
+    }
+
+    fun removeWorkspacePathReferences(removedPath: String) {
+        val removedTabs = editorTabs.filter {
+            it.path == removedPath || (findWorkspaceEntry(storage, removedPath)?.type == FileEntryType.DIRECTORY &&
+                it.path.startsWith(removedPath + "/"))
+        }
+        removedTabs.forEach { clearEditorAutosaveSchedule(it.path) }
+        editorTabs = editorTabs.filterNot { tab -> removedTabs.any { it.path == tab.path } }
+        if (openedFile != null && (
+                openedFile == removedPath ||
+                    (findWorkspaceEntry(storage, removedPath)?.type == FileEntryType.DIRECTORY &&
+                        openedFile!!.startsWith(removedPath + "/"))
+            )
+        ) {
+            openedFile = null
+        }
+        if (pendingEditorTabClosePath != null && removedTabs.any { it.path == pendingEditorTabClosePath }) {
+            pendingEditorTabClosePath = null
+            showEditorTabDiscardDialog = false
+        }
+    }
+
+    fun moveWorkspaceEntryToDirectory(entry: FileEntry, destinationDirectory: String) {
+        val sourcePath = entry.path
+        val destinationPath = joinPath(destinationDirectory, entry.name)
+        if (!isSafeWorkspaceRelativePath(destinationDirectory, allowEmpty = true)) {
+            notify("Choose a valid destination folder.")
+            return
+        }
+        if (sourcePath == destinationPath) {
+            notify("This item is already in that folder.")
+            return
+        }
+        if (entry.type == FileEntryType.DIRECTORY && isSameOrChildPath(destinationDirectory, sourcePath)) {
+            notify("A folder cannot be moved into itself.")
+            return
+        }
+        if (entry.type != FileEntryType.FILE && entry.type != FileEntryType.DIRECTORY) {
+            notify("Only regular files and folders can be moved.")
+            return
+        }
+        val requestedStorage = storage
+        val requestedWorkspaceId = activeWorkspaceId
+        changingWorkspacePath = true
+        scope.launch {
+            try {
+                val affectedTabs = editorTabs.filter {
+                    it.path == sourcePath ||
+                        (entry.type == FileEntryType.DIRECTORY && it.path.startsWith(sourcePath + "/"))
+                }
+                if (affectedTabs.any { it.isLoading }) {
+                    notify("Wait for the file to finish opening before changing its path.")
+                    return@launch
+                }
+                for (tab in affectedTabs.filter { it.text != it.savedText }) {
+                    val saved = saveWorkspaceEditorTab(tab.path, tab.text)
+                    if (saved.isFailure) {
+                        notify("Could not save " + fileName(tab.path) + " before moving it: " +
+                            (saved.exceptionOrNull()?.message ?: "unknown save error"))
+                        return@launch
+                    }
+                }
+                if (storage !== requestedStorage || activeWorkspaceId != requestedWorkspaceId) {
+                    notify("The active workspace changed. Choose the destination again.")
+                    return@launch
+                }
+                val linksSnapshot = syncLinks
+                val moved = runCatchingCancellable {
+                    withTimeoutOrNull(EDITOR_SAVE_TIMEOUT_MS) {
+                        withContext(Dispatchers.IO) {
+                            if (destinationDirectory.isNotEmpty()) {
+                                val destinationFolder = findWorkspaceEntry(requestedStorage, destinationDirectory)
+                                    ?: throw java.io.IOException("The destination folder no longer exists.")
+                                if (destinationFolder.type != FileEntryType.DIRECTORY) {
+                                    throw java.io.IOException("The destination is not a folder.")
+                                }
+                            }
+                            val currentEntry = findWorkspaceEntry(requestedStorage, sourcePath)
+                                ?: throw java.io.IOException("The item no longer exists.")
+                            if (currentEntry.type != entry.type) {
+                                throw java.io.IOException("The item changed while the destination picker was open.")
+                            }
+                            if (requestedStorage.exists(destinationPath)) {
+                                throw java.io.IOException("An item with that name already exists in the destination.")
+                            }
+                            requestedStorage.move(sourcePath, destinationPath, replaceExisting = false)
+                        }
+                    } ?: throw java.io.IOException("Changing the path timed out. The original item was kept.")
+                }
+                moved.onSuccess {
+                    updateWorkspacePathReferences(sourcePath, destinationPath)
+                    refreshKey++
+                    changePathEntry = null
+                    creatingDestinationFolder = false
+                    destinationFolderName = ""
+                    val syncResult = runCatchingCancellable {
+                        withTimeoutOrNull(EDITOR_SAVE_TIMEOUT_MS) {
+                            withContext(Dispatchers.IO) {
+                                propagateWorkspaceChange(
+                                    context,
+                                    requestedWorkspaceId,
+                                    requestedStorage,
+                                    linksSnapshot,
+                                    sourcePath,
+                                    deleted = false,
+                                    movedTo = destinationPath,
+                                )
+                            }
+                        } ?: throw java.io.IOException("The item moved, but linked-workspace synchronization timed out.")
+                    }
+                    syncResult.onSuccess { updatedLinks ->
+                        if (storage === requestedStorage && activeWorkspaceId == requestedWorkspaceId) {
+                            syncLinks = updatedLinks
+                        }
+                        notify("Changed path to " + destinationPath)
+                    }.onFailure { error ->
+                        notify("The item moved, but a linked copy could not be updated: " +
+                            (error.message ?: "sync error"))
+                    }
+                }.onFailure { error ->
+                    notify("Could not change path: " + (error.message ?: "unknown error"))
+                }
+            } finally {
+                changingWorkspacePath = false
+            }
+        }
+    }
+
+    fun openChangePathPicker(entry: FileEntry) {
+        contextMenuEntry = null
+        changePathEntry = entry
+        destinationDirectories = emptyList()
+        destinationDirectoriesLoading = true
+        destinationFolderName = ""
+        creatingDestinationFolder = false
+        val requestedStorage = storage
+        scope.launch {
+            val result = runCatchingCancellable {
+                withContext(Dispatchers.IO) {
+                    requestedStorage.scanTree(maxDepth = 64)
+                        .asSequence()
+                        .filter { it.type == FileEntryType.DIRECTORY }
+                        .filterNot { WorkspaceSafety.isReservedPath(it.path) }
+                        .map { it.path }
+                        .distinct()
+                        .sortedWith(String.CASE_INSENSITIVE_ORDER)
+                        .toList()
+                }
+            }
+            if (storage === requestedStorage && changePathEntry?.path == entry.path) {
+                result.onSuccess { destinationDirectories = it }
+                    .onFailure { error ->
+                        notify("Could not list destination folders: " + (error.message ?: "storage error"))
+                    }
+                destinationDirectoriesLoading = false
+            }
+        }
+    }
+
+    fun createDestinationFolderAndMove(entry: FileEntry) {
+        val name = destinationFolderName.trim()
+        if (!isSimpleName(name)) {
+            notify("Enter a folder name without folder paths.")
+            return
+        }
+        val folderPath = joinPath(parentPath(entry.path), name)
+        val requestedStorage = storage
+        val requestedWorkspaceId = activeWorkspaceId
+        scope.launch {
+            val result = runCatchingCancellable {
+                withTimeoutOrNull(EDITOR_SAVE_TIMEOUT_MS) {
+                    withContext(Dispatchers.IO) {
+                        if (requestedStorage.exists(folderPath)) {
+                            throw java.io.IOException("A file or folder with that name already exists.")
+                        }
+                        requestedStorage.createDirectory(folderPath)
+                    }
+                } ?: throw java.io.IOException("Creating the destination folder timed out.")
+            }
+            result.onSuccess {
+                if (storage !== requestedStorage || activeWorkspaceId != requestedWorkspaceId) {
+                    notify("The destination folder was created, but the active workspace changed.")
+                    return@onSuccess
+                }
+                destinationDirectories = (destinationDirectories + folderPath).distinct().sorted()
+                creatingDestinationFolder = false
+                destinationFolderName = ""
+                refreshKey++
+                moveWorkspaceEntryToDirectory(entry, folderPath)
+            }.onFailure { error ->
+                notify("Could not create destination folder: " + (error.message ?: "unknown error"))
+            }
+        }
+    }
+
     fun startBulkAction(kind: String) {
         // Selection is limited to visible children in this folder, so no storage traversal is needed here.
         val paths = selectedPaths.toList()
