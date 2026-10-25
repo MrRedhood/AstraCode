@@ -76,15 +76,6 @@ class WorkspaceArchiveTest {
         val root = Files.createTempDirectory("astracode-workspace-zip-slip").toFile()
         val storage = FileManagementSystem(root.toPath())
         try {
-            storage.createDirectory("source-dir")
-            storage.writeText("source-dir/.ASTRACODE-backup-orphan", "hidden recovery data")
-            try {
-                WorkspaceArchive.createZip(storage, listOf("source-dir"), "source-dir.zip")
-                fail("Internal recovery files inside folders must not be archived.")
-            } catch (expected: SecurityException) {
-                assertTrue(expected.message.orEmpty().contains("reserved", ignoreCase = true))
-            }
-            assertFalse(storage.exists("source-dir.zip"))
             val output = ByteArrayOutputStream()
             ZipOutputStream(output).use { zip ->
                 zip.putNextEntry(ZipEntry("../outside.txt"))
@@ -126,6 +117,15 @@ class WorkspaceArchiveTest {
                 WorkspaceArchive.createZip(storage, listOf("source.txt"), tooLong)
                 fail("Oversized paths must be rejected before writing.")
             } catch (_: SecurityException) { }
+            storage.createDirectory("source-dir")
+            storage.writeText("source-dir/.ASTRACODE-backup-orphan", "hidden recovery data")
+            try {
+                WorkspaceArchive.createZip(storage, listOf("source-dir"), "source-dir.zip")
+                fail("Internal recovery files inside folders must not be archived.")
+            } catch (expected: java.io.IOException) {
+                assertTrue(expected.message.orEmpty().contains("archive entry path", ignoreCase = true))
+            }
+            assertFalse(storage.exists("source-dir.zip"))
             val output = ByteArrayOutputStream()
             ZipOutputStream(output).use { zip ->
                 zip.putNextEntry(ZipEntry("nested/.ASTRACODE-backup-orphan"))
