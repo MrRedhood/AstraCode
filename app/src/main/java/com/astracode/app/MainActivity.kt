@@ -2800,6 +2800,9 @@ private fun FileManagementScreen(
                                 }
                             }
                             operation.onSuccess {
+                                if (kind == "rename" || kind == "move") {
+                                    updateWorkspacePathReferences(entry.path, destinationPath)
+                                }
                                 operationEntry = null
                                 operationKind = null
                                 refreshKey++
@@ -2858,12 +2861,33 @@ private fun FileManagementScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
+                        val requestedStorage = storage
+                        val wasDirectory = runCatching {
+                            findWorkspaceEntry(requestedStorage, path)?.type == FileEntryType.DIRECTORY
+                        }.getOrDefault(false)
                         scope.launch {
+                            val affectedTabs = editorTabs.filter {
+                                it.path == path || (wasDirectory && it.path.startsWith(path + "/"))
+                            }
+                            if (affectedTabs.any { it.isLoading }) {
+                                notify("Wait for the file to finish opening before deleting it.")
+                                return@launch
+                            }
+                            for (tab in affectedTabs.filter { it.text != it.savedText }) {
+                                val saved = saveWorkspaceEditorTab(tab.path, tab.text)
+                                if (saved.isFailure) {
+                                    notify("The item was not deleted because " + fileName(tab.path) +
+                                        " could not be saved: " +
+                                        (saved.exceptionOrNull()?.message ?: "unknown save error"))
+                                    return@launch
+                                }
+                            }
                             val result = runCatchingCancellable {
-                                withContext(Dispatchers.IO) { WorkspaceSafety.moveToTrash(storage, path) }
+                                withContext(Dispatchers.IO) { WorkspaceSafety.moveToTrash(requestedStorage, path) }
                             }
                             result.onSuccess { trashRecord ->
                                 pendingDeletePath = null
+                                removeWorkspacePathReferences(path, wasDirectory)
                                 refreshKey++
                                 scope.launch {
                                     val snackbarResult = snackbarHostState.showSnackbar(
