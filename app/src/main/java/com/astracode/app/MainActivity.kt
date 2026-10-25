@@ -4175,6 +4175,7 @@ private fun isSimpleName(value: String): Boolean =
     value.isNotBlank() &&
         value != "." &&
         value != ".." &&
+        !WorkspaceSafety.isReservedPath(value) &&
         !value.contains('/') &&
         !value.contains('\\') &&
         value.none { it == '\u0000' }
@@ -4182,7 +4183,10 @@ private fun isSimpleName(value: String): Boolean =
 private fun isSafeWorkspaceRelativePath(value: String, allowEmpty: Boolean): Boolean {
     if (value.isEmpty()) return allowEmpty
     if (value.startsWith("/") || value.contains('\\') || value.indexOf('\u0000') >= 0) return false
-    return value.split('/').none { it.isBlank() || it == "." || it == ".." }
+    val segments = value.split('/')
+    return segments.size <= 128 &&
+        segments.none { it.isBlank() || it == "." || it == ".." } &&
+        !WorkspaceSafety.isReservedPath(value)
 }
 
 private fun isSameOrChildPath(path: String, root: String): Boolean =
