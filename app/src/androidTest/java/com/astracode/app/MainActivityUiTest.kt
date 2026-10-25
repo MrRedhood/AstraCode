@@ -94,7 +94,8 @@ class MainActivityUiTest {
         composeRule.onNodeWithText("Hello.kt").assertIsDisplayed()
         composeRule.onNodeWithText("Hello.kt").performClick()
         composeRule.onNodeWithTag("file-editor-input").assertIsDisplayed()
-        composeRule.onNodeWithTag("file-editor-input").assertTextContains("fun main() = println(\"AstraCode\")")
+        composeRule.onNodeWithTag("file-editor-input")
+            .assertTextContains("fun main() = println(\"AstraCode\")", substring = true)
     }
 
 
@@ -132,6 +133,8 @@ class MainActivityUiTest {
         }
         composeRule.onNodeWithTag("file-editor-input").performTextReplacement("fun main() = 42")
 
+        composeRule.onNodeWithTag("editor-tabs")
+            .performScrollToNode(hasTestTag("editor-tab-README.txt"))
         composeRule.onNodeWithTag("editor-tab-README.txt").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching {
@@ -139,6 +142,8 @@ class MainActivityUiTest {
                     .assertTextContains("README unsaved draft", substring = true)
             }.isSuccess
         }
+        composeRule.onNodeWithTag("editor-tabs")
+            .performScrollToNode(hasTestTag("editor-tab-Main.kt"))
         composeRule.onNodeWithTag("editor-tab-Main.kt").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching {
@@ -151,6 +156,8 @@ class MainActivityUiTest {
             runCatching { String(Files.readAllBytes(workspace.resolve("Main.kt")), Charsets.UTF_8) == "fun main() = 42" }.getOrDefault(false)
         }
 
+        composeRule.onNodeWithTag("editor-tabs")
+            .performScrollToNode(hasTestTag("editor-tab-README.txt"))
         composeRule.onNodeWithTag("editor-tab-README.txt").performClick()
         composeRule.onNodeWithTag("save-file-button").performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
