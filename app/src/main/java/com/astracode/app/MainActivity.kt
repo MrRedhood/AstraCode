@@ -2787,16 +2787,46 @@ private fun FileManagementScreen(
                             notify("A folder cannot be copied or moved into itself.")
                             return@TextButton
                         }
+                        val requestedStorage = storage
+                        val requestedWorkspaceId = activeWorkspaceId
                         val linksSnapshot = syncLinks
                         scope.launch {
+                            if (kind == "rename" || kind == "move") {
+                                // Save drafts first; otherwise autosave could recreate the old path
+                                // after the rename/move has completed.
+                                val affectedTabs = editorTabs.filter {
+                                    it.path == entry.path ||
+                                        (entry.type == FileEntryType.DIRECTORY &&
+                                            it.path.startsWith(entry.path + "/"))
+                                }
+                                if (affectedTabs.any { it.isLoading }) {
+                                    notify("Wait for the file to finish opening before changing its path.")
+                                    return@launch
+                                }
+                                for (tab in affectedTabs.filter { it.text != it.savedText }) {
+                                    val saved = saveWorkspaceEditorTab(tab.path, tab.text)
+                                    if (saved.isFailure) {
+                                        notify(
+                                            "Could not save " + fileName(tab.path) +
+                                                " before changing its path: " +
+                                                (saved.exceptionOrNull()?.message ?: "unknown save error"),
+                                        )
+                                        return@launch
+                                    }
+                                }
+                            }
+                            if (storage !== requestedStorage || activeWorkspaceId != requestedWorkspaceId) {
+                                notify("The active workspace changed. Try the file action again.")
+                                return@launch
+                            }
                             val operation = runCatchingCancellable {
                                 withContext(Dispatchers.IO) {
                                     when (kind) {
                                         "copy" -> syncWorkspaceEntry(
-                                            storage, entry.path, storage, destinationPath, overwriteExisting = false,
+                                            requestedStorage, entry.path, requestedStorage, destinationPath, overwriteExisting = false,
                                         )
-                                        "extract" -> WorkspaceArchive.extractZip(storage, entry.path, destinationPath)
-                                        else -> storage.move(entry.path, destinationPath, replaceExisting = false)
+                                        "extract" -> WorkspaceArchive.extractZip(requestedStorage, entry.path, destinationPath)
+                                        else -> requestedStorage.move(entry.path, destinationPath, replaceExisting = false)
                                     }
                                 }
                             }
@@ -2811,7 +2841,7 @@ private fun FileManagementScreen(
                                     val synced = runCatchingCancellable {
                                         withContext(Dispatchers.IO) {
                                             propagateWorkspaceChange(
-                                                context, activeWorkspaceId, storage, linksSnapshot,
+                                                context, requestedWorkspaceId, requestedStorage, linksSnapshot,
                                                 entry.path, deleted = false, movedTo = destinationPath,
                                             )
                                         }
@@ -2827,7 +2857,7 @@ private fun FileManagementScreen(
                                     val synced = runCatchingCancellable {
                                         withContext(Dispatchers.IO) {
                                             propagateWorkspaceChange(
-                                                context, activeWorkspaceId, storage, linksSnapshot,
+                                                context, requestedWorkspaceId, requestedStorage, linksSnapshot,
                                                 destinationPath,
                                             )
                                         }
