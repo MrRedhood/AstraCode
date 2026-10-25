@@ -3331,8 +3331,8 @@ private fun EditorPanel(
     var replacementText by remember(path) { mutableStateOf("") }
     var editorToolMessage by remember(path) { mutableStateOf("") }
     val editorFocusRequester = remember(path) { FocusRequester() }
-    val lineNumberTransformation = remember(foldableRegions, collapsedFoldStarts) {
-        codeFoldingVisualTransformation(foldableRegions, collapsedFoldStarts)
+    val lineNumberTransformation = remember(foldableRegions, collapsedFoldStarts, path) {
+        codeFoldingVisualTransformation(foldableRegions, collapsedFoldStarts, path)
     }
 
     LaunchedEffect(path, text) {
