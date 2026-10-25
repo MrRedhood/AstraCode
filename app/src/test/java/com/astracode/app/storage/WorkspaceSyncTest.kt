@@ -38,6 +38,61 @@ class WorkspaceSyncTest {
     }
 
     @Test
+    fun syncDoesNotCopyOrDeleteReservedRecoveryFilesInsideFolders() {
+        val sourceRoot = temporaryFolder.newFolder("source-reserved").toPath()
+        val targetRoot = temporaryFolder.newFolder("target-reserved").toPath()
+        FileManagementSystem(sourceRoot).use { source ->
+            FileManagementSystem(targetRoot).use { target ->
+                source.createDirectory("project")
+                source.writeText("project/README.txt", "normal workspace content")
+                source.writeText("project/.ASTRACODE-backup-orphan", "private recovery payload")
+                target.createDirectory("mirror")
+                target.writeText("mirror/.ASTRACODE-backup-target", "destination recovery payload")
+                target.writeText("mirror/stale.txt", "stale workspace item")
+
+                syncWorkspaceEntry(source, "project", target, "mirror", overwriteExisting = true)
+
+                assertEquals("normal workspace content", target.readText("mirror/README.txt").text)
+                assertFalse(target.exists("mirror/.ASTRACODE-backup-orphan"))
+                assertTrue(target.exists("project/.ASTRACODE-backup-orphan"))
+                assertTrue(target.exists("mirror/.ASTRACODE-backup-target"))
+                assertEquals("destination recovery payload", target.readText("mirror/.ASTRACODE-backup-target").text)
+                assertFalse(target.exists("mirror/stale.txt"))
+            }
+        }
+    }
+
+    @Test
+    fun syncRejectsCaseVariantReservedSourceAndDestinationPaths() {
+        val sourceRoot = temporaryFolder.newFolder("source-reserved-root").toPath()
+        val targetRoot = temporaryFolder.newFolder("target-reserved-root").toPath()
+        FileManagementSystem(sourceRoot).use { source ->
+            FileManagementSystem(targetRoot).use { target ->
+                source.createDirectory(".ASTRACODE-TRASH")
+                source.writeText(".ASTRACODE-TRASH/recovery.txt", "must remain private")
+                source.writeText("visible.txt", "normal data")
+
+                try {
+                    syncWorkspaceEntry(source, ".ASTRACODE-TRASH", target, "copied-trash", overwriteExisting = true)
+                    throw AssertionError("Reserved source paths must not be synced.")
+                } catch (_: SecurityException) {
+                    // Expected.
+                }
+                try {
+                    syncWorkspaceEntry(source, "visible.txt", target, ".ASTRACODE-OPERATIONS", overwriteExisting = true)
+                    throw AssertionError("Reserved destination paths must not be synced.")
+                } catch (_: SecurityException) {
+                    // Expected.
+                }
+
+                assertFalse(target.exists("copied-trash"))
+                assertFalse(target.exists(".ASTRACODE-OPERATIONS"))
+                assertEquals("must remain private", source.readText(".ASTRACODE-TRASH/recovery.txt").text)
+            }
+        }
+    }
+
+    @Test
     fun syncRefusesToOverwriteWhenAsked() {
         val sourceRoot = temporaryFolder.newFolder("source").toPath()
         val targetRoot = temporaryFolder.newFolder("target").toPath()
