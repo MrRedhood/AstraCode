@@ -44,7 +44,10 @@ internal object WorkspaceSafety {
     private val imageExtensions = setOf("png", "jpg", "jpeg", "webp", "gif", "bmp")
 
     fun isReservedPath(path: String): Boolean =
-        path.split('/').any { segment -> segment in reservedRoots || segment.startsWith(".astracode-") }
+        path.split('/').any { segment ->
+            reservedRoots.any { reserved -> segment.equals(reserved, ignoreCase = true) } ||
+                segment.startsWith(".astracode-", ignoreCase = true)
+        }
 
     fun validatePath(path: String, allowEmpty: Boolean = false): String {
         if (path.isEmpty() && allowEmpty) return path
@@ -470,7 +473,7 @@ internal object WorkspaceSafety {
     }
     private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
     private fun simpleName(value: String): Boolean = value.isNotBlank() && value != "." && value != ".." && value.length <= 255 &&
-        !value.startsWith(".astracode-") && value !in reservedRoots && !value.contains('/') && !value.contains('\\') && value.indexOf('\u0000') < 0
+        !isReservedPath(value) && !value.contains('/') && !value.contains('\\') && value.indexOf('\u0000') < 0
     private fun join(parent: String, child: String): String = if (parent.isEmpty()) child else "$parent/$child"
     private fun parent(path: String): String = path.substringBeforeLast('/', "")
 }
