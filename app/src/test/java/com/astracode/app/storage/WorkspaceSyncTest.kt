@@ -78,7 +78,7 @@ class WorkspaceSyncTest {
 
                 assertEquals("normal workspace content", target.readText("mirror/README.txt").text)
                 assertFalse(target.exists("mirror/.ASTRACODE-backup-orphan"))
-                assertTrue(target.exists("project/.ASTRACODE-backup-orphan"))
+                assertTrue(source.exists("project/.ASTRACODE-backup-orphan"))
                 assertTrue(target.exists("mirror/.ASTRACODE-backup-target"))
                 assertEquals("destination recovery payload", target.readText("mirror/.ASTRACODE-backup-target").text)
                 assertFalse(target.exists("mirror/stale.txt"))

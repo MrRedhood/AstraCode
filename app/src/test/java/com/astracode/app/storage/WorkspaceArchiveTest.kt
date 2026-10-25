@@ -122,8 +122,8 @@ class WorkspaceArchiveTest {
             try {
                 WorkspaceArchive.createZip(storage, listOf("source-dir"), "source-dir.zip")
                 fail("Internal recovery files inside folders must not be archived.")
-            } catch (expected: java.io.IOException) {
-                assertTrue(expected.message.orEmpty().contains("archive entry path", ignoreCase = true))
+            } catch (expected: SecurityException) {
+                assertTrue(expected.message.orEmpty().contains("reserved", ignoreCase = true))
             }
             assertFalse(storage.exists("source-dir.zip"))
             val output = ByteArrayOutputStream()
