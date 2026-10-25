@@ -2219,6 +2219,158 @@ private fun FileManagementScreen(
         )
     }
 
+    contextMenuEntry?.let { entry ->
+        AlertDialog(
+            onDismissRequest = { contextMenuEntry = null },
+            title = { Text(entry.name + " options") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    if (entry.type == FileEntryType.DIRECTORY) {
+                        TextButton(
+                            onClick = {
+                                contextMenuEntry = null
+                                newItemParentDirectory = entry.path
+                                newFileName = ""
+                                showNewFileDialog = true
+                            },
+                            modifier = Modifier.fillMaxWidth().testTag("workspace-context-new-file"),
+                        ) { Text("New file") }
+                        TextButton(
+                            onClick = {
+                                contextMenuEntry = null
+                                newItemParentDirectory = entry.path
+                                newFolderName = ""
+                                showNewFolderDialog = true
+                            },
+                            modifier = Modifier.fillMaxWidth().testTag("workspace-context-new-folder"),
+                        ) { Text("New folder") }
+                    }
+                    TextButton(
+                        onClick = {
+                            contextMenuEntry = null
+                            showOperationDialog(entry, "rename")
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("workspace-context-rename"),
+                    ) { Text("Rename") }
+                    TextButton(
+                        onClick = {
+                            contextMenuEntry = null
+                            pendingDeletePath = entry.path
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("workspace-context-delete"),
+                    ) { Text("Delete", color = Danger) }
+                    TextButton(
+                        onClick = { openChangePathPicker(entry) },
+                        modifier = Modifier.fillMaxWidth().testTag("workspace-context-change-path"),
+                    ) { Text("Change path") }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { contextMenuEntry = null },
+                    modifier = Modifier.testTag("workspace-context-close"),
+                ) { Text("Close") }
+            },
+        )
+    }
+
+    changePathEntry?.let { entry ->
+        AlertDialog(
+            onDismissRequest = {
+                if (!changingWorkspacePath && !destinationDirectoriesLoading) {
+                    changePathEntry = null
+                    creatingDestinationFolder = false
+                    destinationFolderName = ""
+                }
+            },
+            title = {
+                Text(if (creatingDestinationFolder) "Create folder and move item" else "Change path for " + entry.name)
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 440.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    if (creatingDestinationFolder) {
+                        Text("A new folder will be created beside this item. The item will be moved into it automatically.")
+                        OutlinedTextField(
+                            value = destinationFolderName,
+                            onValueChange = { destinationFolderName = it },
+                            label = { Text("New folder name") },
+                            singleLine = true,
+                            enabled = !changingWorkspacePath,
+                            modifier = Modifier.fillMaxWidth().testTag("change-path-new-folder-name"),
+                        )
+                    } else {
+                        Text("Tap a destination folder to move this item immediately. No extra confirmation is needed.")
+                        if (destinationDirectoriesLoading) {
+                            Text("Loading folders…")
+                        } else {
+                            TextButton(
+                                onClick = { moveWorkspaceEntryToDirectory(entry, "") },
+                                enabled = !changingWorkspacePath,
+                                modifier = Modifier.fillMaxWidth().testTag("change-path-destination-root"),
+                            ) { Text("Workspace root") }
+                            destinationDirectories
+                                .filterNot { folder ->
+                                    folder == entry.path ||
+                                        (entry.type == FileEntryType.DIRECTORY && folder.startsWith(entry.path + "/"))
+                                }
+                                .forEach { folder ->
+                                    val tagPath = folder.replace("/", "_")
+                                    TextButton(
+                                        onClick = { moveWorkspaceEntryToDirectory(entry, folder) },
+                                        enabled = !changingWorkspacePath,
+                                        modifier = Modifier.fillMaxWidth().testTag("change-path-destination-" + tagPath),
+                                    ) { Text(folder) }
+                                }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                if (creatingDestinationFolder) {
+                    TextButton(
+                        onClick = { createDestinationFolderAndMove(entry) },
+                        enabled = !changingWorkspacePath && !destinationDirectoriesLoading,
+                        modifier = Modifier.testTag("change-path-create-folder-and-move"),
+                    ) { Text("Create folder and move") }
+                } else {
+                    TextButton(
+                        onClick = { changePathEntry = null },
+                        enabled = !changingWorkspacePath,
+                        modifier = Modifier.testTag("change-path-close"),
+                    ) { Text("Close") }
+                }
+            },
+            dismissButton = {
+                if (creatingDestinationFolder) {
+                    TextButton(
+                        onClick = {
+                            if (!changingWorkspacePath) {
+                                creatingDestinationFolder = false
+                                destinationFolderName = ""
+                            }
+                        },
+                        enabled = !changingWorkspacePath,
+                        modifier = Modifier.testTag("change-path-cancel-new-folder"),
+                    ) { Text("Back") }
+                } else {
+                    TextButton(
+                        onClick = {
+                            if (!changingWorkspacePath && !destinationDirectoriesLoading) {
+                                creatingDestinationFolder = true
+                                destinationFolderName = ""
+                            }
+                        },
+                        enabled = !changingWorkspacePath && !destinationDirectoriesLoading,
+                        modifier = Modifier.testTag("change-path-new-folder"),
+                    ) { Text("Create new folder") }
+                }
+            },
+        )
+    }
+
     if (showNewFileDialog) {
         NameEntryDialog(
             title = "Create file",
