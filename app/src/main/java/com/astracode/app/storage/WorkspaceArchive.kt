@@ -61,7 +61,8 @@ internal object WorkspaceArchive {
                     ?: throw IOException("Selected item no longer exists: $path")
                 if (relativePath.isBlank() || relativePath.length > MAX_PATH_LENGTH ||
                     relativePath.split('/').size > MAX_PATH_DEPTH || relativePath == "." || relativePath.startsWith("/") ||
-                    relativePath.split('/').any { it.isBlank() || it == "." || it == ".." || it.startsWith(".astracode-") }) {
+                    relativePath.split('/').any { it.isBlank() || it == "." || it == ".." } ||
+                    WorkspaceSafety.isReservedPath(relativePath)) {
                     throw IOException("Invalid archive entry path.")
                 }
                 if (item.type == FileEntryType.SYMBOLIC_LINK || item.type == FileEntryType.OTHER) {
@@ -275,7 +276,8 @@ internal object WorkspaceArchive {
         }
         val segments = rawPath.split('/')
         if (segments.size > MAX_PATH_DEPTH ||
-            segments.any { it.isBlank() || it == "." || it == ".." || it.startsWith(".astracode-") }) {
+            segments.any { it.isBlank() || it == "." || it == ".." } ||
+            WorkspaceSafety.isReservedPath(rawPath)) {
             throw SecurityException("Invalid, reserved, or excessively deep workspace path.")
         }
         return segments.joinToString("/")
@@ -289,7 +291,8 @@ internal object WorkspaceArchive {
         val relative = if (directory) rawName.removeSuffix("/") else rawName
         val segments = relative.split('/')
         if (segments.size > MAX_PATH_DEPTH ||
-            segments.any { it.isBlank() || it == "." || it == ".." || it.startsWith(".astracode-") }) {
+            segments.any { it.isBlank() || it == "." || it == ".." } ||
+            WorkspaceSafety.isReservedPath(relative)) {
             throw SecurityException("The ZIP contains an unsafe or reserved path.")
         }
         return segments.joinToString("/")

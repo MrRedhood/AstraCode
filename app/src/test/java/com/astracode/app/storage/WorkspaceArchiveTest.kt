@@ -76,6 +76,15 @@ class WorkspaceArchiveTest {
         val root = Files.createTempDirectory("astracode-workspace-zip-slip").toFile()
         val storage = FileManagementSystem(root.toPath())
         try {
+            storage.createDirectory("source-dir")
+            storage.writeText("source-dir/.ASTRACODE-backup-orphan", "hidden recovery data")
+            try {
+                WorkspaceArchive.createZip(storage, listOf("source-dir"), "source-dir.zip")
+                fail("Internal recovery files inside folders must not be archived.")
+            } catch (expected: java.io.IOException) {
+                assertTrue(expected.message.orEmpty().contains("reserved", ignoreCase = true))
+            }
+            assertFalse(storage.exists("source-dir.zip"))
             val output = ByteArrayOutputStream()
             ZipOutputStream(output).use { zip ->
                 zip.putNextEntry(ZipEntry("../outside.txt"))
@@ -108,6 +117,10 @@ class WorkspaceArchiveTest {
                 WorkspaceArchive.createZip(storage, listOf("source.txt"), ".astracode-user.zip")
                 fail("The user must not write into the reserved recovery namespace.")
             } catch (_: SecurityException) { }
+            try {
+                WorkspaceArchive.createZip(storage, listOf("source.txt"), ".ASTRACODE-user.zip")
+                fail("Case variants of the reserved recovery namespace must also be rejected.")
+            } catch (_: SecurityException) { }
             val tooLong = List(60) { "a".repeat(80) }.joinToString("/") + "/out.zip"
             try {
                 WorkspaceArchive.createZip(storage, listOf("source.txt"), tooLong)
@@ -115,7 +128,7 @@ class WorkspaceArchiveTest {
             } catch (_: SecurityException) { }
             val output = ByteArrayOutputStream()
             ZipOutputStream(output).use { zip ->
-                zip.putNextEntry(ZipEntry("nested/.astracode-backup-orphan"))
+                zip.putNextEntry(ZipEntry("nested/.ASTRACODE-backup-orphan"))
                 zip.write("reserved".toByteArray())
                 zip.closeEntry()
             }
