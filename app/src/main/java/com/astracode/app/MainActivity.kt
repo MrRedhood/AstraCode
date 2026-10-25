@@ -1075,25 +1075,18 @@ private fun FileManagementScreen(
         }
     }
 
-    fun removeWorkspacePathReferences(removedPath: String) {
-        val removedTabs = editorTabs.filter {
-            it.path == removedPath || (findWorkspaceEntry(storage, removedPath)?.type == FileEntryType.DIRECTORY &&
-                it.path.startsWith(removedPath + "/"))
-        }
+    fun removeWorkspacePathReferences(removedPath: String, wasDirectory: Boolean) {
+        fun isRemovedPath(path: String): Boolean =
+            path == removedPath || (wasDirectory && path.startsWith(removedPath + "/"))
+        val removedTabs = editorTabs.filter { isRemovedPath(it.path) }
         removedTabs.forEach { clearEditorAutosaveSchedule(it.path) }
-        editorTabs = editorTabs.filterNot { tab -> removedTabs.any { it.path == tab.path } }
-        if (openedFile != null && (
-                openedFile == removedPath ||
-                    (findWorkspaceEntry(storage, removedPath)?.type == FileEntryType.DIRECTORY &&
-                        openedFile!!.startsWith(removedPath + "/"))
-            )
-        ) {
-            openedFile = null
-        }
-        if (pendingEditorTabClosePath != null && removedTabs.any { it.path == pendingEditorTabClosePath }) {
+        editorTabs = editorTabs.filterNot { tab -> isRemovedPath(tab.path) }
+        if (openedFile?.let(::isRemovedPath) == true) openedFile = null
+        if (pendingEditorTabClosePath?.let(::isRemovedPath) == true) {
             pendingEditorTabClosePath = null
             showEditorTabDiscardDialog = false
         }
+        selectedPaths = selectedPaths.filterNotTo(linkedSetOf(), ::isRemovedPath)
     }
 
     fun moveWorkspaceEntryToDirectory(entry: FileEntry, destinationDirectory: String) {
@@ -1820,9 +1813,9 @@ private fun FileManagementScreen(
     }
 
     val hasModalUi = showNewFileDialog || showNewFolderDialog || pendingDeletePath != null ||
-        operationEntry != null || syncEntry != null || showDiscardDialog || showEditorTabDiscardDialog || showWorkspaceManager ||
-        showSavedDocuments || showWorkspaceSafety || bulkActionKind != null ||
-        bulkActionInProgress
+        contextMenuEntry != null || changePathEntry != null || operationEntry != null || syncEntry != null ||
+        showDiscardDialog || showEditorTabDiscardDialog || showWorkspaceManager || showSavedDocuments ||
+        showWorkspaceSafety || bulkActionKind != null || bulkActionInProgress
     val canNavigateBack = inspectorEntry != null || openedFile != null || selectedDocument != null ||
         activeMainScreen != Screen.Files || screenBackStack.isNotEmpty() || currentDirectory.isNotEmpty() || selectionMode
     BackHandler(enabled = !hasModalUi && canNavigateBack) {
@@ -1935,10 +1928,12 @@ private fun FileManagementScreen(
                         onAddWorkspace = { requestWorkspaceSwitch(onAddWorkspace) },
                         onManageWorkspaces = { showWorkspaceManager = true },
                         onNewFile = {
+                            newItemParentDirectory = currentDirectory
                             newFileName = ""
                             showNewFileDialog = true
                         },
                         onNewFolder = {
+                            newItemParentDirectory = currentDirectory
                             newFolderName = ""
                             showNewFolderDialog = true
                         },
@@ -1965,6 +1960,9 @@ private fun FileManagementScreen(
                         onOpenEntry = ::openWorkspaceEntry,
                         onInspectEntry = { path ->
                             inspectorEntry = runCatching { findWorkspaceEntry(storage, path) }.getOrNull()
+                        },
+                        onLongPressEntry = { path ->
+                            contextMenuEntry = runCatching { findWorkspaceEntry(storage, path) }.getOrNull()
                         },
                         onGoUp = {
                             requestNavigation {
@@ -2230,13 +2228,13 @@ private fun FileManagementScreen(
             confirmLabel = "Create file",
             confirmTestTag = "confirm-create-file",
             onValueChange = { newFileName = it },
-            onDismiss = { showNewFileDialog = false },
+            onDismiss = { showNewFileDialog = false; newItemParentDirectory = null },
             onConfirm = {
                 val name = normalizeNewTextFileName(newFileName)
                 if (!isSimpleName(name)) {
                     notify("Enter a file name without folders or path segments.")
                 } else {
-                    val path = joinPath(currentDirectory, name)
+                    val path = joinPath(newItemParentDirectory ?: currentDirectory, name)
                     scope.launch {
                         val result = runCatchingCancellable {
                             withContext(Dispatchers.IO) {
@@ -2248,6 +2246,7 @@ private fun FileManagementScreen(
                         }
                         result.onSuccess { saved ->
                             showNewFileDialog = false
+                            newItemParentDirectory = null
                             openFile(saved.path, 0L)
                             refreshKey++
                             scope.launch {
@@ -2276,19 +2275,20 @@ private fun FileManagementScreen(
             confirmLabel = "Create folder",
             confirmTestTag = "confirm-create-folder",
             onValueChange = { newFolderName = it },
-            onDismiss = { showNewFolderDialog = false },
+            onDismiss = { showNewFolderDialog = false; newItemParentDirectory = null },
             onConfirm = {
                 val name = newFolderName.trim()
                 if (!isSimpleName(name)) {
                     notify("Enter a folder name without path segments.")
                 } else {
-                    val path = joinPath(currentDirectory, name)
+                    val path = joinPath(newItemParentDirectory ?: currentDirectory, name)
                     scope.launch {
                         val result = runCatchingCancellable {
                             withContext(Dispatchers.IO) { storage.createDirectory(path) }
                         }
                         result.onSuccess {
                             showNewFolderDialog = false
+                            newItemParentDirectory = null
                             refreshKey++
                             notify("Created folder " + name)
                             scope.launch {
