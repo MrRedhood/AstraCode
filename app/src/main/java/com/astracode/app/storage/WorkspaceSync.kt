@@ -16,6 +16,17 @@ internal data class WorkspaceSyncLink(
     val externalPath: String,
 )
 
+/** Reject stale or malformed persisted links before they can trigger a filesystem operation. */
+internal fun normalizeWorkspaceSyncLink(link: WorkspaceSyncLink): WorkspaceSyncLink? {
+    if (link.externalTreeUri.isBlank()) return null
+    return runCatching {
+        link.copy(
+            privatePath = WorkspaceSafety.validatePath(link.privatePath),
+            externalPath = WorkspaceSafety.validatePath(link.externalPath),
+        )
+    }.getOrNull()
+}
+
 private const val WORKSPACE_SYNC_LINKS_KEY = "workspace_sync_links"
 
 internal fun loadWorkspaceSyncLinks(context: Context): List<WorkspaceSyncLink> {
@@ -29,14 +40,15 @@ internal fun loadWorkspaceSyncLinks(context: Context): List<WorkspaceSyncLink> {
             val uri = item.optString("externalTreeUri")
             val remote = item.optString("externalPath")
             if (local.isBlank() || uri.isBlank() || remote.isBlank()) null
-            else WorkspaceSyncLink(local, uri, remote)
+            else normalizeWorkspaceSyncLink(WorkspaceSyncLink(local, uri, remote))
         }
     }.getOrDefault(emptyList())
 }
 
 internal fun saveWorkspaceSyncLinks(context: Context, links: List<WorkspaceSyncLink>) {
     val array = JSONArray()
-    links.distinctBy { Triple(it.privatePath, it.externalTreeUri, it.externalPath) }
+    links.mapNotNull(::normalizeWorkspaceSyncLink)
+        .distinctBy { Triple(it.privatePath, it.externalTreeUri, it.externalPath) }
         .forEach { link ->
             array.put(JSONObject()
                 .put("privatePath", link.privatePath)

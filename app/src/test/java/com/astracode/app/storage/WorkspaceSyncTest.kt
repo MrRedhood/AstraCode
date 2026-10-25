@@ -38,6 +38,30 @@ class WorkspaceSyncTest {
     }
 
     @Test
+    fun persistedSyncLinksRejectReservedAndUnsafePaths() {
+        val normal = WorkspaceSyncLink("project", "content://workspace-tree", "project")
+        assertEquals(normal, normalizeWorkspaceSyncLink(normal))
+        assertEquals(
+            null,
+            normalizeWorkspaceSyncLink(
+                WorkspaceSyncLink(".ASTRACODE-TRASH", "content://workspace-tree", "project"),
+            ),
+        )
+        assertEquals(
+            null,
+            normalizeWorkspaceSyncLink(
+                WorkspaceSyncLink("project", "content://workspace-tree", "folder/../outside"),
+            ),
+        )
+        assertEquals(
+            null,
+            normalizeWorkspaceSyncLink(
+                WorkspaceSyncLink("project", "", "project"),
+            ),
+        )
+    }
+
+    @Test
     fun syncDoesNotCopyOrDeleteReservedRecoveryFilesInsideFolders() {
         val sourceRoot = temporaryFolder.newFolder("source-reserved").toPath()
         val targetRoot = temporaryFolder.newFolder("target-reserved").toPath()
