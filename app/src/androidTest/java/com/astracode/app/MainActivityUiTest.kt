@@ -971,4 +971,95 @@ class MainActivityUiTest {
         assertTrue(Files.isDirectory(workspace.resolve("existing/created-destination")))
     }
 
+
+    @Test
+    fun creationRejectsReservedNamesIgnoringCase() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workspace = context.filesDir.toPath().resolve("workspace")
+
+        composeRule.onNodeWithTag("workspace-create-menu-button").performClick()
+        composeRule.onNodeWithTag("new-folder-button").performClick()
+        composeRule.onNodeWithTag("new-folder-name-input").performTextInput(".ASTRACODE-trash")
+        composeRule.onNodeWithTag("confirm-create-folder").performClick()
+
+        assertEquals(false, Files.exists(workspace.resolve(".ASTRACODE-trash")))
+        composeRule.onNodeWithTag("new-folder-name-input").assertIsDisplayed()
+    }
+
+    @Test
+    fun renameSavesDirtyDraftBeforeChangingPath() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workspace = context.filesDir.toPath().resolve("workspace")
+        val original = workspace.resolve("README.txt")
+        val renamed = workspace.resolve("README-renamed.txt")
+        val draft = "Draft must survive a rename"
+        Files.write(original, "Original text".toByteArray(Charsets.UTF_8))
+        composeRule.activityRule.scenario.recreate()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("entry-README.txt").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("entry-README.txt").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("file-editor-input").assertTextContains("Original text", substring = true)
+            }.isSuccess
+        }
+        composeRule.onNodeWithTag("file-editor-input").performTextReplacement(draft)
+        composeRule.onNodeWithTag("editor-back").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("entry-README.txt").assertIsDisplayed() }.isSuccess
+        }
+
+        composeRule.onNodeWithTag("entry-README.txt").performTouchInput { longClick() }
+        composeRule.onNodeWithTag("workspace-context-rename").performClick()
+        composeRule.onNodeWithTag("workspace-operation-input").performTextReplacement("README-renamed.txt")
+        composeRule.onNodeWithTag("confirm-workspace-operation").performClick()
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            Files.isRegularFile(renamed) &&
+                String(Files.readAllBytes(renamed), Charsets.UTF_8) == draft &&
+                !Files.exists(original)
+        }
+        // Give the autosave debounce a chance to expose any stale-path write.
+        Thread.sleep(700)
+        assertEquals(draft, String(Files.readAllBytes(renamed), Charsets.UTF_8))
+        assertEquals(false, Files.exists(original))
+    }
+
+    @Test
+    fun bulkDeletePreservesDirtyEditorContentsInTrash() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workspace = context.filesDir.toPath().resolve("workspace")
+        val original = workspace.resolve("README.txt")
+        val draft = "Unsaved content that must remain recoverable"
+        Files.write(original, "Original text".toByteArray(Charsets.UTF_8))
+        composeRule.activityRule.scenario.recreate()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("entry-README.txt").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("entry-README.txt").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("file-editor-input").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("file-editor-input").performTextReplacement(draft)
+        composeRule.onNodeWithTag("editor-back").performClick()
+
+        composeRule.onNodeWithTag("workspace-toggle-selection").performClick()
+        composeRule.onNodeWithTag("workspace-select-README.txt").performClick()
+        composeRule.onNodeWithTag("workspace-bulk-delete").performClick()
+        composeRule.onNodeWithTag("confirm-workspace-bulk-action").performClick()
+
+        val trash = workspace.resolve(".astracode-trash/items")
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            !Files.exists(original) && Files.isDirectory(trash) &&
+                Files.walk(trash).use { paths ->
+                    paths.filter { it.fileName.toString() == "payload" && Files.isRegularFile(it) }
+                        .anyMatch { String(Files.readAllBytes(it), Charsets.UTF_8) == draft }
+                }
+        }
+        assertEquals(false, Files.exists(original))
+    }
+
 }
