@@ -79,6 +79,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -3345,6 +3346,14 @@ private fun EditorPanel(
     var replacementText by remember(path) { mutableStateOf("") }
     var editorToolMessage by remember(path) { mutableStateOf("") }
     val editorFocusRequester = remember(path) { FocusRequester() }
+    var previousVirtualizedEditorMode by remember(path) { mutableStateOf(useVirtualizedEditor) }
+    LaunchedEffect(useVirtualizedEditor) {
+        if (previousVirtualizedEditorMode != useVirtualizedEditor) {
+            withFrameNanos { }
+            runCatching { editorFocusRequester.requestFocus() }
+            previousVirtualizedEditorMode = useVirtualizedEditor
+        }
+    }
     val sourceLineCount = remember(editorFieldValue.text.takeUnless { useVirtualizedEditor }) {
         if (useVirtualizedEditor) 1 else editorFieldValue.text.count { it == '\n' } + 1
     }
