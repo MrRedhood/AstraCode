@@ -3326,10 +3326,13 @@ private fun EditorPanel(
     onSave: () -> Unit,
 ) {
     var editorFieldValue by remember(path) { mutableStateOf(TextFieldValue(text)) }
+    val useVirtualizedEditor = shouldUseVirtualizedEditor(editorFieldValue.text.length)
     var wordWrapEnabled by remember(path) { mutableStateOf(true) }
     val editorHorizontalScrollState = rememberScrollState()
-    var collapsedFoldStarts by remember(path, editorFieldValue.text) { mutableStateOf(emptySet<Int>()) }
-    val foldableRegions = remember(editorFieldValue.text) { findCodeFoldRegions(editorFieldValue.text) }
+    var collapsedFoldStarts by remember(path, useVirtualizedEditor) { mutableStateOf(emptySet<Int>()) }
+    val foldableRegions = remember(editorFieldValue.text.takeUnless { useVirtualizedEditor }) {
+        if (useVirtualizedEditor) emptyList() else findCodeFoldRegions(editorFieldValue.text)
+    }
     val visibleFoldableRegions = foldableRegions.filter { candidate ->
         foldableRegions.none { parent ->
             parent.startLine in collapsedFoldStarts &&
@@ -3342,8 +3345,8 @@ private fun EditorPanel(
     var replacementText by remember(path) { mutableStateOf("") }
     var editorToolMessage by remember(path) { mutableStateOf("") }
     val editorFocusRequester = remember(path) { FocusRequester() }
-    val sourceLineCount = remember(editorFieldValue.text) {
-        editorFieldValue.text.count { it == '\n' } + 1
+    val sourceLineCount = remember(editorFieldValue.text.takeUnless { useVirtualizedEditor }) {
+        if (useVirtualizedEditor) 1 else editorFieldValue.text.count { it == '\n' } + 1
     }
     val sourceLineCountState = rememberUpdatedState(sourceLineCount)
     var syntaxHighlightLines by remember(path) { mutableStateOf(1..35) }
@@ -3595,6 +3598,38 @@ private fun EditorPanel(
             focusedLabelColor = Mint,
             unfocusedLabelColor = MutedText,
         )
+        if (useVirtualizedEditor) {
+            VirtualizedCodeEditor(
+                value = editorFieldValue,
+                path = path,
+                onValueChange = { newValue ->
+                    if (onTextChange(newValue.text)) {
+                        editorFieldValue = newValue
+                        true
+                    } else {
+                        editorFieldValue = TextFieldValue(
+                            text,
+                            selection = TextRange(newValue.selection.end.coerceIn(0, text.length)),
+                        )
+                        editorToolMessage = "Edit blocked by the editor memory limit."
+                        false
+                    }
+                },
+                readOnly = readOnly,
+                wordWrapEnabled = wordWrapEnabled,
+                focusRequester = editorFocusRequester,
+                interactionSource = editorInteractionSource,
+                textColor = PrimaryText,
+                cursorColor = Mint,
+                lineNumberColor = MutedText,
+                focusColor = Mint,
+                borderColor = Border,
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                label = "File contents",
+                placeholder = "Start writing…",
+                testTag = "file-editor-input",
+            )
+        } else {
         BasicTextField(
             value = editorFieldValue,
             onValueChange = { newValue ->
@@ -3655,6 +3690,8 @@ private fun EditorPanel(
                 )
             },
         )
+
+        }
         Spacer(Modifier.height(10.dp))
         Text(
             "UTF-8 text • save guarantees depend on the selected storage provider.",
