@@ -89,9 +89,11 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.platform.testTag
@@ -4062,6 +4064,14 @@ private fun EditorPanel(
                 }
             }
         }
+        if (!showFindReplace && editorToolMessage.isNotEmpty()) {
+            Text(
+                editorToolMessage,
+                color = MutedText,
+                fontSize = 11.sp,
+                modifier = Modifier.testTag("editor-find-message"),
+            )
+        }
         TextButton(
             onClick = { wordWrapEnabled = !wordWrapEnabled },
             modifier = Modifier.testTag("editor-word-wrap-toggle"),
@@ -4100,6 +4110,7 @@ private fun EditorPanel(
             }
         }
         val editorInteractionSource = remember(path) { MutableInteractionSource() }
+        val clipboardManager = LocalClipboardManager.current
         val editorColors = OutlinedTextFieldDefaults.colors(
             focusedTextColor = PrimaryText,
             unfocusedTextColor = PrimaryText,
@@ -4109,8 +4120,9 @@ private fun EditorPanel(
             focusedLabelColor = Mint,
             unfocusedLabelColor = MutedText,
         )
-        if (useVirtualizedEditor) {
-            VirtualizedCodeEditor(
+        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+            if (useVirtualizedEditor) {
+                VirtualizedCodeEditor(
                 value = editorFieldValue,
                 path = path,
                 onValueChange = { newValue ->
@@ -4135,7 +4147,7 @@ private fun EditorPanel(
                 lineNumberColor = MutedText,
                 focusColor = Mint,
                 borderColor = Border,
-                modifier = Modifier.fillMaxWidth().weight(1f),
+                modifier = Modifier.fillMaxSize(),
                 label = "File contents",
                 placeholder = "Start writing…",
                 testTag = "file-editor-input",
@@ -4170,8 +4182,7 @@ private fun EditorPanel(
                     .onGloballyPositioned { coordinates ->
                         viewportTracker.updateViewportHeight(coordinates.size.height.toFloat())
                     }
-                    .fillMaxWidth()
-                    .weight(1f)
+                    .fillMaxSize()
                     .then(
                         if (wordWrapEnabled) Modifier
                         else Modifier.horizontalScroll(editorHorizontalScrollState),
@@ -4202,6 +4213,38 @@ private fun EditorPanel(
                 },
             )
     
+        }
+
+            FloatingEditorTools(
+                editorKey = path,
+                modifier = Modifier.fillMaxSize(),
+                onAction = { action ->
+                    val currentValue = editorFieldValue
+                    val selectionOrCopyAction = action == EditorToolAction.SMART_SELECT ||
+                        action == EditorToolAction.SELECT_CURRENT_LINE ||
+                        action == EditorToolAction.CONTEXT_CAPSULE ||
+                        action == EditorToolAction.SELECTION_PULSE
+                    if (readOnly && !selectionOrCopyAction) {
+                        editorToolMessage = "This file is read-only."
+                    } else {
+                        val outcome = applyEditorTool(action, currentValue, path)
+                        outcome.clipboardText?.let { clipboardManager.setText(AnnotatedString(it)) }
+                        val accepted = outcome.value.text == currentValue.text || onTextChange(outcome.value.text)
+                        if (accepted) {
+                            editorFieldValue = outcome.value
+                            if (outcome.value.text != currentValue.text) selectedFindRange = null
+                            editorToolMessage = outcome.message
+                        } else {
+                            editorToolMessage = if (readOnly) {
+                                "This file is read-only."
+                            } else {
+                                "Edit blocked by the editor memory limit."
+                            }
+                        }
+                        runCatching { editorFocusRequester.requestFocus() }
+                    }
+                },
+            )
         }
         Spacer(Modifier.height(10.dp))
         Text(
