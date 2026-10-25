@@ -65,7 +65,8 @@ class MainActivityUiTest {
     fun canCreateEditSaveAndReopenAWorkspaceFile() {
         composeRule.onNodeWithText("AstraCode").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Add workspace folder").assertIsDisplayed()
-        composeRule.onNodeWithText("New file").performClick()
+        composeRule.onNodeWithTag("workspace-create-menu-button").performClick()
+        composeRule.onNodeWithTag("new-file-button").performClick()
         composeRule.onNodeWithTag("new-file-name-input").performTextInput("Hello.kt")
         composeRule.onNodeWithTag("confirm-create-file").performClick()
 
@@ -360,7 +361,8 @@ class MainActivityUiTest {
 
     @Test
     fun extensionlessNewFilesBecomeTxtAndInspectorShowsReadableFormat() {
-        composeRule.onNodeWithText("New file").performClick()
+        composeRule.onNodeWithTag("workspace-create-menu-button").performClick()
+        composeRule.onNodeWithTag("new-file-button").performClick()
         composeRule.onNodeWithTag("new-file-name-input").performTextInput("my file (1)")
         composeRule.onNodeWithTag("confirm-create-file").performClick()
 
@@ -891,6 +893,82 @@ class MainActivityUiTest {
             String(Files.readAllBytes(sample), Charsets.UTF_8) == "val answer = 1\nval item = 2\n"
         }
         assertEquals("val answer = 1\nval item = 2\n", String(Files.readAllBytes(sample), Charsets.UTF_8))
+    }
+
+
+    @Test
+    fun plusMenuAndFolderLongPressCanCreateNestedFilesAndFolders() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workspace = context.filesDir.toPath().resolve("workspace")
+
+        composeRule.onNodeWithTag("workspace-create-menu-button").performClick()
+        composeRule.onNodeWithTag("new-folder-button").performClick()
+        composeRule.onNodeWithTag("new-folder-name-input").performTextInput("parent")
+        composeRule.onNodeWithTag("confirm-create-folder").performClick()
+        val parent = workspace.resolve("parent")
+        composeRule.waitUntil(timeoutMillis = 5_000) { Files.isDirectory(parent) }
+        composeRule.onNodeWithTag("entry-parent").assertIsDisplayed()
+
+        composeRule.onNodeWithTag("entry-parent").performTouchInput { longClick() }
+        composeRule.onNodeWithTag("workspace-context-new-folder").performClick()
+        composeRule.onNodeWithTag("new-folder-name-input").performTextInput("child")
+        composeRule.onNodeWithTag("confirm-create-folder").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) { Files.isDirectory(parent.resolve("child")) }
+
+        composeRule.onNodeWithTag("entry-parent").performTouchInput { longClick() }
+        composeRule.onNodeWithTag("workspace-context-new-file").performClick()
+        composeRule.onNodeWithTag("new-file-name-input").performTextInput("Inside.kt")
+        composeRule.onNodeWithTag("confirm-create-file").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) { Files.isRegularFile(parent.resolve("Inside.kt")) }
+        assertTrue(Files.isDirectory(parent.resolve("child")))
+        assertTrue(Files.isRegularFile(parent.resolve("Inside.kt")))
+    }
+
+    @Test
+    fun changePathMovesToTappedFolderAndCreateNewFolderMovesAutomatically() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workspace = context.filesDir.toPath().resolve("workspace")
+
+        composeRule.onNodeWithTag("workspace-create-menu-button").performClick()
+        composeRule.onNodeWithTag("new-folder-button").performClick()
+        composeRule.onNodeWithTag("new-folder-name-input").performTextInput("existing")
+        composeRule.onNodeWithTag("confirm-create-folder").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) { Files.isDirectory(workspace.resolve("existing")) }
+
+        composeRule.onNodeWithTag("workspace-create-menu-button").performClick()
+        composeRule.onNodeWithTag("new-file-button").performClick()
+        composeRule.onNodeWithTag("new-file-name-input").performTextInput("Moved.txt")
+        composeRule.onNodeWithTag("confirm-create-file").performClick()
+        val original = workspace.resolve("Moved.txt")
+        composeRule.waitUntil(timeoutMillis = 10_000) { Files.isRegularFile(original) }
+        composeRule.onNodeWithTag("editor-back").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("entry-Moved.txt").assertIsDisplayed() }.isSuccess
+        }
+
+        composeRule.onNodeWithTag("entry-Moved.txt").performTouchInput { longClick() }
+        composeRule.onNodeWithTag("workspace-context-rename").assertIsDisplayed()
+        composeRule.onNodeWithTag("workspace-context-delete").assertIsDisplayed()
+        composeRule.onNodeWithTag("workspace-context-change-path").performClick()
+        composeRule.onNodeWithTag("change-path-destination-existing").performClick()
+        val moved = workspace.resolve("existing/Moved.txt")
+        composeRule.waitUntil(timeoutMillis = 10_000) { Files.isRegularFile(moved) && !Files.exists(original) }
+        assertEquals(false, Files.exists(original))
+
+        composeRule.onNodeWithTag("entry-existing").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("entry-Moved.txt").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("entry-Moved.txt").performTouchInput { longClick() }
+        composeRule.onNodeWithTag("workspace-context-change-path").performClick()
+        composeRule.onNodeWithTag("change-path-new-folder").performClick()
+        composeRule.onNodeWithTag("change-path-new-folder-name").performTextInput("created-destination")
+        composeRule.onNodeWithTag("change-path-create-folder-and-move").performClick()
+        val movedAgain = workspace.resolve("existing/created-destination/Moved.txt")
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            Files.isRegularFile(movedAgain) && !Files.exists(moved)
+        }
+        assertTrue(Files.isDirectory(workspace.resolve("existing/created-destination")))
     }
 
 }
