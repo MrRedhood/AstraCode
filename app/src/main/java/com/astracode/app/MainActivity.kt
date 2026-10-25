@@ -4232,7 +4232,6 @@ private fun EditorPanel(
                         val accepted = outcome.value.text == currentValue.text || onTextChange(outcome.value.text)
                         if (accepted) {
                             editorFieldValue = outcome.value
-                            if (outcome.value.text != currentValue.text) selectedFindRange = null
                             editorToolMessage = outcome.message
                         } else {
                             editorToolMessage = if (readOnly) {
