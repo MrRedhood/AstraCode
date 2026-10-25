@@ -1264,7 +1264,6 @@ private fun FileManagementScreen(
     }
 
     fun startBulkAction(kind: String) {
-        // Selection is limited to visible children in this folder, so no storage traversal is needed here.
         val paths = selectedPaths.toList()
         if (paths.isEmpty()) {
             notify("Select at least one file or folder.")
@@ -1282,7 +1281,7 @@ private fun FileManagementScreen(
             }
         } else ""
         if (kind == "zip" && !isSimpleName(archiveName)) {
-            notify("Enter a ZIP file name without folder paths.")
+            notify("Enter a ZIP file name without path segments or reserved system names.")
             return
         }
         if (kind in setOf("copy", "move") && !isSafeWorkspaceRelativePath(input, allowEmpty = true)) {
@@ -1290,16 +1289,62 @@ private fun FileManagementScreen(
             return
         }
 
+        val requestedStorage = storage
+        val requestedWorkspaceId = activeWorkspaceId
+        val requestedDirectory = currentDirectory
         scope.launch {
             bulkActionInProgress = true
             var completed = 0
+            var sourceTypes: Map<String, FileEntryType> = emptyMap()
+            val completedMoves = mutableListOf<Pair<String, String>>()
+            val removedPaths = linkedSetOf<String>()
             try {
+                sourceTypes = withContext(Dispatchers.IO) {
+                    paths.associateWith { path ->
+                        val source = findWorkspaceEntry(requestedStorage, path)
+                            ?: throw java.io.IOException("Selected item no longer exists: $path")
+                        source.type
+                    }
+                }
+
+                // Save dirty buffers before copy, move, ZIP-and-delete, or Trash. Otherwise the
+                // disk version may be stale, or an autosave can recreate a file after deletion.
+                val affectedTabs = editorTabs.filter { tab ->
+                    sourceTypes.any { (sourcePath, type) ->
+                        tab.path == sourcePath ||
+                            (type == FileEntryType.DIRECTORY && tab.path.startsWith(sourcePath + "/"))
+                    }
+                }
+                if (affectedTabs.any { it.isLoading }) {
+                    notify("Wait for selected files to finish opening before running this action.")
+                    return@launch
+                }
+                for (tab in affectedTabs.filter { it.text != it.savedText }) {
+                    val saved = saveWorkspaceEditorTab(tab.path, tab.text)
+                    if (saved.isFailure) {
+                        notify(
+                            "Could not save " + fileName(tab.path) + " before the bulk action: " +
+                                (saved.exceptionOrNull()?.message ?: "unknown save error"),
+                        )
+                        return@launch
+                    }
+                    saved.getOrNull()?.syncError?.let { warning ->
+                        notify("Saved locally, but linked copy sync failed: $warning")
+                    }
+                }
+                if (storage !== requestedStorage || activeWorkspaceId != requestedWorkspaceId) {
+                    notify("The active workspace changed. Start the file action again.")
+                    return@launch
+                }
+
                 when (kind) {
                     "zip" -> {
-                        val outputPath = joinPath(currentDirectory, archiveName)
+                        val outputPath = joinPath(requestedDirectory, archiveName)
                         withContext(Dispatchers.IO) {
-                            WorkspaceArchive.moveToZip(storage, paths, outputPath, currentDirectory)
+                            WorkspaceArchive.moveToZip(requestedStorage, paths, outputPath, requestedDirectory)
                         }
+                        // moveToZip returns after the selected originals have been removed.
+                        removedPaths += paths
                         completed = 1
                         paths.sortedByDescending { it.count { ch -> ch == '/' } }.forEach { path ->
                             syncLinks = propagateChangedPath(path, deleted = true)
@@ -1310,8 +1355,9 @@ private fun FileManagementScreen(
                     "delete" -> {
                         for (path in paths.sortedByDescending { it.count { ch -> ch == '/' } }) {
                             withContext(Dispatchers.IO) {
-                                WorkspaceSafety.moveToTrash(storage, path)
+                                WorkspaceSafety.moveToTrash(requestedStorage, path)
                             }
+                            removedPaths += path
                             completed++
                         }
                         notify(
@@ -1323,16 +1369,14 @@ private fun FileManagementScreen(
                         val destinationFolder = input
                         val targetPaths = withContext(Dispatchers.IO) {
                             if (destinationFolder.isNotEmpty()) {
-                                val folder = findWorkspaceEntry(storage, destinationFolder)
+                                val folder = findWorkspaceEntry(requestedStorage, destinationFolder)
                                     ?: throw IllegalArgumentException("Destination folder does not exist: $destinationFolder")
                                 if (folder.type != FileEntryType.DIRECTORY) {
                                     throw IllegalArgumentException("Destination is not a folder: $destinationFolder")
                                 }
-                            } else {
-                                storage.listDirectory("")
                             }
                             paths.map { sourcePath ->
-                                val source = findWorkspaceEntry(storage, sourcePath)
+                                val source = findWorkspaceEntry(requestedStorage, sourcePath)
                                     ?: throw IllegalArgumentException("Selected item no longer exists: $sourcePath")
                                 val destinationPath = joinPath(destinationFolder, fileName(sourcePath))
                                 if (destinationPath == sourcePath) {
@@ -1342,7 +1386,7 @@ private fun FileManagementScreen(
                                     isSameOrChildPath(destinationPath, sourcePath)) {
                                     throw IllegalArgumentException("A folder cannot be copied or moved into itself.")
                                 }
-                                if (storage.exists(destinationPath)) {
+                                if (requestedStorage.exists(destinationPath)) {
                                     throw IllegalArgumentException("Destination already exists: $destinationPath")
                                 }
                                 destinationPath
@@ -1351,17 +1395,18 @@ private fun FileManagementScreen(
                         paths.zip(targetPaths).forEach { (sourcePath, destinationPath) ->
                             withContext(Dispatchers.IO) {
                                 if (kind == "move") {
-                                    storage.move(sourcePath, destinationPath, replaceExisting = false)
+                                    requestedStorage.move(sourcePath, destinationPath, replaceExisting = false)
                                 } else {
                                     syncWorkspaceEntry(
-                                        storage,
+                                        requestedStorage,
                                         sourcePath,
-                                        storage,
+                                        requestedStorage,
                                         destinationPath,
                                         overwriteExisting = false,
                                     )
                                 }
                             }
+                            if (kind == "move") completedMoves += sourcePath to destinationPath
                             completed++
                             syncLinks = if (kind == "move") {
                                 propagateChangedPath(sourcePath, movedTo = destinationPath)
@@ -1373,11 +1418,30 @@ private fun FileManagementScreen(
                     }
                     else -> throw IllegalArgumentException("Unknown bulk action.")
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Exception) {
+                // ZIP creation can fail while removing originals. Keep tabs aligned with anything
+                // that has already disappeared instead of leaving dangling, autosaving tabs.
+                if (kind == "zip") {
+                    runCatching {
+                        withContext(Dispatchers.IO) {
+                            paths.filterNot { requestedStorage.exists(it) }
+                        }
+                    }.getOrDefault(emptyList()).forEach { removedPaths += it }
+                }
                 syncLinks = loadWorkspaceSyncLinks(context)
                 val partial = if (completed > 0) "$completed item(s) completed. " else ""
                 notify(partial + "Could not complete the action: " + (error.message ?: "unknown error"))
             } finally {
+                if (storage === requestedStorage && activeWorkspaceId == requestedWorkspaceId) {
+                    completedMoves.forEach { (sourcePath, destinationPath) ->
+                        updateWorkspacePathReferences(sourcePath, destinationPath)
+                    }
+                    removedPaths.forEach { path ->
+                        removeWorkspacePathReferences(path, sourceTypes[path] == FileEntryType.DIRECTORY)
+                    }
+                }
                 bulkActionInProgress = false
                 bulkActionKind = null
                 selectionMode = false
