@@ -82,19 +82,23 @@ internal fun syncWorkspaceEntry(
     targetPath: String,
     overwriteExisting: Boolean = true,
 ) {
-    val source = findEntry(sourceStorage, sourcePath)
-        ?: throw IOException("The sync source no longer exists: $sourcePath")
+    // Persisted sync links must not point into Trash, journals, temp files,
+    // or other reserved recovery data.
+    val safeSourcePath = WorkspaceSafety.validatePath(sourcePath)
+    val safeTargetPath = WorkspaceSafety.validatePath(targetPath)
+    val source = findEntry(sourceStorage, safeSourcePath)
+        ?: throw IOException("The sync source no longer exists: $safeSourcePath")
     if (source.type == FileEntryType.SYMBOLIC_LINK || source.type == FileEntryType.OTHER) {
-        throw IOException("This item type cannot be synced safely: $sourcePath")
+        throw IOException("This item type cannot be synced safely: $safeSourcePath")
     }
-    if (sourceStorage === targetStorage && sourcePath == targetPath) {
+    if (sourceStorage === targetStorage && safeSourcePath == safeTargetPath) {
         throw IOException("Source and destination are the same item.")
     }
-    val target = findEntry(targetStorage, targetPath)
+    val target = findEntry(targetStorage, safeTargetPath)
     if (target != null && !overwriteExisting) {
-        throw IOException("The destination already exists: $targetPath")
+        throw IOException("The destination already exists: $safeTargetPath")
     }
-    mirrorNode(sourceStorage, source, targetStorage, targetPath, target, overwriteExisting, 0)
+    mirrorNode(sourceStorage, source, targetStorage, safeTargetPath, target, overwriteExisting, 0)
 }
 
 private fun mirrorNode(
