@@ -1973,6 +1973,7 @@ private fun FileManagementScreen(
                     }
                 },
                 onSave = ::saveFile,
+                onOpenWorkspaceTree = { showWorkspaceTree = true },
             )
             Divider(color = Border, thickness = 1.dp)
 
