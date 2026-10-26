@@ -3182,6 +3182,7 @@ private fun AppTopBar(
     canSave: Boolean = true,
     onBack: () -> Unit,
     onSave: () -> Unit,
+    onOpenWorkspaceTree: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -3190,6 +3191,12 @@ private fun AppTopBar(
             .padding(horizontal = 18.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        IconButton(
+            onClick = onOpenWorkspaceTree,
+            modifier = Modifier.testTag("open-workspace-tree-button"),
+        ) {
+            Icon(Icons.Filled.Menu, contentDescription = "Open workspace tree")
+        }
         if (openedFile != null) {
             IconButton(onClick = onBack, modifier = Modifier.testTag("editor-back")) {
                 Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
