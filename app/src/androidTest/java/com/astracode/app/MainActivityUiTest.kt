@@ -1,6 +1,7 @@
 package com.astracode.app
 
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.semantics.SemanticsProperties
 
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -64,6 +65,12 @@ class MainActivityUiTest {
         composeRule.activityRule.scenario.recreate()
     }
 
+    private fun currentEditableEditorText(): String = composeRule
+        .onNodeWithTag("file-editor-input")
+        .fetchSemanticsNode()
+        .config[SemanticsProperties.EditableText]
+        .text
+
     @Test
     fun canCreateEditSaveAndReopenAWorkspaceFile() {
         composeRule.onNodeWithText("AstraCode").assertIsDisplayed()
@@ -96,6 +103,42 @@ class MainActivityUiTest {
         composeRule.onNodeWithTag("file-editor-input").assertIsDisplayed()
         composeRule.onNodeWithTag("file-editor-input")
             .assertTextContains("fun main() = println(\"AstraCode\")", substring = true)
+    }
+
+    @Test
+    fun kotlinAutocompleteSuggestsAndAppliesThroughTheWorkspaceEditor() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workspace = context.filesDir.toPath().resolve("workspace")
+        Files.createDirectories(workspace)
+        val sourceFile = workspace.resolve("Completion.kt")
+        Files.write(sourceFile, byteArrayOf())
+        composeRule.activityRule.scenario.recreate()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("workspace-file-list").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("workspace-file-list")
+            .performScrollToNode(hasTestTag("entry-Completion.kt"))
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("entry-Completion.kt").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("entry-Completion.kt").performClick()
+        val editor = composeRule.onNodeWithTag("file-editor-input")
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { editor.assertIsDisplayed() }.isSuccess
+        }
+        editor.performClick().performTextInput("fun pri")
+        composeRule.onNodeWithTag("editor-completion-println").assertIsDisplayed()
+        composeRule.onNodeWithTag("editor-completion-println").performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { assertEquals("1 │ fun println", currentEditableEditorText()) }.isSuccess
+        }
+        assertEquals("1 │ fun println", currentEditableEditorText())
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            String(Files.readAllBytes(sourceFile), Charsets.UTF_8) == "fun println"
+        }
+        assertEquals("fun println", String(Files.readAllBytes(sourceFile), Charsets.UTF_8))
     }
 
 
@@ -137,19 +180,13 @@ class MainActivityUiTest {
             .performScrollToNode(hasTestTag("editor-tab-README.txt"))
         composeRule.onNodeWithTag("editor-tab-README.txt").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
-            runCatching {
-                composeRule.onNodeWithTag("file-editor-input")
-                    .assertTextContains("README unsaved draft", substring = true)
-            }.isSuccess
+            runCatching { assertEquals("1 │ README unsaved draft", currentEditableEditorText()) }.isSuccess
         }
         composeRule.onNodeWithTag("editor-tabs")
             .performScrollToNode(hasTestTag("editor-tab-Main.kt"))
         composeRule.onNodeWithTag("editor-tab-Main.kt").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
-            runCatching {
-                composeRule.onNodeWithTag("file-editor-input")
-                    .assertTextContains("fun main() = 42", substring = true)
-            }.isSuccess
+            runCatching { assertEquals("1 │ fun main() = 42", currentEditableEditorText()) }.isSuccess
         }
         composeRule.onNodeWithTag("save-file-button").performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
@@ -286,6 +323,69 @@ class MainActivityUiTest {
         }
         composeRule.onNodeWithTag("editor-tab-close-WorkspaceClose.txt").assertIsDisplayed()
     }
+
+    @Test
+    fun switchingEditorTabsRestoresEachUnsavedDraft() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workspace = context.filesDir.toPath().resolve("workspace")
+        Files.createDirectories(workspace)
+        val firstFile = workspace.resolve("DraftOne.kt")
+        val secondFile = workspace.resolve("DraftTwo.kt")
+        Files.write(firstFile, "first saved".toByteArray(Charsets.UTF_8))
+        Files.write(secondFile, "second saved".toByteArray(Charsets.UTF_8))
+        composeRule.activityRule.scenario.recreate()
+
+        composeRule.onNodeWithTag("workspace-file-list")
+            .performScrollToNode(hasTestTag("entry-DraftOne.kt"))
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("entry-DraftOne.kt").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("entry-DraftOne.kt").performClick()
+        val editor = composeRule.onNodeWithTag("file-editor-input")
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { editor.assertTextContains("first saved", substring = true) }.isSuccess
+        }
+        editor.performTextReplacement("first unsaved draft")
+
+        composeRule.onNodeWithTag("editor-back").performClick()
+        composeRule.onNodeWithTag("workspace-file-list")
+            .performScrollToNode(hasTestTag("entry-DraftTwo.kt"))
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("entry-DraftTwo.kt").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("entry-DraftTwo.kt").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { editor.assertTextContains("second saved", substring = true) }.isSuccess
+        }
+        editor.performTextReplacement("second unsaved draft")
+
+        composeRule.onNodeWithTag("editor-tab-DraftOne.kt").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                assertEquals(
+                    "1 │ first unsaved draft",
+                    editor.fetchSemanticsNode().config[SemanticsProperties.EditableText].text,
+                )
+            }.isSuccess
+        }
+        composeRule.onNodeWithTag("editor-tab-DraftTwo.kt").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                assertEquals(
+                    "1 │ second unsaved draft",
+                    editor.fetchSemanticsNode().config[SemanticsProperties.EditableText].text,
+                )
+            }.isSuccess
+        }
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            String(Files.readAllBytes(firstFile), Charsets.UTF_8) == "first unsaved draft" &&
+                String(Files.readAllBytes(secondFile), Charsets.UTF_8) == "second unsaved draft"
+        }
+        assertEquals("first unsaved draft", String(Files.readAllBytes(firstFile), Charsets.UTF_8))
+        assertEquals("second unsaved draft", String(Files.readAllBytes(secondFile), Charsets.UTF_8))
+    }
+
     @Test
     fun editorKeeps25TabsAndAutoSavesOldestBeforeOpening26th() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext

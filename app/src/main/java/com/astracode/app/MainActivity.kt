@@ -4123,6 +4123,47 @@ private fun EditorPanel(
             focusedLabelColor = Mint,
             unfocusedLabelColor = MutedText,
         )
+        val completionValueAtRender = editorFieldValue
+        val completionPrefixRangeAtRender = if (
+            !readOnly && completionValueAtRender.selection.start == completionValueAtRender.selection.end
+        ) {
+            codeCompletionPrefixRange(
+                completionValueAtRender.text,
+                completionValueAtRender.selection.end,
+            )
+        } else {
+            null
+        }
+        val completionSuggestions = remember(
+            path, readOnly, editorFieldValue.text, editorFieldValue.selection,
+        ) {
+            if (completionPrefixRangeAtRender == null) {
+                emptyList()
+            } else {
+                codeCompletionSuggestions(
+                    sourceText = completionValueAtRender.text,
+                    path = path,
+                    caretOffset = completionValueAtRender.selection.end,
+                )
+            }
+        }
+        CodeCompletionRow(
+            suggestions = completionSuggestions,
+            onSelect = { suggestion ->
+                val completedValue = completionPrefixRangeAtRender?.let { range ->
+                    applyCodeCompletionAtRange(completionValueAtRender, suggestion, range)
+                }
+                if (completedValue != null) {
+                    if (onTextChange(completedValue.text)) {
+                        editorFieldValue = completedValue
+                        editorToolMessage = "Completed: $suggestion"
+                        runCatching { editorFocusRequester.requestFocus() }
+                    } else {
+                        editorToolMessage = "Completion blocked by the editor memory limit."
+                    }
+                }
+            },
+        )
         Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
             if (useVirtualizedEditor) {
                 VirtualizedCodeEditor(
