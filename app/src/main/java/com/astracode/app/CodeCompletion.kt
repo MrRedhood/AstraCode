@@ -23,6 +23,7 @@ import java.util.Locale
 private const val COMPLETION_SCAN_RADIUS = 32 * 1024
 private const val DEFAULT_COMPLETION_LIMIT = 8
 private val COMPLETION_IDENTIFIER = Regex("""[\p{L}_$][\p{L}\p{N}_$]*""")
+private val HYPHENATED_COMPLETION_IDENTIFIER = Regex("""(?:--)?[\p{L}_$][\p{L}\p{N}_$-]*""")
 
 private fun completionWords(value: String): Set<String> =
     value.split(Regex("\\s+")).filter { it.isNotBlank() }.toCollection(LinkedHashSet())
@@ -151,7 +152,12 @@ internal fun codeCompletionSuggestions(
     val caret = caretOffset.coerceIn(0, sourceText.length)
     val scanStart = (caret - COMPLETION_SCAN_RADIUS).coerceAtLeast(0)
     val scanEnd = (caret + COMPLETION_SCAN_RADIUS).coerceAtMost(sourceText.length)
-    val localIdentifiers = COMPLETION_IDENTIFIER.findAll(sourceText.substring(scanStart, scanEnd))
+    val identifierPattern = if (supportsHyphenatedIdentifiers(path)) {
+        HYPHENATED_COMPLETION_IDENTIFIER
+    } else {
+        COMPLETION_IDENTIFIER
+    }
+    val localIdentifiers = identifierPattern.findAll(sourceText.substring(scanStart, scanEnd))
         .map { it.value }
         .toList()
     val languageWords = PROFILE_COMPLETIONS[language.profile].orEmpty()
