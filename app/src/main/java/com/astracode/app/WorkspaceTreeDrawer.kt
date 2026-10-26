@@ -219,7 +219,7 @@ internal fun WorkspaceTreeDrawer(
                                 depth = visible.depth,
                                 ancestorHasNext = visible.ancestorHasNext,
                                 expanded = entry.path in expandedDirectories,
-                                selected = entry.path == currentDirectory || entry.path == openedFile,
+                                selected = if (openedFile != null) entry.path == openedFile else entry.path == currentDirectory,
                                 onToggleExpansion = { toggleDirectory(entry.path) },
                                 onSelect = {
                                     if (isDirectory) onNavigateToDirectory(entry.path)
