@@ -791,8 +791,23 @@ class MainActivityUiTest {
 
         composeRule.onNodeWithTag("workspace-toggle-selection").performClick()
         composeRule.onNodeWithTag("workspace-select-spec.docx").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("workspace-selection-count").assertTextEquals("1 selected")
+            }.isSuccess
+        }
         composeRule.onNodeWithTag("workspace-select-build.gradle.kts").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("workspace-selection-count").assertTextEquals("2 selected")
+            }.isSuccess
+        }
         composeRule.onNodeWithTag("workspace-select-src").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("workspace-selection-count").assertTextEquals("3 selected")
+            }.isSuccess
+        }
         composeRule.onNodeWithTag("workspace-bulk-zip").performClick()
         composeRule.onNodeWithTag("workspace-bulk-input").performTextReplacement("release.zip")
         composeRule.onNodeWithTag("confirm-workspace-bulk-action").performClick()
