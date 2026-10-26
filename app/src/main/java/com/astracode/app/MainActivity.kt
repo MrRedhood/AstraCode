@@ -3490,7 +3490,7 @@ private fun WorkspacePanel(
         if (selectionMode) {
             Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 4.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("${selectedPaths.size} selected", color = MutedText, modifier = Modifier.weight(1f).testTag("workspace-selection-count"))
+                    Text("${selectedPaths.size} selected", color = MutedText, modifier = Modifier.weight(1f))
                     TextButton(
                         onClick = { onBulkAction("zip") },
                         enabled = selectedPaths.isNotEmpty(),

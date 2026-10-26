@@ -75,7 +75,7 @@ fun FilesScreen(
     onManageSavedDocuments: () -> Unit,
     onOpenSafetyTools: () -> Unit,
     onSelectionModeChanged: (Boolean) -> Unit,
-    onToggleSelection: (String) -> Unit,
+    onToggleSelection: (String, Boolean) -> Unit,
     onBulkAction: (String) -> Unit,
     onOpenEntry: (String) -> Unit,
     onInspectEntry: (String) -> Unit,
@@ -223,7 +223,7 @@ fun FilesScreen(
                             selectedPaths.size.toString() + " selected",
                             color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f).testTag("workspace-selection-count"),
                         )
                         TextButton(
                             onClick = { onBulkAction("zip") },
@@ -269,7 +269,11 @@ fun FilesScreen(
                         item = item,
                         selected = item.path in selectedPaths,
                         selectionMode = selectionMode,
-                        onClick = { if (selectionMode) onToggleSelection(item.path) else onOpenEntry(item.path) },
+                        onClick = {
+                            if (selectionMode) onToggleSelection(item.path, item.path !in selectedPaths)
+                            else onOpenEntry(item.path)
+                        },
+                        onToggleSelection = { checked -> onToggleSelection(item.path, checked) },
                         onInspect = { onInspectEntry(item.path) },
                         onLongPress = if (selectionMode) null else { { onLongPressEntry(item.path) } },
                     )
@@ -286,6 +290,7 @@ private fun AtelierFileRow(
     selected: Boolean,
     selectionMode: Boolean,
     onClick: () -> Unit,
+    onToggleSelection: (Boolean) -> Unit,
     onInspect: () -> Unit,
     onLongPress: (() -> Unit)?,
 ) {
@@ -293,7 +298,10 @@ private fun AtelierFileRow(
         color = if (selected) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surfaceContainerLow,
         shape = RoundedCornerShape(14.dp),
         modifier = Modifier.fillMaxWidth()
-            .combinedClickable(onClick = onClick, onLongClick = onLongPress)
+            .then(
+                if (selectionMode) Modifier
+                else Modifier.combinedClickable(onClick = onClick, onLongClick = onLongPress),
+            )
             .testTag("entry-${item.name}"),
     ) {
         Row(
@@ -302,47 +310,59 @@ private fun AtelierFileRow(
             horizontalArrangement = Arrangement.spacedBy(11.dp),
         ) {
             if (selectionMode) {
-                Checkbox(checked = selected, onCheckedChange = { onClick() }, modifier = Modifier.testTag("workspace-select-${item.name}"))
+                Checkbox(
+                    checked = selected,
+                    onCheckedChange = onToggleSelection,
+                    modifier = Modifier.testTag("workspace-select-${item.name}"),
+                )
             }
-            Box(
-                modifier = Modifier.size(40.dp).clip(RoundedCornerShape(11.dp)).background(
-                    if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surfaceContainerHigh,
-                ),
-                contentAlignment = Alignment.Center,
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .then(if (selectionMode) Modifier.clickable(onClick = onClick) else Modifier),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(11.dp),
             ) {
-                val icon = when {
-                    item.isDirectory -> Icons.Outlined.Folder
-                    item.kind.equals("archive", ignoreCase = true) || item.name.endsWith(".zip", true) -> Icons.Outlined.Archive
-                    else -> Icons.Outlined.Description
+                Box(
+                    modifier = Modifier.size(40.dp).clip(RoundedCornerShape(11.dp)).background(
+                        if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    val icon = when {
+                        item.isDirectory -> Icons.Outlined.Folder
+                        item.kind.equals("archive", ignoreCase = true) || item.name.endsWith(".zip", true) -> Icons.Outlined.Archive
+                        else -> Icons.Outlined.Description
+                    }
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = item.kind,
+                        tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp).testTag("entry-icon-${item.name}"),
+                    )
                 }
-                Icon(
-                    imageVector = icon,
-                    contentDescription = item.kind,
-                    tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp).testTag("entry-icon-${item.name}"),
-                )
-            }
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(item.name, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    buildString {
-                        if (item.name.startsWith(".") && item.isDirectory) append("Hidden folder · ")
-                        else if (item.name.startsWith(".") && !item.isDirectory) append("Hidden file · ")
-                        if (item.childCount != null && item.isDirectory) append(item.childCount).append(" items")
-                        else append(formatSize(item.sizeBytes))
-                        if (item.modifiedLabel.isNotBlank()) append(" · ").append(item.modifiedLabel)
-                    },
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            if (selectionMode && selected) {
-                Text("✓", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-            } else {
-                IconButton(onClick = onInspect, modifier = Modifier.size(36.dp).testTag("workspace-inspect-${item.path}")) {
-                    Icon(Icons.Outlined.Info, contentDescription = "Inspect ${item.name}", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(item.name, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        buildString {
+                            if (item.name.startsWith(".") && item.isDirectory) append("Hidden folder · ")
+                            else if (item.name.startsWith(".") && !item.isDirectory) append("Hidden file · ")
+                            if (item.childCount != null && item.isDirectory) append(item.childCount).append(" items")
+                            else append(formatSize(item.sizeBytes))
+                            if (item.modifiedLabel.isNotBlank()) append(" · ").append(item.modifiedLabel)
+                        },
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (selectionMode && selected) {
+                    Text("✓", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                } else {
+                    IconButton(onClick = onInspect, modifier = Modifier.size(36.dp).testTag("workspace-inspect-${item.path}")) {
+                        Icon(Icons.Outlined.Info, contentDescription = "Inspect ${item.name}", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                    }
                 }
             }
         }
