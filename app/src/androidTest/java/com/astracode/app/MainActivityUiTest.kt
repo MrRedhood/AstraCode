@@ -1206,6 +1206,9 @@ class MainActivityUiTest {
 
         composeRule.onNodeWithTag("editor-find-toggle").performClick()
         composeRule.onNodeWithTag("editor-tools-open").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("editor-tools-group-astracode").assertIsDisplayed() }.isSuccess
+        }
         composeRule.onNodeWithTag("editor-tools-group-astracode").performClick()
         composeRule.onNodeWithTag("editor-tool-context_capsule").performClick()
         composeRule.onNodeWithTag("editor-find-message").assertTextContains("Copied AstraCode Context Capsule to clipboard.")
