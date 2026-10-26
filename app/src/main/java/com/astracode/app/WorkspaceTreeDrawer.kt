@@ -144,7 +144,7 @@ internal fun WorkspaceTreeDrawer(
                 }
             }
             if ("" in expandedDirectories) {
-                appendChildren("", depth = 1, ancestorHasNext = emptyList(), ancestry = setOf(""))
+                appendChildren("", depth = 1, ancestorHasNext = listOf(true), ancestry = setOf(""))
             }
         }
     }
