@@ -1370,7 +1370,7 @@ class MainActivityUiTest {
         val workspace = context.filesDir.toPath().resolve("workspace")
         Files.createDirectories(workspace.resolve("app/src"))
         val sample = workspace.resolve("app/src/Main.kt")
-        Files.write(sample, "fun main() = Unit\\n".toByteArray(Charsets.UTF_8))
+        Files.write(sample, "fun main() = Unit\n".toByteArray(Charsets.UTF_8))
         composeRule.activityRule.scenario.recreate()
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
@@ -1408,6 +1408,6 @@ class MainActivityUiTest {
                     .assertTextContains("fun main() = Unit", substring = true)
             }.isSuccess
         }
-        assertEquals("fun main() = Unit\\n", String(Files.readAllBytes(sample), Charsets.UTF_8))
+        assertEquals("fun main() = Unit\n", String(Files.readAllBytes(sample), Charsets.UTF_8))
     }
 }
