@@ -12,9 +12,11 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -54,7 +56,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -85,6 +86,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -3820,7 +3822,7 @@ private fun FileEntryRow(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = isSupported, onClick = onClick)
+            .clickable(enabled = isSupported && !selectionMode, onClick = onClick)
             .testTag("entry-" + entry.name),
         shape = RoundedCornerShape(15.dp),
         colors = CardDefaults.cardColors(containerColor = Panel),
@@ -3833,71 +3835,104 @@ private fun FileEntryRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (selectionMode) {
-                Checkbox(
-                    checked = selected,
-                    onCheckedChange = { onToggleSelection() },
-                    enabled = isSupported,
-                    modifier = Modifier.testTag("workspace-select-" + entry.name),
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .background(if (isDirectory) PanelRaised else Ink, RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = when {
-                        isDirectory -> Icons.Filled.Folder
-                        entry.type == FileEntryType.FILE && entry.name.endsWith(".zip", ignoreCase = true) -> Icons.Filled.Archive
-                        else -> Icons.Filled.Description
-                    },
-                    contentDescription = if (
-                        entry.type == FileEntryType.FILE && entry.name.endsWith(".zip", ignoreCase = true)
-                    ) "ZIP archive" else null,
-                    tint = when {
-                        isDirectory -> Mint
-                        entry.type == FileEntryType.FILE && entry.name.endsWith(".zip", ignoreCase = true) -> Color(0xFFFFC857)
-                        else -> Color(0xFFB9C6FF)
-                    },
-                    modifier = Modifier.size(22.dp).testTag("entry-icon-${entry.name}"),
-                )
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    entry.name,
-                    color = PrimaryText,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                val detail = when {
-                    isDirectory -> when {
-                        !folderCountLoaded -> "Counting items…"
-                        folderCount == null -> "Count unavailable"
-                        else -> {
-                            val countLabel = folderCount.toString() +
-                                if (folderCount == 1) " item" else " items"
-                            if (entry.name.startsWith(".")) {
-                                "Hidden folder · " + countLabel
-                            } else {
-                                countLabel
-                            }
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .toggleable(
+                            value = selected,
+                            role = Role.Checkbox,
+                            onValueChange = { checked ->
+                                if (checked != selected) onToggleSelection()
+                            },
+                        )
+                        .testTag("workspace-select-" + entry.name),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(22.dp)
+                            .border(
+                                width = 1.dp,
+                                color = if (selected) Mint else Border,
+                                shape = RoundedCornerShape(4.dp),
+                            )
+                            .background(
+                                color = if (selected) Mint else Color.Transparent,
+                                shape = RoundedCornerShape(4.dp),
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (selected) {
+                            Text("✓", color = Ink, fontWeight = FontWeight.Bold)
                         }
                     }
-                    entry.type == FileEntryType.FILE && entry.name.startsWith(".") ->
-                        "Hidden file · " + humanSize(entry.sizeBytes)
-                    entry.type == FileEntryType.FILE -> humanSize(entry.sizeBytes)
-                    else -> "Unsupported item"
                 }
-                Text(
-                    detail,
-                    color = MutedText,
-                    fontSize = 12.sp,
-                )
             }
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(enabled = selectionMode, onClick = onToggleSelection),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .background(if (isDirectory) PanelRaised else Ink, RoundedCornerShape(12.dp)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = when {
+                            isDirectory -> Icons.Filled.Folder
+                            entry.type == FileEntryType.FILE && entry.name.endsWith(".zip", ignoreCase = true) -> Icons.Filled.Archive
+                            else -> Icons.Filled.Description
+                        },
+                        contentDescription = if (
+                            entry.type == FileEntryType.FILE && entry.name.endsWith(".zip", ignoreCase = true)
+                        ) "ZIP archive" else null,
+                        tint = when {
+                            isDirectory -> Mint
+                            entry.type == FileEntryType.FILE && entry.name.endsWith(".zip", ignoreCase = true) -> Color(0xFFFFC857)
+                            else -> Color(0xFFB9C6FF)
+                        },
+                        modifier = Modifier.size(22.dp).testTag("entry-icon-${entry.name}"),
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        entry.name,
+                        color = PrimaryText,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    val detail = when {
+                        isDirectory -> when {
+                            !folderCountLoaded -> "Counting items…"
+                            folderCount == null -> "Count unavailable"
+                            else -> {
+                                val countLabel = folderCount.toString() +
+                                    if (folderCount == 1) " item" else " items"
+                                if (entry.name.startsWith(".")) {
+                                    "Hidden folder · " + countLabel
+                                } else {
+                                    countLabel
+                                }
+                            }
+                        }
+                        entry.type == FileEntryType.FILE && entry.name.startsWith(".") ->
+                            "Hidden file · " + humanSize(entry.sizeBytes)
+                        entry.type == FileEntryType.FILE -> humanSize(entry.sizeBytes)
+                        else -> "Unsupported item"
+                    }
+                    Text(
+                        detail,
+                        color = MutedText,
+                        fontSize = 12.sp,
+                    )
+                }
+                }
             if (!selectionMode) {
                 IconButton(
                     onClick = onDelete,
