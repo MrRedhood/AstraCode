@@ -73,6 +73,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -137,6 +139,7 @@ import com.astracode.ui.theme.AstraCodeTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
@@ -815,13 +818,14 @@ private fun FileManagementScreen(
         autosaveRetryAt = autosaveRetryAt - path
     }
 
-    fun updateCurrentEditorText(newText: String): Boolean {
+    fun updateCurrentEditorText(pathAtEdit: String, newText: String): Boolean {
         if (selectedDocument != null) {
+            if (pathAtEdit != selectedDocument.name) return false
             standaloneEditorText = newText
             return true
         }
-        if (replacingOldestTab) return false
-        val path = openedFile ?: return false
+        if (replacingOldestTab || pathAtEdit != openedFile) return false
+        val path = pathAtEdit
         val currentTab = editorTabs.firstOrNull { it.path == path } ?: return false
         if (newText == currentTab.text) return true
         val otherBufferUnits = editorTabs.asSequence()
@@ -844,7 +848,6 @@ private fun FileManagementScreen(
         }
         return true
     }
-
     fun closeEditorTab(path: String) {
         val oldIndex = editorTabs.indexOfFirst { it.path == path }
         if (oldIndex < 0) return
@@ -879,13 +882,24 @@ private fun FileManagementScreen(
     }
 
     fun requestCloseEditorTab(path: String) {
-        if (replacingOldestTab) return
-        val tab = editorTabs.firstOrNull { it.path == path } ?: return
-        if (tab.text != tab.savedText) {
-            pendingEditorTabClosePath = path
-            showEditorTabDiscardDialog = true
-        } else {
-            closeEditorTab(path)
+        if (replacingOldestTab || editorTabs.none { it.path == path }) return
+        scope.launch {
+            fun tabIsDirty(): Boolean =
+                editorTabs.firstOrNull { it.path == path }?.let { it.text != it.savedText } ?: false
+
+            withTimeoutOrNull(2 * EDITOR_SAVE_TIMEOUT_MS + 1_000L) {
+                snapshotFlow {
+                    (savingEditorPath == path || autosaveInProgress) && tabIsDirty()
+                }.first { inFlightAndDirty -> !inFlightAndDirty }
+            }
+
+            val tab = editorTabs.firstOrNull { it.path == path } ?: return@launch
+            if (tab.text != tab.savedText) {
+                pendingEditorTabClosePath = path
+                showEditorTabDiscardDialog = true
+            } else {
+                closeEditorTab(path)
+            }
         }
     }
 
@@ -1454,12 +1468,12 @@ private fun FileManagementScreen(
     }
 
     fun openFile(path: String, expectedSizeBytes: Long? = null) {
-        if (replacingOldestTab) return
         if (editorTabs.any { it.path == path }) {
             currentDirectory = parentPath(path)
             openedFile = path
             return
         }
+        if (replacingOldestTab) return
         val sizeBytes = expectedSizeBytes
             ?: runCatching { findWorkspaceEntry(storage, path)?.sizeBytes }.getOrNull()
         if (sizeBytes == null) {
@@ -1966,16 +1980,28 @@ private fun FileManagementScreen(
                 } else if (selectedDocument == null && activeEditorTab?.isLoading == true) {
                     StandaloneDocumentLoadingPanel(fileName(openedFile.orEmpty()))
                 } else {
-                    EditorPanel(
-                        path = selectedDocument?.name ?: openedFile.orEmpty(),
-                        text = editorText,
-                        readOnly = replacingOldestTab || selectedDocument?.writable == false,
-                        tabs = if (selectedDocument == null) editorTabs else emptyList(),
-                        onSelectTab = { path -> openFile(path) },
-                        onCloseTab = ::requestCloseEditorTab,
-                        onTextChange = ::updateCurrentEditorText,
-                        onSave = ::saveFile,
-                    )
+                    val panelDocumentId = selectedDocument?.id
+                    val panelPath = selectedDocument?.name ?: openedFile.orEmpty()
+                    val panelKey = panelDocumentId?.let { "document:$it" } ?: "workspace:$panelPath"
+                    key(panelKey) {
+                        EditorPanel(
+                            path = panelPath,
+                            text = editorText,
+                            readOnly = replacingOldestTab || selectedDocument?.writable == false,
+                            tabs = if (selectedDocument == null) editorTabs else emptyList(),
+                            onSelectTab = { path -> openFile(path) },
+                            onCloseTab = ::requestCloseEditorTab,
+                            onTextChange = { newText ->
+                                val sameDocument = if (panelDocumentId != null) {
+                                    selectedDocument?.id == panelDocumentId
+                                } else {
+                                    selectedDocument == null && openedFile == panelPath
+                                }
+                                if (sameDocument) updateCurrentEditorText(panelPath, newText) else false
+                            },
+                            onSave = ::saveFile,
+                        )
+                    }
                 }
             } else {
                 when (activeMainScreen) {
@@ -3919,19 +3945,22 @@ private fun EditorPanel(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 tabs.forEach { tab ->
-                    val tagSuffix = tab.path.replace("/", "__")
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(
-                            onClick = { onSelectTab(tab.path) },
-                            modifier = Modifier.testTag("editor-tab-$tagSuffix"),
-                        ) {
-                            val dirtyMarker = if (tab.text != tab.savedText) " •" else ""
-                            Text(fileName(tab.path) + dirtyMarker, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    val tabPath = tab.path
+                    val tagSuffix = tabPath.replace("/", "__")
+                    key(tabPath) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(
+                                onClick = { onSelectTab(tabPath) },
+                                modifier = Modifier.testTag("editor-tab-$tagSuffix"),
+                            ) {
+                                val dirtyMarker = if (tab.text != tab.savedText) " •" else ""
+                                Text(fileName(tabPath) + dirtyMarker, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            TextButton(
+                                onClick = { onCloseTab(tabPath) },
+                                modifier = Modifier.testTag("editor-tab-close-$tagSuffix"),
+                            ) { Text("×") }
                         }
-                        TextButton(
-                            onClick = { onCloseTab(tab.path) },
-                            modifier = Modifier.testTag("editor-tab-close-$tagSuffix"),
-                        ) { Text("×") }
                     }
                 }
             }
