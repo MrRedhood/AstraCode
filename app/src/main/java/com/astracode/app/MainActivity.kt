@@ -1583,6 +1583,65 @@ private fun FileManagementScreen(
         }
     }
 
+    fun navigateWorkspaceTreeToDirectory(path: String) {
+        activeMainScreen = Screen.Files
+        screenBackStack.clear()
+        inspectorEntry = null
+        openedFile = null
+        selectionMode = false
+        selectedPaths = emptySet()
+        currentDirectory = path
+        refreshKey++
+    }
+
+    fun navigateWorkspaceTreeToEntry(path: String) {
+        val selected = runCatching { findWorkspaceEntry(storage, path) }.getOrNull()
+        if (selected == null) {
+            notify("This item is no longer available.")
+            refreshKey++
+            return
+        }
+
+        activeMainScreen = Screen.Files
+        screenBackStack.clear()
+        inspectorEntry = null
+        selectionMode = false
+        selectedPaths = emptySet()
+        when (selected.type) {
+            FileEntryType.DIRECTORY -> {
+                openedFile = null
+                currentDirectory = selected.path
+                refreshKey++
+            }
+            FileEntryType.FILE -> {
+                if (selected.name.endsWith(".zip", ignoreCase = true)) {
+                    openedFile = null
+                    showOperationDialog(selected, "extract")
+                } else {
+                    openFile(selected.path, selected.sizeBytes)
+                }
+            }
+            FileEntryType.SYMBOLIC_LINK -> notify("Symbolic links are not opened from the workspace.")
+            FileEntryType.OTHER -> notify("This file type is not supported yet.")
+        }
+    }
+
+    fun requestWorkspaceTreeNavigation(action: () -> Unit) {
+        showWorkspaceTree = false
+        requestWorkspaceSwitch {
+            if (selectedDocument != null) {
+                onCloseStandaloneDocument()
+                scope.launch {
+                    withFrameNanos { }
+                    withFrameNanos { }
+                    action()
+                }
+            } else {
+                action()
+            }
+        }
+    }
+
     fun prepareWorkspaceSync(entry: FileEntry) {
         val linked = if (activeWorkspaceId == PRIVATE_WORKSPACE_ID) {
             syncLinks.filter {
