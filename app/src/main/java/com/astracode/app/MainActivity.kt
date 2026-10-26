@@ -2301,6 +2301,25 @@ private fun FileManagementScreen(
         }
     }
 
+    if (showWorkspaceTree) {
+        WorkspaceTreeDrawer(
+            storage = storage,
+            currentDirectory = currentDirectory,
+            openedFile = openedFile,
+            onNavigateToDirectory = { path ->
+                requestWorkspaceTreeNavigation {
+                    navigateWorkspaceTreeToDirectory(path)
+                }
+            },
+            onSelectEntry = { path ->
+                requestWorkspaceTreeNavigation {
+                    navigateWorkspaceTreeToEntry(path)
+                }
+            },
+            onDismiss = { showWorkspaceTree = false },
+        )
+    }
+
     if (showSavedDocuments) {
         SavedDocumentsDialog(
             savedDocuments = savedDocuments,
