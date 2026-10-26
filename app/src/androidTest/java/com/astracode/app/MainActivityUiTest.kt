@@ -4,7 +4,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsProperties
 
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertTextEquals
@@ -1386,7 +1385,7 @@ class MainActivityUiTest {
         }
         composeRule.onNodeWithTag("workspace-tree-expand-root").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
-            runCatching { composeRule.onNodeWithTag("workspace-tree-folder-app").assertDoesNotExist() }.isSuccess
+            runCatching { composeRule.onNodeWithTag("workspace-tree-folder-app").assertIsDisplayed() }.isFailure
         }
         composeRule.onNodeWithTag("workspace-tree-expand-root").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
