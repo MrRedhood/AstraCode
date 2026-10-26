@@ -387,6 +387,75 @@ class MainActivityUiTest {
     }
 
     @Test
+    fun switchingBetweenDirtyTabsRepeatedlyKeepsDraftsWithTheirFiles() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workspace = context.filesDir.toPath().resolve("workspace")
+        Files.createDirectories(workspace)
+        val firstFile = workspace.resolve("DraftOne.kt")
+        val secondFile = workspace.resolve("DraftTwo.kt")
+        Files.write(firstFile, "first saved".toByteArray(Charsets.UTF_8))
+        Files.write(secondFile, "second saved".toByteArray(Charsets.UTF_8))
+        composeRule.activityRule.scenario.recreate()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("entry-DraftOne.kt").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("entry-DraftOne.kt").performClick()
+        val editor = composeRule.onNodeWithTag("file-editor-input")
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { editor.assertTextContains("first saved", substring = true) }.isSuccess
+        }
+        editor.performTextReplacement("first draft 0")
+        composeRule.onNodeWithTag("editor-back").performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("entry-DraftTwo.kt").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("entry-DraftTwo.kt").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { editor.assertTextContains("second saved", substring = true) }.isSuccess
+        }
+        editor.performTextReplacement("second draft 0")
+
+        repeat(15) { iteration ->
+            composeRule.onNodeWithTag("editor-tabs")
+                .performScrollToNode(hasTestTag("editor-tab-DraftOne.kt"))
+            composeRule.onNodeWithTag("editor-tab-DraftOne.kt").performClick()
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                runCatching {
+                    assertEquals("1 │ first draft $iteration", currentEditableEditorText())
+                }.isSuccess
+            }
+            editor.performTextReplacement("first draft ${iteration + 1}")
+
+            composeRule.onNodeWithTag("editor-tabs")
+                .performScrollToNode(hasTestTag("editor-tab-DraftTwo.kt"))
+            composeRule.onNodeWithTag("editor-tab-DraftTwo.kt").performClick()
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                runCatching {
+                    assertEquals("1 │ second draft $iteration", currentEditableEditorText())
+                }.isSuccess
+            }
+            editor.performTextReplacement("second draft ${iteration + 1}")
+        }
+
+        composeRule.onNodeWithTag("editor-tabs")
+            .performScrollToNode(hasTestTag("editor-tab-DraftOne.kt"))
+        composeRule.onNodeWithTag("editor-tab-DraftOne.kt").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { assertEquals("1 │ first draft 15", currentEditableEditorText()) }.isSuccess
+        }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                String(Files.readAllBytes(firstFile), Charsets.UTF_8) == "first draft 15" &&
+                    String(Files.readAllBytes(secondFile), Charsets.UTF_8) == "second draft 15"
+            }.getOrDefault(false)
+        }
+        assertEquals("first draft 15", String(Files.readAllBytes(firstFile), Charsets.UTF_8))
+        assertEquals("second draft 15", String(Files.readAllBytes(secondFile), Charsets.UTF_8))
+    }
+
+    @Test
     fun editorKeeps25TabsAndAutoSavesOldestBeforeOpening26th() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val workspace = context.filesDir.toPath().resolve("workspace")
