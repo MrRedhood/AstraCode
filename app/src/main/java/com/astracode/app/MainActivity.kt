@@ -781,6 +781,7 @@ private fun FileManagementScreen(
     var showWorkspaceManager by remember { mutableStateOf(false) }
     var showSavedDocuments by remember { mutableStateOf(false) }
     var showWorkspaceSafety by remember { mutableStateOf(false) }
+    var showWorkspaceTree by remember(storage) { mutableStateOf(false) }
     var activeMainScreen by remember { mutableStateOf<Screen>(Screen.Files) }
     val screenBackStack = remember { mutableStateListOf<Screen>() }
     var inspectorEntry by remember { mutableStateOf<FileEntry?>(null) }
