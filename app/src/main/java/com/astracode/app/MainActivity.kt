@@ -122,6 +122,7 @@ import com.astracode.app.storage.WorkspaceSyncLink
 import com.astracode.app.storage.loadWorkspaceSyncLinks
 import com.astracode.app.storage.mapBetweenWorkspacePaths
 import com.astracode.app.storage.propagateWorkspaceChange
+import com.astracode.app.storage.propagateWorkspaceBatchChanges
 import com.astracode.app.storage.saveWorkspaceSyncLinks
 import com.astracode.app.storage.syncWorkspaceEntry
 import com.astracode.ui.components.AstraCodeBottomNav
@@ -1366,10 +1367,17 @@ private fun FileManagementScreen(
                         // moveToZip returns after the selected originals have been removed.
                         removedPaths += paths
                         completed = 1
-                        paths.sortedByDescending { it.count { ch -> ch == '/' } }.forEach { path ->
-                            syncLinks = propagateChangedPath(path, deleted = true)
+                        val linksSnapshot = syncLinks
+                        syncLinks = withContext(Dispatchers.IO) {
+                            propagateWorkspaceBatchChanges(
+                                context = context,
+                                activeWorkspaceId = requestedWorkspaceId,
+                                activeStorage = requestedStorage,
+                                links = linksSnapshot,
+                                deletedPaths = paths,
+                                changedPaths = listOf(outputPath),
+                            )
                         }
-                        syncLinks = propagateChangedPath(outputPath)
                         notify("Moved ${paths.size} item(s) into $archiveName")
                     }
                     "delete" -> {

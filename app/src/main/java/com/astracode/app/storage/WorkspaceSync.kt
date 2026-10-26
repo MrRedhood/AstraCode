@@ -202,6 +202,138 @@ internal fun mapBetweenWorkspacePaths(sourceRoot: String, targetRoot: String, so
     return if (suffix.isEmpty()) targetRoot else "$targetRoot/$suffix"
 }
 
+internal data class WorkspaceSyncBatchPlan(
+    val linksToRemove: Set<WorkspaceSyncLink>,
+    val linksToMirror: Set<WorkspaceSyncLink>,
+)
+
+/**
+ * Plans a group of workspace changes together. A link rooted inside a deleted source
+ * must be removed; links containing one of the changes only need one exact-snapshot mirror.
+ */
+internal fun planWorkspaceSyncBatch(
+    activeWorkspaceId: String,
+    links: List<WorkspaceSyncLink>,
+    deletedPaths: List<String>,
+    changedPaths: List<String>,
+): WorkspaceSyncBatchPlan {
+    val privateActive = activeWorkspaceId == "private"
+    val linksToRemove = linkedSetOf<WorkspaceSyncLink>()
+    val linksToMirror = linkedSetOf<WorkspaceSyncLink>()
+
+    links.forEach { link ->
+        if (!privateActive && link.externalTreeUri != activeWorkspaceId) return@forEach
+        val linkedRoot = if (privateActive) link.privatePath else link.externalPath
+        when {
+            deletedPaths.any { deletedPath -> isSameOrChild(linkedRoot, deletedPath) } ->
+                linksToRemove += link
+            deletedPaths.any { deletedPath -> isSameOrChild(deletedPath, linkedRoot) } ||
+                changedPaths.any { changedPath -> isSameOrChild(changedPath, linkedRoot) } ->
+                linksToMirror += link
+        }
+    }
+    return WorkspaceSyncBatchPlan(linksToRemove, linksToMirror)
+}
+
+/**
+ * Propagates related deletions and changes with at most one full mirror per affected link.
+ * Multi-item ZIP moves use this so removing several originals does not repeatedly mirror
+ * their shared linked parent folder.
+ */
+internal fun propagateWorkspaceBatchChanges(
+    context: Context,
+    activeWorkspaceId: String,
+    activeStorage: WorkspaceStorage,
+    links: List<WorkspaceSyncLink>,
+    deletedPaths: List<String>,
+    changedPaths: List<String>,
+): List<WorkspaceSyncLink> {
+    val safeDeletedPaths = deletedPaths.map { WorkspaceSafety.validatePath(it) }.distinct()
+    val safeChangedPaths = changedPaths.map { WorkspaceSafety.validatePath(it) }.distinct()
+    val privateActive = activeWorkspaceId == "private"
+    val batchPlan = planWorkspaceSyncBatch(
+        activeWorkspaceId = activeWorkspaceId,
+        links = links,
+        deletedPaths = safeDeletedPaths,
+        changedPaths = safeChangedPaths,
+    )
+    val updated = mutableListOf<WorkspaceSyncLink>()
+
+    links.forEach { link ->
+        when {
+            link in batchPlan.linksToRemove -> deleteWorkspaceSyncCounterpart(context, privateActive, link)
+            link in batchPlan.linksToMirror -> {
+                if (mirrorWorkspaceSyncLink(context, privateActive, activeStorage, link)) {
+                    updated += link
+                }
+            }
+            else -> updated += link
+        }
+    }
+
+    saveWorkspaceSyncLinks(context, updated)
+    return updated
+}
+
+private fun deleteWorkspaceSyncCounterpart(
+    context: Context,
+    privateActive: Boolean,
+    link: WorkspaceSyncLink,
+) {
+    if (privateActive) {
+        val external = SafWorkspaceStorage(context, Uri.parse(link.externalTreeUri))
+        try {
+            if (external.exists(link.externalPath)) external.delete(link.externalPath, recursive = true)
+        } finally {
+            external.close()
+        }
+    } else {
+        val privateStorage = FileManagementSystem(context.filesDir.toPath().resolve("workspace"))
+        try {
+            if (privateStorage.exists(link.privatePath)) privateStorage.delete(link.privatePath, recursive = true)
+        } finally {
+            privateStorage.close()
+        }
+    }
+}
+
+private fun mirrorWorkspaceSyncLink(
+    context: Context,
+    privateActive: Boolean,
+    activeStorage: WorkspaceStorage,
+    link: WorkspaceSyncLink,
+): Boolean {
+    if (privateActive) {
+        val external = SafWorkspaceStorage(context, Uri.parse(link.externalTreeUri))
+        try {
+            if (activeStorage.exists(link.privatePath)) {
+                syncWorkspaceEntry(
+                    activeStorage, link.privatePath, external, link.externalPath, overwriteExisting = true,
+                )
+                return true
+            }
+            if (external.exists(link.externalPath)) external.delete(link.externalPath, recursive = true)
+            return false
+        } finally {
+            external.close()
+        }
+    }
+
+    val privateStorage = FileManagementSystem(context.filesDir.toPath().resolve("workspace"))
+    try {
+        if (activeStorage.exists(link.externalPath)) {
+            syncWorkspaceEntry(
+                activeStorage, link.externalPath, privateStorage, link.privatePath, overwriteExisting = true,
+            )
+            return true
+        }
+        if (privateStorage.exists(link.privatePath)) privateStorage.delete(link.privatePath, recursive = true)
+        return false
+    } finally {
+        privateStorage.close()
+    }
+}
+
 internal fun propagateWorkspaceChange(
     context: Context,
     activeWorkspaceId: String,

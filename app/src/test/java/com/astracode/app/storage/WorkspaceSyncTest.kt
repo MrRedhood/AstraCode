@@ -136,4 +136,43 @@ class WorkspaceSyncTest {
             }
         }
     }
+    @Test
+    fun workspaceSyncBatchMirrorsParentAndRemovesLinksInsideDeletedSources() {
+        val parent = WorkspaceSyncLink("app", "content://tree-a", "app")
+        val deletedFolder = WorkspaceSyncLink("app/src", "content://tree-a", "app/src")
+        val deletedFile = WorkspaceSyncLink("app/src/Main.kt", "content://tree-a", "app/src/Main.kt")
+        val unrelated = WorkspaceSyncLink("notes", "content://tree-a", "notes")
+
+        val plan = planWorkspaceSyncBatch(
+            activeWorkspaceId = "private",
+            links = listOf(parent, deletedFolder, deletedFile, unrelated),
+            deletedPaths = listOf("app/src"),
+            changedPaths = listOf("app/bundle.zip"),
+        )
+
+        assertEquals(setOf(deletedFolder, deletedFile), plan.linksToRemove)
+        assertEquals(setOf(parent), plan.linksToMirror)
+        assertFalse(unrelated in plan.linksToRemove)
+        assertFalse(unrelated in plan.linksToMirror)
+    }
+
+    @Test
+    fun workspaceSyncBatchOnlyPlansLinksForTheActiveExternalTree() {
+        val parent = WorkspaceSyncLink("private/app", "content://tree-a", "remote/app")
+        val deletedFolder = WorkspaceSyncLink("private/app/src", "content://tree-a", "remote/app/src")
+        val otherTree = WorkspaceSyncLink("private/app", "content://tree-b", "remote/app")
+
+        val plan = planWorkspaceSyncBatch(
+            activeWorkspaceId = "content://tree-a",
+            links = listOf(parent, deletedFolder, otherTree),
+            deletedPaths = listOf("remote/app/src"),
+            changedPaths = listOf("remote/app/bundle.zip"),
+        )
+
+        assertEquals(setOf(deletedFolder), plan.linksToRemove)
+        assertEquals(setOf(parent), plan.linksToMirror)
+        assertFalse(otherTree in plan.linksToRemove)
+        assertFalse(otherTree in plan.linksToMirror)
+    }
+
 }
