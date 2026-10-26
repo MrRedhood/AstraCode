@@ -2111,8 +2111,8 @@ private fun FileManagementScreen(
                             selectionMode = enabled
                             if (!enabled) selectedPaths = emptySet()
                         },
-                        onToggleSelection = { path ->
-                            selectedPaths = if (path in selectedPaths) selectedPaths - path else selectedPaths + path
+                        onToggleSelection = { path, checked ->
+                            selectedPaths = if (checked) selectedPaths + path else selectedPaths - path
                         },
                         onBulkAction = { kind ->
                             bulkActionKind = kind
@@ -3346,7 +3346,7 @@ private fun WorkspacePanel(
     selectionMode: Boolean,
     selectedPaths: Set<String>,
     onSelectionModeChanged: (Boolean) -> Unit,
-    onToggleSelection: (String) -> Unit,
+    onToggleSelection: (String, Boolean) -> Unit,
     onBulkAction: (String) -> Unit,
     onAddWorkspace: () -> Unit,
     onOpenStandaloneFile: () -> Unit,
@@ -3541,8 +3541,11 @@ private fun WorkspacePanel(
                         folderCountLoaded = folderCounts.containsKey(entry.path),
                         selectionMode = selectionMode,
                         selected = entry.path in selectedPaths,
-                        onToggleSelection = { onToggleSelection(entry.path) },
-                        onClick = { if (selectionMode) onToggleSelection(entry.path) else onOpenEntry(entry) },
+                        onToggleSelection = { checked -> onToggleSelection(entry.path, checked) },
+                        onClick = {
+                            if (selectionMode) onToggleSelection(entry.path, entry.path !in selectedPaths)
+                            else onOpenEntry(entry)
+                        },
                         onDelete = { onDelete(entry.path) },
                     )
                 }
@@ -3821,7 +3824,7 @@ private fun FileEntryRow(
     folderCountLoaded: Boolean,
     selectionMode: Boolean,
     selected: Boolean,
-    onToggleSelection: () -> Unit,
+    onToggleSelection: (Boolean) -> Unit,
     onClick: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -3850,9 +3853,7 @@ private fun FileEntryRow(
                             value = selected,
                             enabled = isSupported,
                             role = Role.Checkbox,
-                            onValueChange = { checked ->
-                                if (checked != selected) onToggleSelection()
-                            },
+                            onValueChange = onToggleSelection,
                         )
                         .testTag("workspace-select-" + entry.name),
                     contentAlignment = Alignment.Center,
@@ -3880,7 +3881,7 @@ private fun FileEntryRow(
             Row(
                 modifier = Modifier
                     .weight(1f)
-                    .clickable(enabled = selectionMode && isSupported, onClick = onToggleSelection),
+                    .clickable(enabled = selectionMode && isSupported, onClick = { onToggleSelection(!selected) }),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
