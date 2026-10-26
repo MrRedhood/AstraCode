@@ -884,6 +884,11 @@ class MainActivityUiTest {
                     composeRule.onNodeWithTag("entry-bundle.zip").assertIsDisplayed()
                 }.isSuccess
         }
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onAllNodesWithTag("workspace-bulk-input").assertCountEquals(0)
+            }.isSuccess
+        }
         composeRule.onNodeWithTag("entry-icon-bundle.zip", useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNodeWithTag("entry-bundle.zip").performClick()
         composeRule.onNodeWithTag("workspace-operation-input").assertIsDisplayed()
@@ -902,6 +907,11 @@ class MainActivityUiTest {
             "fun main() = Unit\\n",
             String(Files.readAllBytes(restoredSource), Charsets.UTF_8),
         )
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onAllNodesWithTag("workspace-operation-input").assertCountEquals(0)
+            }.isSuccess
+        }
     }
 
     
