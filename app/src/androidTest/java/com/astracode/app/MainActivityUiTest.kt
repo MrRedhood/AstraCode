@@ -1171,15 +1171,23 @@ class MainActivityUiTest {
     @Test
     fun floatingEditorToolsCanMoveAndApplyBasicAndAstraCodeActions() {
         val workspaceRoot = File(InstrumentationRegistry.getInstrumentation().targetContext.filesDir, "workspace")
+        workspaceRoot.mkdirs()
         val sample = File(workspaceRoot, "FloatingTools.kt")
         sample.writeText("val answer = 42")
-        composeRule.onNodeWithTag("open-workspace-browser-button").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("workspace-file-list").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("workspace-file-list")
+            .performScrollToNode(hasTestTag("entry-FloatingTools.kt"))
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("entry-FloatingTools.kt").assertIsDisplayed() }.isSuccess
         }
         composeRule.onNodeWithTag("entry-FloatingTools.kt").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("file-editor-input").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("editor-tools-drag-handle").assertIsDisplayed() }.isSuccess
         }
 
         composeRule.onNodeWithTag("editor-tools-drag-handle").performTouchInput {
@@ -1190,13 +1198,13 @@ class MainActivityUiTest {
         composeRule.onNodeWithTag("editor-tools-open").assertIsDisplayed().performClick()
         composeRule.onNodeWithTag("editor-tools-group-basic").assertIsDisplayed()
         composeRule.onNodeWithTag("editor-tool-duplicate_line").performClick()
-        composeRule.onNodeWithTag("workspace-save-file").performClick()
+        composeRule.onNodeWithTag("save-file-button").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             sample.isFile && sample.readText() == "val answer = 42\nval answer = 42"
         }
         assertEquals("val answer = 42\nval answer = 42", sample.readText())
 
-        composeRule.onNodeWithTag("workspace-editor-find-toggle").performClick()
+        composeRule.onNodeWithTag("editor-find-toggle").performClick()
         composeRule.onNodeWithTag("editor-tools-open").performClick()
         composeRule.onNodeWithTag("editor-tools-group-astracode").performClick()
         composeRule.onNodeWithTag("editor-tool-context_capsule").performClick()
