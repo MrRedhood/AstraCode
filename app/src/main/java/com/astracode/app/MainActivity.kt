@@ -4130,6 +4130,7 @@ private fun EditorPanel(
             codeCompletionPrefixRange(
                 completionValueAtRender.text,
                 completionValueAtRender.selection.end,
+                path,
             )
         } else {
             null
@@ -4151,7 +4152,7 @@ private fun EditorPanel(
             suggestions = completionSuggestions,
             onSelect = { suggestion ->
                 val completedValue = completionPrefixRangeAtRender?.let { range ->
-                    applyCodeCompletionAtRange(completionValueAtRender, suggestion, range)
+                    applyCodeCompletionAtRange(completionValueAtRender, suggestion, range, path)
                 }
                 if (completedValue != null) {
                     if (onTextChange(completedValue.text)) {

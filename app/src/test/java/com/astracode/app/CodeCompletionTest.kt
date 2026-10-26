@@ -55,6 +55,57 @@ class CodeCompletionTest {
     }
 
     @Test
+    fun completionAtMiddleOfIdentifierReplacesTheWholeIdentifier() {
+        val source = "val result = printf + 1"
+        val caret = source.indexOf("pri") + "pri".length
+        val prefixRange = codeCompletionPrefixRange(source, caret)!!
+
+        val completed = applyCodeCompletionAtRange(
+            TextFieldValue(source, selection = TextRange(caret)),
+            "println",
+            prefixRange,
+        )
+
+        assertEquals("val result = println + 1", completed?.text)
+        assertEquals(TextRange(source.indexOf("pri") + "println".length), completed?.selection)
+    }
+
+    @Test
+    fun completionRejectsARangeStartingInsideAnotherIdentifier() {
+        val value = TextFieldValue("xpri", selection = TextRange(4))
+        assertEquals(null, applyCodeCompletionAtRange(value, "println", TextRange(1, 4)))
+    }
+
+    @Test
+    fun cssCompletionSupportsHyphenatedPropertiesAndReplacesTheWholeProperty() {
+        val source = "body { font-size: 12px; }"
+        val caret = source.indexOf("font-size") + "font-si".length
+        val suggestions = codeCompletionSuggestions(source, "styles.css", caret)
+        assertTrue(suggestions.contains("font-size"))
+
+        val prefixRange = codeCompletionPrefixRange(source, caret, "styles.css")!!
+        val completed = applyCodeCompletionAtRange(
+            TextFieldValue(source, selection = TextRange(caret)),
+            "font-size",
+            prefixRange,
+            "styles.css",
+        )
+
+        assertEquals(source, completed?.text)
+        assertEquals(
+            TextRange(source.indexOf("font-size") + "font-size".length),
+            completed?.selection,
+        )
+    }
+
+    @Test
+    fun unicodeIdentifiersCanBeSuggestedFromTheCurrentDocument() {
+        val source = "val λογαριασμός = 1\nval result = λογα"
+        val suggestions = codeCompletionSuggestions(source, "Main.kt", source.length)
+        assertTrue(suggestions.contains("λογαριασμός"))
+    }
+
+    @Test
     fun suggestionsFollowChangedPrefixAndCaretPosition() {
         val source = "println()"
         val afterPrin = codeCompletionSuggestions(source, "Main.kt", 4)
