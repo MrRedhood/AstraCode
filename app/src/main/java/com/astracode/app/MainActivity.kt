@@ -3875,6 +3875,7 @@ private fun EditorPanel(
     var findQuery by remember(path) { mutableStateOf("") }
     var replacementText by remember(path) { mutableStateOf("") }
     var editorToolMessage by remember(path) { mutableStateOf("") }
+    var languageSymbolReference by remember(path) { mutableStateOf<LanguageSymbolReference?>(null) }
     val editorFocusRequester = remember(path) { FocusRequester() }
     var previousVirtualizedEditorMode by remember(path) { mutableStateOf(useVirtualizedEditor) }
     LaunchedEffect(useVirtualizedEditor) {
@@ -4297,8 +4298,22 @@ private fun EditorPanel(
                     val selectionOrCopyAction = action == EditorToolAction.SMART_SELECT ||
                         action == EditorToolAction.SELECT_CURRENT_LINE ||
                         action == EditorToolAction.CONTEXT_CAPSULE ||
-                        action == EditorToolAction.SELECTION_PULSE
-                    if (readOnly && !selectionOrCopyAction) {
+                        action == EditorToolAction.SELECTION_PULSE ||
+                        action == EditorToolAction.DESCRIBE_SYMBOL
+                    if (action == EditorToolAction.DESCRIBE_SYMBOL) {
+                        languageSymbolReference = describeLanguageSymbolAt(
+                            sourceText = currentValue.text,
+                            path = path,
+                            caretOffset = currentValue.selection.end,
+                            selectionStart = currentValue.selection.min,
+                            selectionEnd = currentValue.selection.max,
+                        )
+                        editorToolMessage = if (languageSymbolReference == null) {
+                            "No symbol or syntax description is available at the caret."
+                        } else {
+                            ""
+                        }
+                    } else if (readOnly && !selectionOrCopyAction) {
                         editorToolMessage = "This file is read-only."
                     } else {
                         val outcome = applyEditorTool(action, currentValue, path)
@@ -4318,6 +4333,9 @@ private fun EditorPanel(
                     }
                 },
             )
+        }
+        LanguageSymbolReferenceDialog(languageSymbolReference) {
+            languageSymbolReference = null
         }
         Spacer(Modifier.height(10.dp))
         Text(

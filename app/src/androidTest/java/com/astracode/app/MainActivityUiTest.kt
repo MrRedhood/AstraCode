@@ -1307,4 +1307,59 @@ class MainActivityUiTest {
         composeRule.onNodeWithTag("editor-find-message").assertTextContains("Copied AstraCode Context Capsule to clipboard.")
     }
 
+
+    @Test
+    fun floatingEditorToolsDescribeKotlinSymbolsOffline() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workspaceRoot = File(context.filesDir, "workspace")
+        workspaceRoot.mkdirs()
+        val sample = File(workspaceRoot, "SymbolReference.kt")
+        sample.writeText("")
+        composeRule.activityRule.scenario.recreate()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("entry-SymbolReference.kt").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("entry-SymbolReference.kt").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("editor-tab-SymbolReference.kt").assertIsDisplayed() }.isSuccess
+        }
+        val editor = composeRule.onNodeWithTag("file-editor-input")
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { editor.assertIsDisplayed() }.isSuccess
+        }
+        editor.performTextInput("println")
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                assertTrue(editor.fetchSemanticsNode().config[SemanticsProperties.EditableText].text.contains("println"))
+            }.isSuccess
+        }
+
+        composeRule.onNodeWithTag("editor-tools-open").assertIsDisplayed().performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("editor-tools-group-astracode").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("editor-tools-group-astracode").performClick()
+        composeRule.onNodeWithTag("editor-tool-describe_symbol").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("language-reference-dialog").assertIsDisplayed() }.isSuccess
+        }
+
+        val categoryText = composeRule.onNodeWithTag("language-reference-category", useUnmergedTree = true)
+            .fetchSemanticsNode().config[SemanticsProperties.Text].joinToString(" ") { it.text }
+        val descriptionText = composeRule.onNodeWithTag("language-reference-description", useUnmergedTree = true)
+            .fetchSemanticsNode().config[SemanticsProperties.Text].joinToString(" ") { it.text }
+        val expectedReference = describeLanguageSymbolAt("println", "SymbolReference.kt", 7)
+        composeRule.onNodeWithTag("language-reference-symbol", useUnmergedTree = true).assertTextContains("println")
+        assertTrue(
+            "Symbol reference category mismatch: actual=[$categoryText], expected helper=[$expectedReference], description=[$descriptionText]",
+            categoryText.contains("Built-in function"),
+        )
+        assertTrue(
+            "Symbol reference description mismatch: actual=[$descriptionText], expected helper=[$expectedReference]",
+            descriptionText.contains("standard output"),
+        )
+        composeRule.onNodeWithTag("language-reference-close").performClick()
+    }
+
 }
