@@ -3840,6 +3840,7 @@ private fun FileEntryRow(
                         .size(48.dp)
                         .toggleable(
                             value = selected,
+                            enabled = isSupported,
                             role = Role.Checkbox,
                             onValueChange = { checked ->
                                 if (checked != selected) onToggleSelection()
@@ -3871,7 +3872,7 @@ private fun FileEntryRow(
             Row(
                 modifier = Modifier
                     .weight(1f)
-                    .clickable(enabled = selectionMode, onClick = onToggleSelection),
+                    .clickable(enabled = selectionMode && isSupported, onClick = onToggleSelection),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
