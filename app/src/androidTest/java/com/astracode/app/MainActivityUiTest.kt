@@ -1169,7 +1169,7 @@ class MainActivityUiTest {
 
 
     @Test
-    fun floatingEditorToolsCanMoveAndApplyBasicAndAstraCodeActions() {
+    fun floatingEditorToolsCanMoveAndApplyBasicActions() {
         val workspaceRoot = File(InstrumentationRegistry.getInstrumentation().targetContext.filesDir, "workspace")
         workspaceRoot.mkdirs()
         val sample = File(workspaceRoot, "FloatingTools.kt")
@@ -1203,14 +1203,38 @@ class MainActivityUiTest {
             sample.isFile && sample.readText() == "val answer = 42\nval answer = 42"
         }
         assertEquals("val answer = 42\nval answer = 42", sample.readText())
+    }
 
-        composeRule.onNodeWithTag("editor-find-toggle").performClick()
-        composeRule.onNodeWithTag("editor-tools-open").performClick()
+    @Test
+    fun floatingEditorToolsApplyAstraCodeContextCapsule() {
+        val workspaceRoot = File(InstrumentationRegistry.getInstrumentation().targetContext.filesDir, "workspace")
+        workspaceRoot.mkdirs()
+        val sample = File(workspaceRoot, "ContextCapsule.kt")
+        sample.writeText("fun main() = 42")
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("workspace-file-list").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("workspace-file-list")
+            .performScrollToNode(hasTestTag("entry-ContextCapsule.kt"))
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("entry-ContextCapsule.kt").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("entry-ContextCapsule.kt").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("file-editor-input").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("editor-tools-open").assertIsDisplayed().performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("editor-tools-group-astracode").assertIsDisplayed() }.isSuccess
         }
         composeRule.onNodeWithTag("editor-tools-group-astracode").performClick()
         composeRule.onNodeWithTag("editor-tool-context_capsule").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("editor-find-message")
+                    .assertTextContains("Copied AstraCode Context Capsule to clipboard.")
+            }.isSuccess
+        }
         composeRule.onNodeWithTag("editor-find-message").assertTextContains("Copied AstraCode Context Capsule to clipboard.")
     }
 
