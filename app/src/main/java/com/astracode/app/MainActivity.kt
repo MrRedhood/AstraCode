@@ -1955,7 +1955,7 @@ private fun FileManagementScreen(
     }
 
     val hasModalUi = showNewFileDialog || showNewFolderDialog || pendingDeletePath != null ||
-        contextMenuEntry != null || changePathEntry != null || operationEntry != null || syncEntry != null ||
+        showWorkspaceTree || contextMenuEntry != null || changePathEntry != null || operationEntry != null || syncEntry != null ||
         showDiscardDialog || showEditorTabDiscardDialog || showWorkspaceManager || showSavedDocuments ||
         showWorkspaceSafety || bulkActionKind != null || bulkActionInProgress
     val canNavigateBack = inspectorEntry != null || openedFile != null || selectedDocument != null ||
