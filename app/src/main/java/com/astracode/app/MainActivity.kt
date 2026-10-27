@@ -678,9 +678,8 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    key(storage) {
-                        FileManagementScreen(
-                            storage = storage,
+                    FileManagementScreen(
+                        storage = storage,
                         activeWorkspaceId = activeWorkspaceId,
                         savedWorkspaceFolders = savedWorkspaceFolders,
                         savedDocuments = savedDocuments,
@@ -709,8 +708,7 @@ class MainActivity : ComponentActivity() {
                         onCreateManagedWorkspace = { name -> createManagedWorkspaceFromName(name) },
                         onRenameWorkspaceEntry = { entry, name -> renameWorkspaceEntry(entry, name) },
                         onDeleteWorkspaceEntry = { entry -> deleteWorkspaceEntry(entry) },
-                        )
-                    }
+                    )
                 }
             }
         }
@@ -1044,8 +1042,8 @@ private fun FileManagementScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val editorSaveMutex = remember(storage) { Mutex() }
 
-    var currentDirectory by remember { mutableStateOf("") }
-    var openedFile by remember { mutableStateOf<String?>(null) }
+    var currentDirectory by remember(storage) { mutableStateOf("") }
+    var openedFile by remember(storage) { mutableStateOf<String?>(null) }
     var editorTabs by remember(storage) { mutableStateOf(emptyList<EditorTab>()) }
     var firstDirtyAt by remember(storage) { mutableStateOf(emptyMap<String, Long>()) }
     var lastEditedAt by remember(storage) { mutableStateOf(emptyMap<String, Long>()) }
@@ -1058,13 +1056,13 @@ private fun FileManagementScreen(
     var standaloneSavedText by remember { mutableStateOf("") }
     var pendingEditorTabClosePath by remember(storage) { mutableStateOf<String?>(null) }
     var showEditorTabDiscardDialog by remember(storage) { mutableStateOf(false) }
-    var entries by remember { mutableStateOf<List<FileEntry>>(emptyList()) }
-    var folderCounts by remember { mutableStateOf<Map<String, Int?>>(emptyMap()) }
-    var refreshKey by remember { mutableStateOf(0) }
-    var newFileName by remember { mutableStateOf("") }
-    var newFolderName by remember { mutableStateOf("") }
-    var showNewFileDialog by remember { mutableStateOf(false) }
-    var showNewFolderDialog by remember { mutableStateOf(false) }
+    var entries by remember(storage) { mutableStateOf<List<FileEntry>>(emptyList()) }
+    var folderCounts by remember(storage) { mutableStateOf<Map<String, Int?>>(emptyMap()) }
+    var refreshKey by remember(storage) { mutableStateOf(0) }
+    var newFileName by remember(storage) { mutableStateOf("") }
+    var newFolderName by remember(storage) { mutableStateOf("") }
+    var showNewFileDialog by remember(storage) { mutableStateOf(false) }
+    var showNewFolderDialog by remember(storage) { mutableStateOf(false) }
     var newItemParentDirectory by remember(storage) { mutableStateOf<String?>(null) }
     var contextMenuEntry by remember(storage) { mutableStateOf<FileEntry?>(null) }
     var treeContextEntry by remember(storage) { mutableStateOf<FileEntry?>(null) }
@@ -1074,33 +1072,33 @@ private fun FileManagementScreen(
     var destinationFolderName by remember(storage) { mutableStateOf("") }
     var creatingDestinationFolder by remember(storage) { mutableStateOf(false) }
     var changingWorkspacePath by remember(storage) { mutableStateOf(false) }
-    var pendingDeletePath by remember { mutableStateOf<String?>(null) }
-    var operationEntry by remember { mutableStateOf<FileEntry?>(null) }
-    var operationKind by remember { mutableStateOf<String?>(null) }
-    var operationInput by remember { mutableStateOf("") }
-    var syncEntry by remember { mutableStateOf<FileEntry?>(null) }
-    var syncExternalUri by remember { mutableStateOf("") }
+    var pendingDeletePath by remember(storage) { mutableStateOf<String?>(null) }
+    var operationEntry by remember(storage) { mutableStateOf<FileEntry?>(null) }
+    var operationKind by remember(storage) { mutableStateOf<String?>(null) }
+    var operationInput by remember(storage) { mutableStateOf("") }
+    var syncEntry by remember(storage) { mutableStateOf<FileEntry?>(null) }
+    var syncExternalUri by remember(storage) { mutableStateOf("") }
     var syncLinks by remember(context) { mutableStateOf(loadWorkspaceSyncLinks(context)) }
-    var selectionMode by remember { mutableStateOf(false) }
-    var selectedPaths by remember { mutableStateOf(emptySet<String>()) }
-    var bulkActionKind by remember { mutableStateOf<String?>(null) }
-    var bulkInput by remember { mutableStateOf("") }
-    var pendingNavigation by remember { mutableStateOf<(() -> Unit)?>(null) }
-    var showDiscardDialog by remember { mutableStateOf(false) }
-    var statusMessage by remember { mutableStateOf<String?>(null) }
-    var showWorkspaceManager by remember { mutableStateOf(false) }
-    var showSavedDocuments by remember { mutableStateOf(false) }
-    var showWorkspaceSafety by remember { mutableStateOf(false) }
+    var selectionMode by remember(storage) { mutableStateOf(false) }
+    var selectedPaths by remember(storage) { mutableStateOf(emptySet<String>()) }
+    var bulkActionKind by remember(storage) { mutableStateOf<String?>(null) }
+    var bulkInput by remember(storage) { mutableStateOf("") }
+    var pendingNavigation by remember(storage) { mutableStateOf<(() -> Unit)?>(null) }
+    var showDiscardDialog by remember(storage) { mutableStateOf(false) }
+    var statusMessage by remember(storage) { mutableStateOf<String?>(null) }
+    var showWorkspaceManager by remember(storage) { mutableStateOf(false) }
+    var showSavedDocuments by remember(storage) { mutableStateOf(false) }
+    var showWorkspaceSafety by remember(storage) { mutableStateOf(false) }
     var showWorkspaceTree by remember(storage) { mutableStateOf(false) }
-    var treeWorkspaceContextEntry by remember { mutableStateOf<WorkspaceTreeWorkspace?>(null) }
-    var showCreateWorkspaceDialog by remember { mutableStateOf(false) }
-    var newWorkspaceName by remember { mutableStateOf("") }
-    var renameWorkspaceEntry by remember { mutableStateOf<WorkspaceTreeWorkspace?>(null) }
-    var renameWorkspaceName by remember { mutableStateOf("") }
-    var pendingDeleteWorkspaceEntry by remember { mutableStateOf<WorkspaceTreeWorkspace?>(null) }
-    var activeMainScreen by remember { mutableStateOf<Screen>(Screen.Files) }
-    val screenBackStack = remember { mutableStateListOf<Screen>() }
-    var inspectorEntry by remember { mutableStateOf<FileEntry?>(null) }
+    var treeWorkspaceContextEntry by remember(storage) { mutableStateOf<WorkspaceTreeWorkspace?>(null) }
+    var showCreateWorkspaceDialog by remember(storage) { mutableStateOf(false) }
+    var newWorkspaceName by remember(storage) { mutableStateOf("") }
+    var renameWorkspaceEntry by remember(storage) { mutableStateOf<WorkspaceTreeWorkspace?>(null) }
+    var renameWorkspaceName by remember(storage) { mutableStateOf("") }
+    var pendingDeleteWorkspaceEntry by remember(storage) { mutableStateOf<WorkspaceTreeWorkspace?>(null) }
+    var activeMainScreen by remember(storage) { mutableStateOf<Screen>(Screen.Files) }
+    val screenBackStack = remember(storage) { mutableStateListOf<Screen>() }
+    var inspectorEntry by remember(storage) { mutableStateOf<FileEntry?>(null) }
 
     var searchResults by remember(storage) { mutableStateOf(emptyList<AtelierSearchResult>()) }
     var searchBusy by remember(storage) { mutableStateOf(false) }
@@ -1117,7 +1115,7 @@ private fun FileManagementScreen(
     var trashScreenItems by remember(storage) { mutableStateOf(emptyList<AtelierTrashItem>()) }
     var trashScreenLoading by remember(storage) { mutableStateOf(false) }
     var trashScreenMessage by remember(storage) { mutableStateOf<String?>(null) }
-    var bulkActionInProgress by remember { mutableStateOf(false) }
+    var bulkActionInProgress by remember(storage) { mutableStateOf(false) }
     var standaloneDocumentLoading by remember(selectedDocument?.id) {
         mutableStateOf(selectedDocument != null)
     }
