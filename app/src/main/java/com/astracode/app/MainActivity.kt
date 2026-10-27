@@ -140,6 +140,7 @@ import com.astracode.ui.models.AtelierPreview
 import com.astracode.ui.models.AtelierSearchResult
 import com.astracode.ui.models.AtelierStorageHealth
 import com.astracode.ui.models.AtelierTrashItem
+import com.astracode.ui.screens.EditorWelcomeScreen
 import com.astracode.ui.screens.FilesScreen
 import com.astracode.ui.screens.SafetyScreen
 import com.astracode.ui.screens.SearchScreen
@@ -1131,7 +1132,7 @@ private fun FileManagementScreen(
     var renameWorkspaceEntry by remember(storage) { mutableStateOf<WorkspaceTreeWorkspace?>(null) }
     var renameWorkspaceName by remember(storage) { mutableStateOf("") }
     var pendingDeleteWorkspaceEntry by remember(storage) { mutableStateOf<WorkspaceTreeWorkspace?>(null) }
-    var activeMainScreen by remember(storage) { mutableStateOf<Screen>(Screen.Files) }
+    var activeMainScreen by remember(storage) { mutableStateOf<Screen>(Screen.Editor) }
     val screenBackStack = remember(storage) { mutableStateListOf<Screen>() }
     var inspectorEntry by remember(storage) { mutableStateOf<FileEntry?>(null) }
 
@@ -1984,6 +1985,7 @@ private fun FileManagementScreen(
             return
         }
 
+        val returnToEditor = activeMainScreen == Screen.Editor
         activeMainScreen = Screen.Files
         screenBackStack.clear()
         inspectorEntry = null
@@ -2000,6 +2002,7 @@ private fun FileManagementScreen(
                     openedFile = null
                     showOperationDialog(selected, "extract")
                 } else {
+                    if (returnToEditor) activeMainScreen = Screen.Editor
                     openFile(selected.path, selected.sizeBytes)
                 }
             }
@@ -2297,7 +2300,7 @@ private fun FileManagementScreen(
     }
 
     LaunchedEffect(storage, selectedDocument) {
-        activeMainScreen = Screen.Files
+        activeMainScreen = Screen.Editor
         screenBackStack.clear()
         currentDirectory = ""
         openedFile = null
@@ -2352,7 +2355,7 @@ private fun FileManagementScreen(
         pendingDeleteWorkspaceEntry != null || showDiscardDialog || showEditorTabDiscardDialog ||
         showWorkspaceManager || showSavedDocuments || showWorkspaceSafety || bulkActionKind != null || bulkActionInProgress
     val canNavigateBack = inspectorEntry != null || openedFile != null || selectedDocument != null ||
-        activeMainScreen != Screen.Files || screenBackStack.isNotEmpty() || currentDirectory.isNotEmpty() || selectionMode
+        activeMainScreen != Screen.Editor || screenBackStack.isNotEmpty() || currentDirectory.isNotEmpty() || selectionMode
 
     val dirtyWorkspaceBufferCount = editorTabs.count { !it.isLoading && it.text != it.savedText } +
         if (selectedDocument != null && editorText != savedText) 1 else 0
@@ -2444,7 +2447,7 @@ private fun FileManagementScreen(
                     val candidate = screenBackStack.removeAt(screenBackStack.lastIndex)
                     if (candidate != activeMainScreen) previousScreen = candidate
                 }
-                activeMainScreen = previousScreen ?: Screen.Files
+                activeMainScreen = previousScreen ?: Screen.Editor
                 selectionMode = false
                 selectedPaths = emptySet()
                 when (activeMainScreen) {
@@ -2453,8 +2456,8 @@ private fun FileManagementScreen(
                     else -> Unit
                 }
             }
-            activeMainScreen != Screen.Files -> {
-                activeMainScreen = Screen.Files
+            activeMainScreen != Screen.Editor -> {
+                activeMainScreen = Screen.Editor
                 selectionMode = false
                 selectedPaths = emptySet()
             }
@@ -2542,6 +2545,18 @@ private fun FileManagementScreen(
                 }
             } else {
                 when (activeMainScreen) {
+                    Screen.Editor -> EditorWelcomeScreen(
+                        modifier = Modifier.weight(1f).fillMaxWidth().testTag("editor-welcome-screen"),
+                        workspaceName = workspaceDisplayName,
+                        onOpenProjectFiles = { showWorkspaceTree = true },
+                        onOpenExternalFile = { requestNavigation(onOpenStandaloneFile) },
+                        onManageFiles = {
+                            if (activeMainScreen != Screen.Files) screenBackStack.add(activeMainScreen)
+                            activeMainScreen = Screen.Files
+                            selectionMode = false
+                            selectedPaths = emptySet()
+                        },
+                    )
                     Screen.Files -> FilesScreen(
                         modifier = Modifier.weight(1f),
                         rootName = workspaceDisplayName,
@@ -4272,8 +4287,8 @@ private fun AppTopBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(76.dp)
-            .padding(horizontal = 18.dp, vertical = 10.dp),
+            .height(56.dp)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(
@@ -5080,23 +5095,24 @@ private fun EditorPanel(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 16.dp),
+            .padding(horizontal = 8.dp, vertical = 6.dp),
     ) {
-        Text(
-            path,
-            color = MutedText,
-            fontSize = 12.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Spacer(Modifier.height(12.dp))
         Row(
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("EDITOR", color = Mint, fontSize = 11.sp, letterSpacing = 1.4.sp, fontWeight = FontWeight.Bold)
-            Text(if (readOnly) "READ ONLY" else "UTF-8", color = MutedText, fontSize = 11.sp)
+            Text(
+                path,
+                modifier = Modifier.weight(1f),
+                color = MutedText,
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(if (readOnly) "READ ONLY" else "UTF-8", color = MutedText, fontSize = 10.sp)
         }
+        Spacer(Modifier.height(4.dp))
         if (tabs.isNotEmpty()) {
             Row(
                 modifier = Modifier
@@ -5127,7 +5143,7 @@ private fun EditorPanel(
                 }
             }
         }
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(4.dp))
         TextButton(
             onClick = {
                 showFindReplace = !showFindReplace

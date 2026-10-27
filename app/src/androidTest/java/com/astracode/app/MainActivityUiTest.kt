@@ -63,8 +63,17 @@ class MainActivityUiTest {
             }
         }
         File(context.filesDir, "named-workspaces").deleteRecursively()
-        composeRule.activityRule.scenario.recreate()
+        recreateToFiles()
     }
+
+    private fun recreateToFiles() {
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching { composeRule.onNodeWithTag("bottom-nav-files").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("bottom-nav-files").performClick()
+    }
+
 
     private fun currentEditableEditorText(): String = composeRule
         .onNodeWithTag("file-editor-input")
@@ -113,7 +122,7 @@ class MainActivityUiTest {
         Files.createDirectories(workspace)
         val sourceFile = workspace.resolve("Completion.kt")
         Files.write(sourceFile, byteArrayOf())
-        composeRule.activityRule.scenario.recreate()
+        recreateToFiles()
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("workspace-file-list").assertIsDisplayed() }.isSuccess
@@ -150,7 +159,7 @@ class MainActivityUiTest {
         Files.createDirectories(workspace)
         Files.write(workspace.resolve("README.txt"), "Workspace fixture\n".toByteArray(Charsets.UTF_8))
         Files.write(workspace.resolve("Main.kt"), "fun main() = Unit\n".toByteArray(Charsets.UTF_8))
-        composeRule.activityRule.scenario.recreate()
+        recreateToFiles()
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("entry-README.txt").assertIsDisplayed() }.isSuccess
@@ -214,7 +223,7 @@ class MainActivityUiTest {
         val original = "original\n"
         val draft = "unsaved draft"
         Files.write(file, original.toByteArray(Charsets.UTF_8))
-        composeRule.activityRule.scenario.recreate()
+        recreateToFiles()
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("entry-README.txt").assertIsDisplayed() }.isSuccess
@@ -279,7 +288,7 @@ class MainActivityUiTest {
         val workspace = context.filesDir.toPath().resolve("workspace")
         Files.createDirectories(workspace)
         Files.write(workspace.resolve("WorkspaceClose.txt"), "Workspace close fixture\n".toByteArray(Charsets.UTF_8))
-        composeRule.activityRule.scenario.recreate()
+        recreateToFiles()
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("entry-WorkspaceClose.txt").assertIsDisplayed() }.isSuccess
@@ -334,7 +343,7 @@ class MainActivityUiTest {
         val secondFile = workspace.resolve("DraftTwo.kt")
         Files.write(firstFile, "first saved".toByteArray(Charsets.UTF_8))
         Files.write(secondFile, "second saved".toByteArray(Charsets.UTF_8))
-        composeRule.activityRule.scenario.recreate()
+        recreateToFiles()
 
         composeRule.onNodeWithTag("workspace-file-list")
             .performScrollToNode(hasTestTag("entry-DraftOne.kt"))
@@ -396,7 +405,7 @@ class MainActivityUiTest {
         val secondFile = workspace.resolve("DraftTwo.kt")
         Files.write(firstFile, "first saved".toByteArray(Charsets.UTF_8))
         Files.write(secondFile, "second saved".toByteArray(Charsets.UTF_8))
-        composeRule.activityRule.scenario.recreate()
+        recreateToFiles()
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("entry-DraftOne.kt").assertIsDisplayed() }.isSuccess
@@ -464,7 +473,7 @@ class MainActivityUiTest {
         (1..26).forEach { index ->
             Files.write(workspace.resolve("tab-$index.txt"), "tab content $index".toByteArray(Charsets.UTF_8))
         }
-        composeRule.activityRule.scenario.recreate()
+        recreateToFiles()
         // AstraCode starts on Screen.Files; wait for the real lazy file list to load.
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("workspace-file-list").assertIsDisplayed() }.isSuccess
@@ -519,7 +528,7 @@ class MainActivityUiTest {
         Files.createDirectories(workspace)
         val file = workspace.resolve("autosave-sample.txt")
         Files.write(file, "before".toByteArray(Charsets.UTF_8))
-        composeRule.activityRule.scenario.recreate()
+        recreateToFiles()
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("entry-autosave-sample.txt").assertIsDisplayed() }.isSuccess
@@ -574,7 +583,7 @@ class MainActivityUiTest {
 
     @Test
     fun recreatingActivityDoesNotShowCancellationAsFolderLoadFailure() {
-        composeRule.activityRule.scenario.recreate()
+        recreateToFiles()
         composeRule.waitForIdle()
         composeRule.onAllNodesWithText("Could not load folder", substring = true)
             .assertCountEquals(0)
@@ -612,6 +621,23 @@ class MainActivityUiTest {
     }
 
     @Test
+    fun appLaunchesIntoEditorAndKeepsFileManagementAccessible() {
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching { composeRule.onNodeWithTag("editor-welcome-screen").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithText("Ready to code").assertIsDisplayed()
+
+        composeRule.onNodeWithTag("bottom-nav-files").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching { composeRule.onNodeWithText("A clean workspace.").assertIsDisplayed() }.isSuccess
+        }
+
+        composeRule.onNodeWithTag("bottom-nav-editor").performClick()
+        composeRule.onNodeWithTag("editor-welcome-screen").assertIsDisplayed()
+    }
+
+    @Test
     fun emptyWorkspaceExplainsHowToCreateAFile() {
         composeRule.onNodeWithText("A clean workspace.").assertIsDisplayed()
         composeRule.onNodeWithText("Create your first file").assertIsDisplayed()
@@ -630,7 +656,7 @@ class MainActivityUiTest {
         Files.write(workspace.resolve("app/src/Main.kt"), "fun main() = Unit\n".toByteArray(Charsets.UTF_8))
         Files.write(workspace.resolve("app/src/.env"), "TOKEN=original".toByteArray(Charsets.UTF_8))
 
-        composeRule.activityRule.scenario.recreate()
+        recreateToFiles()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithText("4 ITEMS").assertIsDisplayed() }.isSuccess
         }
@@ -692,7 +718,7 @@ class MainActivityUiTest {
         Files.createDirectories(workspace.resolve("folder"))
         Files.write(workspace.resolve("sample.txt"), "original".toByteArray(Charsets.UTF_8))
         Files.write(workspace.resolve("folder/child.txt"), "child".toByteArray(Charsets.UTF_8))
-        composeRule.activityRule.scenario.recreate()
+        recreateToFiles()
 
         composeRule.waitUntil(timeoutMillis = 10_000) {
             runCatching { composeRule.onNodeWithTag("entry-sample.txt").assertIsDisplayed() }.isSuccess
@@ -740,7 +766,7 @@ class MainActivityUiTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val workspace = context.filesDir.toPath().resolve("workspace")
         Files.write(workspace.resolve("metadata-sample.txt"), "metadata".toByteArray(Charsets.UTF_8))
-        composeRule.activityRule.scenario.recreate()
+        recreateToFiles()
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("entry-metadata-sample.txt").assertIsDisplayed() }.isSuccess
@@ -758,7 +784,7 @@ class MainActivityUiTest {
         val workspace = context.filesDir.toPath().resolve("workspace")
         Files.createDirectories(workspace.resolve("metadata-folder"))
         Files.write(workspace.resolve("metadata-folder/child.txt"), "child".toByteArray(Charsets.UTF_8))
-        composeRule.activityRule.scenario.recreate()
+        recreateToFiles()
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("entry-metadata-folder").assertIsDisplayed() }.isSuccess
@@ -780,7 +806,7 @@ class MainActivityUiTest {
         Files.write(workspace.resolve("app/spec.docx"), docxBytes)
         Files.write(workspace.resolve("app/build.gradle.kts"), "plugins {}\\n".toByteArray(Charsets.UTF_8))
         Files.write(workspace.resolve("app/src/Main.kt"), "fun main() = Unit\\n".toByteArray(Charsets.UTF_8))
-        composeRule.activityRule.scenario.recreate()
+        recreateToFiles()
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("entry-app").assertIsDisplayed() }.isSuccess
@@ -860,7 +886,7 @@ class MainActivityUiTest {
         val documentBytes = byteArrayOf(0, 1, 2, 127, -1, -128, 42)
         Files.write(workspace.resolve("Document.docx"), documentBytes)
         Files.write(workspace.resolve("src/Main.kt"), "fun main() = Unit\\n".toByteArray(Charsets.UTF_8))
-        composeRule.activityRule.scenario.recreate()
+        recreateToFiles()
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching {
@@ -923,7 +949,7 @@ class MainActivityUiTest {
         Files.createDirectories(workspace.resolve("app/src"))
         Files.write(workspace.resolve("README.txt"), "Workspace fixture\n".toByteArray(Charsets.UTF_8))
         Files.write(workspace.resolve("app/src/Main.kt"), "fun main() = Unit\n".toByteArray(Charsets.UTF_8))
-        composeRule.activityRule.scenario.recreate()
+        recreateToFiles()
 
         composeRule.waitUntil(timeoutMillis = 10_000) {
             runCatching { composeRule.onNodeWithTag("workspace-safety-tools").assertIsDisplayed() }.isSuccess
@@ -995,7 +1021,7 @@ class MainActivityUiTest {
         val sample = workspace.resolve("FoldSample.kt")
         val source = "fun main() {\n    println(\"first\")\n    println(\"second\")\n}\n"
         Files.write(sample, source.toByteArray(Charsets.UTF_8))
-        composeRule.activityRule.scenario.recreate()
+        recreateToFiles()
 
         composeRule.waitUntil(timeoutMillis = 10_000) {
             runCatching { composeRule.onNodeWithTag("entry-FoldSample.kt").assertIsDisplayed() }.isSuccess
@@ -1026,7 +1052,7 @@ class MainActivityUiTest {
         Files.createDirectories(workspace)
         val sample = workspace.resolve("UnicodeEditor.txt")
         Files.write(sample, "start".toByteArray(Charsets.UTF_8))
-        composeRule.activityRule.scenario.recreate()
+        recreateToFiles()
 
         composeRule.waitUntil(timeoutMillis = 10_000) {
             runCatching { composeRule.onNodeWithTag("entry-UnicodeEditor.txt").assertIsDisplayed() }.isSuccess
@@ -1062,7 +1088,7 @@ class MainActivityUiTest {
         Files.createDirectories(workspace)
         val sample = workspace.resolve("SearchReplace.kt")
         Files.write(sample, "val target = 1\nval target = 2\n".toByteArray(Charsets.UTF_8))
-        composeRule.activityRule.scenario.recreate()
+        recreateToFiles()
 
         composeRule.waitUntil(timeoutMillis = 10_000) {
             runCatching { composeRule.onNodeWithTag("entry-SearchReplace.kt").assertIsDisplayed() }.isSuccess
@@ -1194,7 +1220,7 @@ class MainActivityUiTest {
         val renamed = workspace.resolve("README-renamed.txt")
         val draft = "Draft must survive a rename"
         Files.write(original, "Original text".toByteArray(Charsets.UTF_8))
-        composeRule.activityRule.scenario.recreate()
+        recreateToFiles()
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("entry-README.txt").assertIsDisplayed() }.isSuccess
@@ -1234,7 +1260,7 @@ class MainActivityUiTest {
         val original = workspace.resolve("README.txt")
         val draft = "Unsaved content that must remain recoverable"
         Files.write(original, "Original text".toByteArray(Charsets.UTF_8))
-        composeRule.activityRule.scenario.recreate()
+        recreateToFiles()
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("entry-README.txt").assertIsDisplayed() }.isSuccess
@@ -1341,7 +1367,7 @@ class MainActivityUiTest {
         workspaceRoot.mkdirs()
         val sample = File(workspaceRoot, "SymbolReference.kt")
         sample.writeText("")
-        composeRule.activityRule.scenario.recreate()
+        recreateToFiles()
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("entry-SymbolReference.kt").assertIsDisplayed() }.isSuccess
@@ -1397,7 +1423,7 @@ class MainActivityUiTest {
         namedRoot.deleteRecursively()
         context.getSharedPreferences("astracode_workspace", android.content.Context.MODE_PRIVATE)
             .edit().remove("named_workspaces").remove("active_workspace_id").apply()
-        composeRule.activityRule.scenario.recreate()
+        recreateToFiles()
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("open-workspace-tree-button").assertIsDisplayed() }.isSuccess
@@ -1459,7 +1485,7 @@ class MainActivityUiTest {
         val workspace = File(context.filesDir, "workspace")
         workspace.deleteRecursively()
         workspace.mkdirs()
-        composeRule.activityRule.scenario.recreate()
+        recreateToFiles()
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("open-workspace-tree-button").assertIsDisplayed() }.isSuccess
@@ -1521,7 +1547,7 @@ class MainActivityUiTest {
         Files.createDirectories(workspace.resolve("app/src"))
         val sample = workspace.resolve("app/src/Main.kt")
         Files.write(sample, "fun main() = Unit\n".toByteArray(Charsets.UTF_8))
-        composeRule.activityRule.scenario.recreate()
+        recreateToFiles()
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("workspace-file-list").assertIsDisplayed() }.isSuccess
