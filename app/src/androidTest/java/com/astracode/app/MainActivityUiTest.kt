@@ -1400,7 +1400,7 @@ class MainActivityUiTest {
         composeRule.activityRule.scenario.recreate()
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
-            runCatching { composeRule.onNodeWithTag("workspace-file-list").assertIsDisplayed() }.isSuccess
+            runCatching { composeRule.onNodeWithTag("open-workspace-tree-button").assertIsDisplayed() }.isSuccess
         }
         composeRule.onNodeWithTag("open-workspace-tree-button").performClick()
         composeRule.onNodeWithTag("workspace-tree-create-workspace").performClick()
@@ -1462,7 +1462,7 @@ class MainActivityUiTest {
         composeRule.activityRule.scenario.recreate()
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
-            runCatching { composeRule.onNodeWithTag("workspace-file-list").assertIsDisplayed() }.isSuccess
+            runCatching { composeRule.onNodeWithTag("open-workspace-tree-button").assertIsDisplayed() }.isSuccess
         }
         composeRule.onNodeWithTag("open-workspace-tree-button").performClick()
         composeRule.onNodeWithTag("workspace-tree-root").performTouchInput { longClick() }
