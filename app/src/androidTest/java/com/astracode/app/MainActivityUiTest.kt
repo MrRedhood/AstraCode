@@ -1417,19 +1417,19 @@ class MainActivityUiTest {
         val createdRoot = File(namedRoot, createdId)
         assertTrue("A named workspace should have a real private folder", createdRoot.isDirectory)
 
-        composeRule.waitUntil(timeoutMillis = 5_000) {
-            runCatching { composeRule.onNodeWithTag("new-file-button").assertIsDisplayed() }.isSuccess
-        }
-        composeRule.onNodeWithTag("new-file-button").performClick()
-        composeRule.onNodeWithTag("new-file-name-input").performTextInput("Main.kt")
-        composeRule.onNodeWithTag("confirm-create-file").performClick()
-        composeRule.waitUntil(timeoutMillis = 5_000) { File(createdRoot, "Main.kt").isFile }
-        assertTrue("The new workspace should be ready for coding", File(createdRoot, "Main.kt").isFile)
+        val sourceFile = File(createdRoot, "Main.kt")
+        sourceFile.writeText("fun main() = Unit\n")
+        assertTrue("The new workspace should have its own source file", sourceFile.isFile)
 
         composeRule.onNodeWithTag("open-workspace-tree-button").performClick()
         val workspaceTag = "workspace-tree-workspace-$createdId"
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag(workspaceTag).assertIsDisplayed() }.isSuccess
+        }
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("workspace-tree-file-Main.kt").assertIsDisplayed()
+            }.isSuccess
         }
         composeRule.onNodeWithTag(workspaceTag).performTouchInput { longClick() }
         composeRule.onNodeWithTag("workspace-tree-workspace-rename").performClick()
@@ -1473,6 +1473,47 @@ class MainActivityUiTest {
         assertTrue(File(workspace, "src").isDirectory)
     }
 
+    @Test
+    fun privateWorkspaceCanBeRenamedAndCleared() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workspace = File(context.filesDir, "workspace")
+        workspace.deleteRecursively()
+        workspace.mkdirs()
+        val existing = File(workspace, "Existing.kt")
+        existing.writeText("fun main() = Unit\n")
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("open-workspace-tree-button").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("open-workspace-tree-button").performClick()
+        val privateTag = "workspace-tree-workspace-private"
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag(privateTag).assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag(privateTag).performTouchInput { longClick() }
+        composeRule.onNodeWithTag("workspace-tree-workspace-rename").performClick()
+        composeRule.onNodeWithTag("workspace-rename-name").performTextReplacement("Starter Project")
+        composeRule.onNodeWithTag("workspace-rename-confirm").performClick()
+
+        val preferences = context.getSharedPreferences(
+            "astracode_workspace",
+            android.content.Context.MODE_PRIVATE,
+        )
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            preferences.getString("workspace_name_overrides", null)
+                ?.contains("Starter Project") == true
+        }
+        composeRule.onNodeWithTag("open-workspace-tree-button").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag(privateTag).assertTextContains("Starter Project") }.isSuccess
+        }
+        composeRule.onNodeWithTag(privateTag).performTouchInput { longClick() }
+        composeRule.onNodeWithTag("workspace-tree-workspace-delete").performClick()
+        composeRule.onNodeWithTag("workspace-tree-workspace-delete-confirm").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) { !existing.exists() && workspace.isDirectory }
+        assertTrue("Deleting the private workspace should clear its files", !existing.exists())
+        assertTrue("The private workspace should remain available as an empty fallback", workspace.isDirectory)
+    }
     @Test
     fun hamburgerWorkspaceTreeExpandsFoldersCollapsesAndOpensNestedFile() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext

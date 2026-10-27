@@ -547,7 +547,51 @@ class MainActivity : ComponentActivity() {
             fun deleteWorkspaceEntry(entry: WorkspaceTreeWorkspace) {
                 when (entry.kind) {
                     WorkspaceTreeWorkspaceKind.PRIVATE -> {
-                        workspaceNotice = "The built-in workspace cannot be deleted. You can rename it or delete individual files."
+                        val appFiles = filesDir.canonicalFile
+                        val privateDirectory = File(filesDir, "workspace").canonicalFile
+                        if (privateDirectory.parentFile != appFiles || privateDirectory.name != "workspace") {
+                            workspaceNotice = "Refused to clear a workspace outside AstraCode's private workspace folder."
+                            return
+                        }
+                        val wasActive = activeWorkspaceId == PRIVATE_WORKSPACE_ID
+                        if (wasActive) {
+                            storage.close()
+                            activeStorage = null
+                        }
+                        if (privateDirectory.exists() && !privateDirectory.deleteRecursively()) {
+                            if (wasActive) {
+                                runCatching { createPrivateWorkspace() }.onSuccess { fallback ->
+                                    storage = fallback
+                                    activeStorage = fallback
+                                }
+                            }
+                            workspaceNotice = "Could not clear the Private workspace."
+                            return
+                        }
+                        if (!privateDirectory.mkdirs() && !privateDirectory.isDirectory) {
+                            if (wasActive) {
+                                runCatching { createPrivateWorkspace() }.onSuccess { fallback ->
+                                    storage = fallback
+                                    activeStorage = fallback
+                                }
+                            }
+                            workspaceNotice = "Could not recreate the empty Private workspace."
+                            return
+                        }
+                        if (wasActive) {
+                            val fallback = createPrivateWorkspace()
+                            storage = fallback
+                            activeStorage = fallback
+                            currentDirectory = ""
+                            openedFile = null
+                            editorTabs = emptyList()
+                            activeWorkspaceId = PRIVATE_WORKSPACE_ID
+                            preferences.edit()
+                                .putString(ACTIVE_WORKSPACE_KEY, PRIVATE_WORKSPACE_ID)
+                                .apply()
+                        }
+                        workspaceNotice = "Cleared files from " + entry.name +
+                            ". The Private workspace remains available and empty."
                     }
                     WorkspaceTreeWorkspaceKind.EXTERNAL -> {
                         savedWorkspaceFolders.firstOrNull { it.id == entry.id }?.let(::removeSavedWorkspace)
@@ -2663,16 +2707,14 @@ private fun FileManagementScreen(
                         },
                         modifier = Modifier.fillMaxWidth().testTag("workspace-tree-workspace-rename"),
                     ) { Text("Rename") }
-                    if (entry.kind != WorkspaceTreeWorkspaceKind.PRIVATE) {
-                        TextButton(
-                            onClick = {
-                                treeWorkspaceContextEntry = null
-                                showWorkspaceTree = false
-                                pendingDeleteWorkspaceEntry = entry
-                            },
-                            modifier = Modifier.fillMaxWidth().testTag("workspace-tree-workspace-delete"),
-                        ) { Text("Delete", color = Danger) }
-                    }
+                    TextButton(
+                        onClick = {
+                            treeWorkspaceContextEntry = null
+                            showWorkspaceTree = false
+                            pendingDeleteWorkspaceEntry = entry
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("workspace-tree-workspace-delete"),
+                    ) { Text("Delete", color = Danger) }
                 }
             },
             confirmButton = {
@@ -2768,10 +2810,15 @@ private fun FileManagementScreen(
             title = { Text("Delete workspace?") },
             text = {
                 Text(
-                    if (entry.kind == WorkspaceTreeWorkspaceKind.EXTERNAL) {
-                        "Remove " + entry.name + " from AstraCode? The original folder and its files will not be deleted."
-                    } else {
-                        "Delete " + entry.name + " and all files stored inside this AstraCode workspace? This cannot be undone."
+                    when (entry.kind) {
+                        WorkspaceTreeWorkspaceKind.EXTERNAL ->
+                            "Remove " + entry.name + " from AstraCode? The original folder and its files will not be deleted."
+                        WorkspaceTreeWorkspaceKind.PRIVATE ->
+                            "Delete all files in " + entry.name +
+                                "? The Private workspace will remain available as an empty fallback."
+                        WorkspaceTreeWorkspaceKind.MANAGED ->
+                            "Delete " + entry.name +
+                                " and all files stored inside this AstraCode workspace? This cannot be undone."
                     },
                 )
             },
