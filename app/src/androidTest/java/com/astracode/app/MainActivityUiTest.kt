@@ -1405,9 +1405,29 @@ class MainActivityUiTest {
             runCatching { composeRule.onNodeWithTag("workspace-tree-root").assertIsDisplayed() }.isSuccess
         }
 
+        composeRule.onNodeWithTag("workspace-tree-root").performTouchInput { longClick() }
+        composeRule.onNodeWithTag("workspace-tree-context-new-file").assertIsDisplayed()
+        listOf(
+            "workspace-tree-context-rename",
+            "workspace-tree-context-delete",
+            "workspace-tree-context-change-path",
+        ).forEach { tag ->
+            composeRule.onAllNodesWithTag(tag).assertCountEquals(0)
+        }
+        composeRule.onNodeWithTag("workspace-tree-context-cancel").performClick()
+        composeRule.onAllNodesWithTag("workspace-tree-context-new-file").assertCountEquals(0)
+
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("workspace-tree-folder-app").assertIsDisplayed() }.isSuccess
         }
+        composeRule.onNodeWithTag("workspace-tree-folder-app").performTouchInput { longClick() }
+        composeRule.onNodeWithTag("workspace-tree-context-new-file").assertIsDisplayed()
+        composeRule.onNodeWithTag("workspace-tree-context-rename").assertIsDisplayed()
+        composeRule.onNodeWithTag("workspace-tree-context-delete").assertIsDisplayed()
+        composeRule.onNodeWithTag("workspace-tree-context-change-path").assertIsDisplayed()
+        composeRule.onNodeWithTag("workspace-tree-context-cancel").performClick()
+        composeRule.onAllNodesWithTag("workspace-tree-context-new-file").assertCountEquals(0)
+
         composeRule.onNodeWithTag("workspace-tree-expand-root").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("workspace-tree-folder-app").assertIsDisplayed() }.isFailure
@@ -1424,6 +1444,13 @@ class MainActivityUiTest {
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("workspace-tree-file-app-src-Main.kt").assertIsDisplayed() }.isSuccess
         }
+        composeRule.onNodeWithTag("workspace-tree-file-app-src-Main.kt").performTouchInput { longClick() }
+        composeRule.onAllNodesWithTag("workspace-tree-context-new-file").assertCountEquals(0)
+        composeRule.onNodeWithTag("workspace-tree-context-rename").assertIsDisplayed()
+        composeRule.onNodeWithTag("workspace-tree-context-delete").assertIsDisplayed()
+        composeRule.onNodeWithTag("workspace-tree-context-change-path").assertIsDisplayed()
+        composeRule.onNodeWithTag("workspace-tree-context-cancel").performClick()
+        composeRule.onAllNodesWithTag("workspace-tree-context-rename").assertCountEquals(0)
 
         composeRule.onNodeWithTag("workspace-tree-file-app-src-Main.kt").performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {

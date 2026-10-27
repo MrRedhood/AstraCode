@@ -761,6 +761,7 @@ private fun FileManagementScreen(
     var showNewFolderDialog by remember { mutableStateOf(false) }
     var newItemParentDirectory by remember(storage) { mutableStateOf<String?>(null) }
     var contextMenuEntry by remember(storage) { mutableStateOf<FileEntry?>(null) }
+    var treeContextEntry by remember(storage) { mutableStateOf<FileEntry?>(null) }
     var changePathEntry by remember(storage) { mutableStateOf<FileEntry?>(null) }
     var destinationDirectories by remember(storage) { mutableStateOf(emptyList<String>()) }
     var destinationDirectoriesLoading by remember(storage) { mutableStateOf(false) }
@@ -1965,7 +1966,7 @@ private fun FileManagementScreen(
     }
 
     val hasModalUi = showNewFileDialog || showNewFolderDialog || pendingDeletePath != null ||
-        showWorkspaceTree || contextMenuEntry != null || changePathEntry != null || operationEntry != null || syncEntry != null ||
+        showWorkspaceTree || contextMenuEntry != null || treeContextEntry != null || changePathEntry != null || operationEntry != null || syncEntry != null ||
         showDiscardDialog || showEditorTabDiscardDialog || showWorkspaceManager || showSavedDocuments ||
         showWorkspaceSafety || bulkActionKind != null || bulkActionInProgress
     val canNavigateBack = inspectorEntry != null || openedFile != null || selectedDocument != null ||
@@ -2326,6 +2327,17 @@ private fun FileManagementScreen(
                     navigateWorkspaceTreeToEntry(path)
                 }
             },
+            onLongPressEntry = { entry ->
+                treeContextEntry = entry ?: FileEntry(
+                    path = "",
+                    name = "Workspace",
+                    type = FileEntryType.DIRECTORY,
+                    sizeBytes = 0L,
+                    modifiedAt = java.time.Instant.EPOCH,
+                    readable = true,
+                    writable = true,
+                )
+            },
             onDismiss = { showWorkspaceTree = false },
         )
     }
@@ -2454,6 +2466,61 @@ private fun FileManagementScreen(
                     onClick = { contextMenuEntry = null },
                     modifier = Modifier.testTag("workspace-context-close"),
                 ) { Text("Close") }
+            },
+        )
+    }
+
+    treeContextEntry?.let { entry ->
+        AlertDialog(
+            onDismissRequest = { treeContextEntry = null },
+            title = { Text(entry.name + " options") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    if (entry.type == FileEntryType.DIRECTORY) {
+                        TextButton(
+                            onClick = {
+                                treeContextEntry = null
+                                showWorkspaceTree = false
+                                newItemParentDirectory = entry.path
+                                newFileName = ""
+                                showNewFileDialog = true
+                            },
+                            modifier = Modifier.fillMaxWidth().testTag("workspace-tree-context-new-file"),
+                        ) { Text("New file") }
+                    }
+                    if (entry.path.isNotBlank()) {
+                        TextButton(
+                            onClick = {
+                                treeContextEntry = null
+                                showWorkspaceTree = false
+                                showOperationDialog(entry, "rename")
+                            },
+                            modifier = Modifier.fillMaxWidth().testTag("workspace-tree-context-rename"),
+                        ) { Text("Rename") }
+                        TextButton(
+                            onClick = {
+                                treeContextEntry = null
+                                showWorkspaceTree = false
+                                pendingDeletePath = entry.path
+                            },
+                            modifier = Modifier.fillMaxWidth().testTag("workspace-tree-context-delete"),
+                        ) { Text("Delete", color = Danger) }
+                        TextButton(
+                            onClick = {
+                                treeContextEntry = null
+                                showWorkspaceTree = false
+                                openChangePathPicker(entry)
+                            },
+                            modifier = Modifier.fillMaxWidth().testTag("workspace-tree-context-change-path"),
+                        ) { Text("Change path") }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { treeContextEntry = null },
+                    modifier = Modifier.testTag("workspace-tree-context-cancel"),
+                ) { Text("Cancel") }
             },
         )
     }

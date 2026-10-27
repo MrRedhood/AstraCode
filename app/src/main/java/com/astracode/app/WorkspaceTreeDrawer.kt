@@ -1,8 +1,10 @@
 package com.astracode.app
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -68,6 +70,7 @@ internal fun WorkspaceTreeDrawer(
     openedFile: String?,
     onNavigateToDirectory: (String) -> Unit,
     onSelectEntry: (String) -> Unit,
+    onLongPressEntry: (FileEntry?) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var childrenByDirectory by remember(storage) {
@@ -207,6 +210,7 @@ internal fun WorkspaceTreeDrawer(
                                 isRoot = true,
                                 onToggleExpansion = { toggleDirectory("") },
                                 onSelect = { onNavigateToDirectory("") },
+                                onLongPress = { onLongPressEntry(null) },
                             )
                         }
                         items(visibleEntries, key = { it.entry.path }) { visible ->
@@ -225,6 +229,7 @@ internal fun WorkspaceTreeDrawer(
                                     if (isDirectory) onNavigateToDirectory(entry.path)
                                     else onSelectEntry(entry.path)
                                 },
+                                onLongPress = { onLongPressEntry(entry) },
                             )
                         }
                     }
@@ -256,6 +261,7 @@ internal fun WorkspaceTreeDrawer(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun WorkspaceTreeRow(
     path: String,
@@ -268,6 +274,7 @@ private fun WorkspaceTreeRow(
     isRoot: Boolean = false,
     onToggleExpansion: () -> Unit,
     onSelect: () -> Unit,
+    onLongPress: () -> Unit,
 ) {
     val connectorColor = MaterialTheme.colorScheme.outlineVariant
     Row(
@@ -278,7 +285,7 @@ private fun WorkspaceTreeRow(
                 if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
                 else Color.Transparent,
             )
-            .clickable(onClick = onSelect)
+            .combinedClickable(onClick = onSelect, onLongClick = onLongPress)
             .testTag(
                 if (isRoot) "workspace-tree-root"
                 else "workspace-tree-${if (isDirectory) "folder" else "file"}-${path.replace("/", "-")}",
