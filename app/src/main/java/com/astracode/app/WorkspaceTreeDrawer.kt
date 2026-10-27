@@ -188,6 +188,12 @@ internal fun WorkspaceTreeDrawer(
                     verticalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = onCreateWorkspace,
+                            modifier = Modifier.testTag("workspace-tree-create-workspace"),
+                        ) {
+                            Icon(Icons.Filled.Add, contentDescription = "Create workspace")
+                        }
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 "Workspace",
@@ -203,12 +209,6 @@ internal fun WorkspaceTreeDrawer(
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.testTag("workspace-tree-active-name"),
                             )
-                        }
-                        IconButton(
-                            onClick = onCreateWorkspace,
-                            modifier = Modifier.testTag("workspace-tree-create-workspace"),
-                        ) {
-                            Icon(Icons.Filled.Add, contentDescription = "Create workspace")
                         }
                         IconButton(
                             onClick = onDismiss,
