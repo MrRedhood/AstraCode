@@ -6,6 +6,10 @@ import android.os.SystemClock
 import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
+import java.io.File
+import java.util.UUID
+import org.json.JSONArray
+import org.json.JSONObject
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
@@ -185,6 +189,8 @@ private val AstraColorScheme = darkColorScheme(
 private const val PRIVATE_WORKSPACE_ID = "private"
 private const val SAVED_WORKSPACES_KEY = "saved_workspace_uris"
 private const val ACTIVE_WORKSPACE_KEY = "active_workspace_id"
+private const val NAMED_WORKSPACES_KEY = "named_workspaces"
+private const val WORKSPACE_NAME_OVERRIDES_KEY = "workspace_name_overrides"
 private const val SAVED_DOCUMENTS_KEY = "saved_document_uris"
 private const val ACTIVE_DOCUMENT_KEY = "active_document_uri"
 private const val MAX_STANDALONE_DOCUMENT_BYTES = 8L * 1024L * 1024L
@@ -221,6 +227,11 @@ private data class WorkspaceBookmark(
     val id: String get() = uri.toString()
 }
 
+private data class ManagedWorkspaceBookmark(
+    val id: String,
+    val name: String,
+)
+
 private data class DocumentBookmark(
     val uri: Uri,
     val name: String,
@@ -242,7 +253,15 @@ class MainActivity : ComponentActivity() {
         val preferences = getSharedPreferences("astracode_workspace", MODE_PRIVATE)
         val savedUris = loadSavedWorkspaceUris(preferences)
         val legacyActiveUri = preferences.getString("tree_uri", null)
-        val initialBookmarks = savedUris.map(::createWorkspaceBookmark)
+        val initialWorkspaceNameOverrides = decodeWorkspaceNameOverrides(
+            preferences.getString(WORKSPACE_NAME_OVERRIDES_KEY, null),
+        )
+        val initialBookmarks = savedUris.map { uri ->
+            createWorkspaceBookmark(uri, initialWorkspaceNameOverrides[uri.toString()])
+        }
+        val initialManagedWorkspaces = decodeManagedWorkspaceBookmarks(
+            preferences.getString(NAMED_WORKSPACES_KEY, null),
+        )
         val savedDocumentUris = loadSavedDocumentUris(preferences)
         val initialDocumentBookmarks = savedDocumentUris.map(::createDocumentBookmark)
         val initialActiveDocument = preferences.getString(ACTIVE_DOCUMENT_KEY, null)
@@ -256,11 +275,20 @@ class MainActivity : ComponentActivity() {
 
         var restoreNotice: String? = null
         var resolvedActiveId = PRIVATE_WORKSPACE_ID
-        val initialStorage: WorkspaceStorage = if (
-            requestedActiveId != PRIVATE_WORKSPACE_ID &&
-            savedUris.any { it.toString() == requestedActiveId }
-        ) {
-            runCatching {
+        val requestedManagedWorkspace = initialManagedWorkspaces.firstOrNull {
+            it.id == requestedActiveId
+        }
+        val initialStorage: WorkspaceStorage = when {
+            requestedActiveId == PRIVATE_WORKSPACE_ID -> createPrivateWorkspace()
+            requestedManagedWorkspace != null -> runCatching {
+                createManagedWorkspace(requestedManagedWorkspace)
+            }.onSuccess {
+                resolvedActiveId = requestedActiveId
+            }.onFailure { error ->
+                restoreNotice = "Could not restore workspace " + requestedManagedWorkspace.name + ": " +
+                    (error.message ?: "storage error")
+            }.getOrNull() ?: createPrivateWorkspace()
+            savedUris.any { it.toString() == requestedActiveId } -> runCatching {
                 SafWorkspaceStorage(applicationContext, Uri.parse(requestedActiveId))
             }.onSuccess {
                 resolvedActiveId = requestedActiveId
@@ -269,8 +297,7 @@ class MainActivity : ComponentActivity() {
                     (error.message ?: "permission denied") +
                     ". Open Saved workspaces to try again."
             }.getOrNull() ?: createPrivateWorkspace()
-        } else {
-            createPrivateWorkspace()
+            else -> createPrivateWorkspace()
         }
         activeStorage = initialStorage
 
@@ -285,6 +312,8 @@ class MainActivity : ComponentActivity() {
             var storage by remember { mutableStateOf(initialStorage) }
             var activeWorkspaceId by remember { mutableStateOf(resolvedActiveId) }
             var savedWorkspaceFolders by remember { mutableStateOf(initialBookmarks) }
+            var managedWorkspaceFolders by remember { mutableStateOf(initialManagedWorkspaces) }
+            var workspaceNameOverrides by remember { mutableStateOf(initialWorkspaceNameOverrides) }
             var savedDocuments by remember { mutableStateOf(initialDocumentBookmarks) }
             var activeDocument by remember { mutableStateOf(initialActiveDocument) }
             var workspaceNotice by remember { mutableStateOf(restoreNotice) }
@@ -297,6 +326,20 @@ class MainActivity : ComponentActivity() {
             fun closeActiveDocument() {
                 activeDocument = null
                 preferences.edit().remove(ACTIVE_DOCUMENT_KEY).apply()
+            }
+
+            fun persistManagedWorkspaceFolders(updated: List<ManagedWorkspaceBookmark>) {
+                managedWorkspaceFolders = updated
+                preferences.edit()
+                    .putString(NAMED_WORKSPACES_KEY, encodeManagedWorkspaceBookmarks(updated))
+                    .apply()
+            }
+
+            fun persistWorkspaceNameOverrides(updated: Map<String, String>) {
+                workspaceNameOverrides = updated
+                preferences.edit()
+                    .putString(WORKSPACE_NAME_OVERRIDES_KEY, encodeWorkspaceNameOverrides(updated))
+                    .apply()
             }
 
             fun removeSavedDocument(bookmark: DocumentBookmark) {
@@ -348,8 +391,146 @@ class MainActivity : ComponentActivity() {
                 activeWorkspaceId = PRIVATE_WORKSPACE_ID
                 preferences.edit().putString(ACTIVE_WORKSPACE_KEY, PRIVATE_WORKSPACE_ID).apply()
                 previous.close()
-                workspaceNotice = "Using the private workspace."
+                workspaceNotice = "Using " +
+                    (workspaceNameOverrides[PRIVATE_WORKSPACE_ID] ?: "Private workspace") + "."
                 // Other saved folders intentionally keep their Android URI grants.
+            }
+
+            fun activateManagedWorkspace(bookmark: ManagedWorkspaceBookmark) {
+                if (activeWorkspaceId == bookmark.id) return
+                runCatching { createManagedWorkspace(bookmark) }
+                    .onSuccess { nextStorage ->
+                        val previous = storage
+                        storage = nextStorage
+                        activeStorage = nextStorage
+                        activeWorkspaceId = bookmark.id
+                        preferences.edit().putString(ACTIVE_WORKSPACE_KEY, bookmark.id).apply()
+                        previous.close()
+                        workspaceNotice = "Opened workspace " + bookmark.name
+                    }
+                    .onFailure { error ->
+                        workspaceNotice = "Could not open workspace " + bookmark.name + ": " +
+                            (error.message ?: "storage error")
+                    }
+            }
+
+            fun createManagedWorkspaceFromName(rawName: String): Boolean {
+                val name = rawName.trim()
+                if (name.isBlank()) {
+                    workspaceNotice = "Enter a workspace name."
+                    return false
+                }
+                val visibleNames = buildList {
+                    add(workspaceNameOverrides[PRIVATE_WORKSPACE_ID] ?: "Private workspace")
+                    addAll(managedWorkspaceFolders.map { it.name })
+                    addAll(savedWorkspaceFolders.map { it.name })
+                }
+                if (visibleNames.any { it.equals(name, ignoreCase = true) }) {
+                    workspaceNotice = "A workspace with that name already exists."
+                    return false
+                }
+                val bookmark = ManagedWorkspaceBookmark(
+                    id = "managed-" + UUID.randomUUID().toString(),
+                    name = name,
+                )
+                return runCatching { createManagedWorkspace(bookmark) }
+                    .fold(
+                        onSuccess = { nextStorage ->
+                            val previous = storage
+                            storage = nextStorage
+                            activeStorage = nextStorage
+                            activeWorkspaceId = bookmark.id
+                            persistManagedWorkspaceFolders(managedWorkspaceFolders + bookmark)
+                            preferences.edit().putString(ACTIVE_WORKSPACE_KEY, bookmark.id).apply()
+                            previous.close()
+                            workspaceNotice = "Created and opened workspace " + name
+                            true
+                        },
+                        onFailure = { error ->
+                            workspaceNotice = "Could not create workspace: " +
+                                (error.message ?: "storage error")
+                            false
+                        },
+                    )
+            }
+
+            fun renameWorkspaceEntry(entry: WorkspaceTreeWorkspace, rawName: String): Boolean {
+                val name = rawName.trim()
+                if (name.isBlank()) {
+                    workspaceNotice = "Enter a workspace name."
+                    return false
+                }
+                val currentNames = buildList {
+                    add(WorkspaceTreeWorkspace(
+                        id = PRIVATE_WORKSPACE_ID,
+                        name = workspaceNameOverrides[PRIVATE_WORKSPACE_ID] ?: "Private workspace",
+                        kind = WorkspaceTreeWorkspaceKind.PRIVATE,
+                    ))
+                    managedWorkspaceFolders.forEach {
+                        add(WorkspaceTreeWorkspace(it.id, it.name, WorkspaceTreeWorkspaceKind.MANAGED))
+                    }
+                    savedWorkspaceFolders.forEach {
+                        add(WorkspaceTreeWorkspace(it.id, it.name, WorkspaceTreeWorkspaceKind.EXTERNAL))
+                    }
+                }
+                if (currentNames.any { it.id != entry.id && it.name.equals(name, ignoreCase = true) }) {
+                    workspaceNotice = "A workspace with that name already exists."
+                    return false
+                }
+                when (entry.kind) {
+                    WorkspaceTreeWorkspaceKind.PRIVATE -> {
+                        persistWorkspaceNameOverrides(workspaceNameOverrides + (PRIVATE_WORKSPACE_ID to name))
+                    }
+                    WorkspaceTreeWorkspaceKind.MANAGED -> {
+                        val updated = managedWorkspaceFolders.map {
+                            if (it.id == entry.id) it.copy(name = name) else it
+                        }
+                        persistManagedWorkspaceFolders(updated)
+                    }
+                    WorkspaceTreeWorkspaceKind.EXTERNAL -> {
+                        savedWorkspaceFolders = savedWorkspaceFolders.map {
+                            if (it.id == entry.id) it.copy(name = name) else it
+                        }
+                        persistWorkspaceNameOverrides(workspaceNameOverrides + (entry.id to name))
+                    }
+                }
+                workspaceNotice = "Renamed workspace to " + name
+                return true
+            }
+
+            fun deleteWorkspaceEntry(entry: WorkspaceTreeWorkspace) {
+                when (entry.kind) {
+                    WorkspaceTreeWorkspaceKind.PRIVATE -> {
+                        workspaceNotice = "The built-in workspace cannot be deleted. You can rename it or delete individual files."
+                    }
+                    WorkspaceTreeWorkspaceKind.EXTERNAL -> {
+                        savedWorkspaceFolders.firstOrNull { it.id == entry.id }?.let(::removeSavedWorkspace)
+                    }
+                    WorkspaceTreeWorkspaceKind.MANAGED -> {
+                        val bookmark = managedWorkspaceFolders.firstOrNull { it.id == entry.id } ?: return
+                        val previous = if (activeWorkspaceId == bookmark.id) storage else null
+                        if (previous != null) {
+                            val nextStorage = createPrivateWorkspace()
+                            storage = nextStorage
+                            activeStorage = nextStorage
+                            activeWorkspaceId = PRIVATE_WORKSPACE_ID
+                            preferences.edit().putString(ACTIVE_WORKSPACE_KEY, PRIVATE_WORKSPACE_ID).apply()
+                            previous.close()
+                        }
+                        val parent = File(filesDir, "named-workspaces").canonicalFile
+                        val directory = File(parent, bookmark.id).canonicalFile
+                        if (!isValidManagedWorkspaceId(bookmark.id) || directory.parentFile != parent) {
+                            workspaceNotice = "Refused to delete a workspace outside AstraCode's workspace folder."
+                            return
+                        }
+                        if (directory.exists() && !directory.deleteRecursively()) {
+                            workspaceNotice = "Could not fully delete workspace " + bookmark.name
+                            return
+                        }
+                        persistManagedWorkspaceFolders(managedWorkspaceFolders.filterNot { it.id == bookmark.id })
+                        workspaceNotice = "Deleted workspace " + bookmark.name
+                    }
+                }
             }
 
             fun activateSavedWorkspace(bookmark: WorkspaceBookmark) {
@@ -387,6 +568,7 @@ class MainActivity : ComponentActivity() {
                 preferences.edit()
                     .putString(SAVED_WORKSPACES_KEY, encodeWorkspaceUris(remaining.map { it.uri }))
                     .apply()
+                persistWorkspaceNameOverrides(workspaceNameOverrides - bookmark.id)
                 val isStillSynced = loadWorkspaceSyncLinks(applicationContext)
                     .any { it.externalTreeUri == bookmark.id }
                 if (!isStillSynced) releasePersistedTreePermission(bookmark.uri)
@@ -410,7 +592,12 @@ class MainActivity : ComponentActivity() {
                         )
                         SafWorkspaceStorage(applicationContext, uri)
                     }.onSuccess { nextStorage ->
-                        val bookmark = WorkspaceBookmark(uri, nextStorage.displayName)
+                        val bookmark = WorkspaceBookmark(
+                            uri,
+                            workspaceNameOverrides[uri.toString()]
+                                ?: savedWorkspaceFolders.firstOrNull { it.uri == uri }?.name
+                                ?: nextStorage.displayName,
+                        )
                         val updatedBookmarks = if (alreadySaved) {
                             savedWorkspaceFolders.map { if (it.uri == uri) bookmark else it }
                         } else {
@@ -465,6 +652,21 @@ class MainActivity : ComponentActivity() {
                         onSelectPrivateWorkspace = { activatePrivateWorkspace() },
                         onSelectSavedWorkspace = { bookmark -> activateSavedWorkspace(bookmark) },
                         onRemoveSavedWorkspace = { bookmark -> removeSavedWorkspace(bookmark) },
+                        managedWorkspaceFolders = managedWorkspaceFolders,
+                        privateWorkspaceName = workspaceNameOverrides[PRIVATE_WORKSPACE_ID] ?: "Private workspace",
+                        workspaceDisplayName = when {
+                            activeWorkspaceId == PRIVATE_WORKSPACE_ID ->
+                                workspaceNameOverrides[PRIVATE_WORKSPACE_ID] ?: "Private workspace"
+                            managedWorkspaceFolders.any { it.id == activeWorkspaceId } ->
+                                managedWorkspaceFolders.first { it.id == activeWorkspaceId }.name
+                            savedWorkspaceFolders.any { it.id == activeWorkspaceId } ->
+                                savedWorkspaceFolders.first { it.id == activeWorkspaceId }.name
+                            else -> storage.displayName
+                        },
+                        onSelectManagedWorkspace = { bookmark -> activateManagedWorkspace(bookmark) },
+                        onCreateManagedWorkspace = { name -> createManagedWorkspaceFromName(name) },
+                        onRenameWorkspaceEntry = { entry, name -> renameWorkspaceEntry(entry, name) },
+                        onDeleteWorkspaceEntry = { entry -> deleteWorkspaceEntry(entry) },
                     )
                 }
             }
@@ -566,7 +768,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun createWorkspaceBookmark(uri: Uri): WorkspaceBookmark {
+    private fun createWorkspaceBookmark(uri: Uri, nameOverride: String? = null): WorkspaceBookmark {
         val providerName = runCatching {
             androidx.documentfile.provider.DocumentFile.fromTreeUri(applicationContext, uri)?.name
         }.getOrNull()
@@ -575,7 +777,15 @@ class MainActivity : ComponentActivity() {
             ?: uri.lastPathSegment?.substringAfterLast(':')?.substringAfterLast('/')
                 ?.takeIf { it.isNotBlank() }
             ?: "External folder"
-        return WorkspaceBookmark(uri, readableName)
+        return WorkspaceBookmark(
+            uri,
+            nameOverride?.trim()?.takeIf { it.isNotBlank() } ?: readableName,
+        )
+    }
+
+    private fun createManagedWorkspace(bookmark: ManagedWorkspaceBookmark): FileManagementSystem {
+        require(isValidManagedWorkspaceId(bookmark.id)) { "Invalid managed workspace ID" }
+        return FileManagementSystem(filesDir.toPath().resolve("named-workspaces").resolve(bookmark.id))
     }
 
     private fun releasePersistedTreePermission(uri: Uri) {
@@ -597,6 +807,52 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 }
+
+private fun isValidManagedWorkspaceId(id: String): Boolean =
+    Regex("managed-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+        .matches(id)
+
+private fun decodeManagedWorkspaceBookmarks(raw: String?): List<ManagedWorkspaceBookmark> {
+    if (raw.isNullOrBlank()) return emptyList()
+    return runCatching {
+        val json = JSONArray(raw)
+        buildList {
+            for (index in 0 until json.length()) {
+                val item = json.getJSONObject(index)
+                val id = item.optString("id")
+                val name = item.optString("name").trim()
+                if (isValidManagedWorkspaceId(id) && name.isNotBlank()) {
+                    add(ManagedWorkspaceBookmark(id = id, name = name))
+                }
+            }
+        }.distinctBy { it.id }.distinctBy { it.name.lowercase() }
+    }.getOrDefault(emptyList())
+}
+
+private fun encodeManagedWorkspaceBookmarks(workspaces: List<ManagedWorkspaceBookmark>): String =
+    JSONArray().apply {
+        workspaces.forEach { bookmark ->
+            put(JSONObject().put("id", bookmark.id).put("name", bookmark.name))
+        }
+    }.toString()
+
+private fun decodeWorkspaceNameOverrides(raw: String?): Map<String, String> {
+    if (raw.isNullOrBlank()) return emptyMap()
+    return runCatching {
+        val json = JSONObject(raw)
+        val output = mutableMapOf<String, String>()
+        val keys = json.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val name = json.optString(key).trim()
+            if (name.isNotBlank()) output[key] = name
+        }
+        output
+    }.getOrDefault(emptyMap())
+}
+
+private fun encodeWorkspaceNameOverrides(overrides: Map<String, String>): String =
+    JSONObject().apply { overrides.forEach { (id, name) -> put(id, name) } }.toString()
 
 private fun readStandaloneDocument(context: Context, uri: Uri): StandaloneDocumentContent {
     val decoder = Utf8RepairDecoder()
@@ -732,6 +988,13 @@ private fun FileManagementScreen(
     onSelectPrivateWorkspace: () -> Unit,
     onSelectSavedWorkspace: (WorkspaceBookmark) -> Unit,
     onRemoveSavedWorkspace: (WorkspaceBookmark) -> Unit,
+    managedWorkspaceFolders: List<ManagedWorkspaceBookmark>,
+    privateWorkspaceName: String,
+    workspaceDisplayName: String,
+    onSelectManagedWorkspace: (ManagedWorkspaceBookmark) -> Unit,
+    onCreateManagedWorkspace: (String) -> Boolean,
+    onRenameWorkspaceEntry: (WorkspaceTreeWorkspace, String) -> Boolean,
+    onDeleteWorkspaceEntry: (WorkspaceTreeWorkspace) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -786,6 +1049,12 @@ private fun FileManagementScreen(
     var showSavedDocuments by remember { mutableStateOf(false) }
     var showWorkspaceSafety by remember { mutableStateOf(false) }
     var showWorkspaceTree by remember(storage) { mutableStateOf(false) }
+    var treeWorkspaceContextEntry by remember { mutableStateOf<WorkspaceTreeWorkspace?>(null) }
+    var showCreateWorkspaceDialog by remember { mutableStateOf(false) }
+    var newWorkspaceName by remember { mutableStateOf("") }
+    var renameWorkspaceEntry by remember { mutableStateOf<WorkspaceTreeWorkspace?>(null) }
+    var renameWorkspaceName by remember { mutableStateOf("") }
+    var pendingDeleteWorkspaceEntry by remember { mutableStateOf<WorkspaceTreeWorkspace?>(null) }
     var activeMainScreen by remember { mutableStateOf<Screen>(Screen.Files) }
     val screenBackStack = remember { mutableStateListOf<Screen>() }
     var inspectorEntry by remember { mutableStateOf<FileEntry?>(null) }
@@ -1967,8 +2236,9 @@ private fun FileManagementScreen(
 
     val hasModalUi = showNewFileDialog || showNewFolderDialog || pendingDeletePath != null ||
         showWorkspaceTree || contextMenuEntry != null || treeContextEntry != null || changePathEntry != null || operationEntry != null || syncEntry != null ||
-        showDiscardDialog || showEditorTabDiscardDialog || showWorkspaceManager || showSavedDocuments ||
-        showWorkspaceSafety || bulkActionKind != null || bulkActionInProgress
+        treeWorkspaceContextEntry != null || showCreateWorkspaceDialog || renameWorkspaceEntry != null ||
+        pendingDeleteWorkspaceEntry != null || showDiscardDialog || showEditorTabDiscardDialog ||
+        showWorkspaceManager || showSavedDocuments || showWorkspaceSafety || bulkActionKind != null || bulkActionInProgress
     val canNavigateBack = inspectorEntry != null || openedFile != null || selectedDocument != null ||
         activeMainScreen != Screen.Files || screenBackStack.isNotEmpty() || currentDirectory.isNotEmpty() || selectionMode
     BackHandler(enabled = !hasModalUi && canNavigateBack) {
@@ -2080,12 +2350,13 @@ private fun FileManagementScreen(
                 when (activeMainScreen) {
                     Screen.Files -> FilesScreen(
                         modifier = Modifier.weight(1f),
-                        rootName = storage.displayName,
+                        rootName = workspaceDisplayName,
                         currentDirectory = currentDirectory,
-                        storageLabel = if (storage.storageType == WorkspaceStorageType.DOCUMENT_TREE) {
-                            "External storage · provider-managed"
-                        } else {
-                            "Private app workspace"
+                        storageLabel = when {
+                            storage.storageType == WorkspaceStorageType.DOCUMENT_TREE ->
+                                "External storage · provider-managed"
+                            activeWorkspaceId.startsWith("managed-") -> "App-managed workspace"
+                            else -> "Private app workspace"
                         },
                         items = entries.map { it.toAtelierFileItem(folderCounts[it.path]) },
                         selectedPaths = selectedPaths,
@@ -2317,6 +2588,41 @@ private fun FileManagementScreen(
             storage = storage,
             currentDirectory = currentDirectory,
             openedFile = openedFile,
+            workspaces = buildList {
+                add(
+                    WorkspaceTreeWorkspace(
+                        id = PRIVATE_WORKSPACE_ID,
+                        name = privateWorkspaceName,
+                        kind = WorkspaceTreeWorkspaceKind.PRIVATE,
+                    ),
+                )
+                managedWorkspaceFolders.forEach { bookmark ->
+                    add(WorkspaceTreeWorkspace(bookmark.id, bookmark.name, WorkspaceTreeWorkspaceKind.MANAGED))
+                }
+                savedWorkspaceFolders.forEach { bookmark ->
+                    add(WorkspaceTreeWorkspace(bookmark.id, bookmark.name, WorkspaceTreeWorkspaceKind.EXTERNAL))
+                }
+            },
+            activeWorkspaceId = activeWorkspaceId,
+            workspaceDisplayName = workspaceDisplayName,
+            onCreateWorkspace = {
+                showWorkspaceTree = false
+                treeWorkspaceContextEntry = null
+                newWorkspaceName = ""
+                showCreateWorkspaceDialog = true
+            },
+            onSelectWorkspace = { entry ->
+                requestWorkspaceTreeNavigation {
+                    when (entry.kind) {
+                        WorkspaceTreeWorkspaceKind.PRIVATE -> onSelectPrivateWorkspace()
+                        WorkspaceTreeWorkspaceKind.MANAGED ->
+                            managedWorkspaceFolders.firstOrNull { it.id == entry.id }?.let(onSelectManagedWorkspace)
+                        WorkspaceTreeWorkspaceKind.EXTERNAL ->
+                            savedWorkspaceFolders.firstOrNull { it.id == entry.id }?.let(onSelectSavedWorkspace)
+                    }
+                }
+            },
+            onLongPressWorkspace = { entry -> treeWorkspaceContextEntry = entry },
             onNavigateToDirectory = { path ->
                 requestWorkspaceTreeNavigation {
                     navigateWorkspaceTreeToDirectory(path)
@@ -2339,6 +2645,150 @@ private fun FileManagementScreen(
                 )
             },
             onDismiss = { showWorkspaceTree = false },
+        )
+    }
+
+    treeWorkspaceContextEntry?.let { entry ->
+        AlertDialog(
+            onDismissRequest = { treeWorkspaceContextEntry = null },
+            title = { Text(entry.name + " options") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    TextButton(
+                        onClick = {
+                            treeWorkspaceContextEntry = null
+                            showWorkspaceTree = false
+                            renameWorkspaceEntry = entry
+                            renameWorkspaceName = entry.name
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("workspace-tree-workspace-rename"),
+                    ) { Text("Rename") }
+                    if (entry.kind != WorkspaceTreeWorkspaceKind.PRIVATE) {
+                        TextButton(
+                            onClick = {
+                                treeWorkspaceContextEntry = null
+                                showWorkspaceTree = false
+                                pendingDeleteWorkspaceEntry = entry
+                            },
+                            modifier = Modifier.fillMaxWidth().testTag("workspace-tree-workspace-delete"),
+                        ) { Text("Delete", color = Danger) }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { treeWorkspaceContextEntry = null },
+                    modifier = Modifier.testTag("workspace-tree-workspace-cancel"),
+                ) { Text("Cancel") }
+            },
+        )
+    }
+
+    if (showCreateWorkspaceDialog) {
+        AlertDialog(
+            onDismissRequest = { showCreateWorkspaceDialog = false },
+            title = { Text("Create workspace") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Create an empty workspace. You can start adding source files immediately.")
+                    OutlinedTextField(
+                        value = newWorkspaceName,
+                        onValueChange = { newWorkspaceName = it },
+                        label = { Text("Workspace name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("workspace-create-name"),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val name = newWorkspaceName.trim()
+                        if (name.isBlank()) {
+                            notify("Enter a workspace name.")
+                        } else if (buildList {
+                                add(privateWorkspaceName)
+                                addAll(managedWorkspaceFolders.map { it.name })
+                                addAll(savedWorkspaceFolders.map { it.name })
+                            }.any { it.equals(name, ignoreCase = true) }) {
+                            notify("A workspace with that name already exists.")
+                        } else {
+                            showCreateWorkspaceDialog = false
+                            requestWorkspaceSwitch {
+                                if (onCreateManagedWorkspace(name)) {
+                                    newWorkspaceName = ""
+                                } else {
+                                    showCreateWorkspaceDialog = true
+                                }
+                            }
+                        }
+                    },
+                    modifier = Modifier.testTag("workspace-create-confirm"),
+                ) { Text("Create") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCreateWorkspaceDialog = false }) { Text("Cancel") }
+            },
+        )
+    }
+
+    renameWorkspaceEntry?.let { entry ->
+        AlertDialog(
+            onDismissRequest = { renameWorkspaceEntry = null },
+            title = { Text("Rename workspace") },
+            text = {
+                OutlinedTextField(
+                    value = renameWorkspaceName,
+                    onValueChange = { renameWorkspaceName = it },
+                    label = { Text("Workspace name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("workspace-rename-name"),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (onRenameWorkspaceEntry(entry, renameWorkspaceName)) {
+                            renameWorkspaceEntry = null
+                            renameWorkspaceName = ""
+                        }
+                    },
+                    modifier = Modifier.testTag("workspace-rename-confirm"),
+                ) { Text("Rename") }
+            },
+            dismissButton = {
+                TextButton(onClick = { renameWorkspaceEntry = null }) { Text("Cancel") }
+            },
+        )
+    }
+
+    pendingDeleteWorkspaceEntry?.let { entry ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteWorkspaceEntry = null },
+            title = { Text("Delete workspace?") },
+            text = {
+                Text(
+                    if (entry.kind == WorkspaceTreeWorkspaceKind.EXTERNAL) {
+                        "Remove " + entry.name + " from AstraCode? The original folder and its files will not be deleted."
+                    } else {
+                        "Delete " + entry.name + " and all files stored inside this AstraCode workspace? This cannot be undone."
+                    },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingDeleteWorkspaceEntry = null
+                        val removeAction = { onDeleteWorkspaceEntry(entry) }
+                        if (entry.id == activeWorkspaceId) requestWorkspaceSwitch(removeAction)
+                        else removeAction()
+                    },
+                    modifier = Modifier.testTag("workspace-tree-workspace-delete-confirm"),
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteWorkspaceEntry = null }) { Text("Cancel") }
+            },
         )
     }
 
@@ -2487,6 +2937,16 @@ private fun FileManagementScreen(
                             },
                             modifier = Modifier.fillMaxWidth().testTag("workspace-tree-context-new-file"),
                         ) { Text("New file") }
+                        TextButton(
+                            onClick = {
+                                treeContextEntry = null
+                                showWorkspaceTree = false
+                                newItemParentDirectory = entry.path
+                                newFolderName = ""
+                                showNewFolderDialog = true
+                            },
+                            modifier = Modifier.fillMaxWidth().testTag("workspace-tree-context-new-folder"),
+                        ) { Text("New folder") }
                     }
                     if (entry.path.isNotBlank()) {
                         TextButton(

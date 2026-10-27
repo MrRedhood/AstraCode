@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
@@ -57,17 +58,32 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+internal enum class WorkspaceTreeWorkspaceKind { PRIVATE, MANAGED, EXTERNAL }
+
+internal data class WorkspaceTreeWorkspace(
+    val id: String,
+    val name: String,
+    val kind: WorkspaceTreeWorkspaceKind,
+)
+
 private data class WorkspaceTreeVisibleEntry(
     val entry: FileEntry,
     val depth: Int,
     val ancestorHasNext: List<Boolean>,
 )
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun WorkspaceTreeDrawer(
     storage: WorkspaceStorage,
     currentDirectory: String,
     openedFile: String?,
+    workspaces: List<WorkspaceTreeWorkspace>,
+    activeWorkspaceId: String,
+    workspaceDisplayName: String,
+    onCreateWorkspace: () -> Unit,
+    onSelectWorkspace: (WorkspaceTreeWorkspace) -> Unit,
+    onLongPressWorkspace: (WorkspaceTreeWorkspace) -> Unit,
     onNavigateToDirectory: (String) -> Unit,
     onSelectEntry: (String) -> Unit,
     onLongPressEntry: (FileEntry?) -> Unit,
@@ -180,12 +196,19 @@ internal fun WorkspaceTreeDrawer(
                                 modifier = Modifier.testTag("workspace-tree-title"),
                             )
                             Text(
-                                storage.displayName.ifBlank { "Workspace root" },
+                                workspaceDisplayName.ifBlank { storage.displayName.ifBlank { "Workspace root" } },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.testTag("workspace-tree-active-name"),
                             )
+                        }
+                        IconButton(
+                            onClick = onCreateWorkspace,
+                            modifier = Modifier.testTag("workspace-tree-create-workspace"),
+                        ) {
+                            Icon(Icons.Filled.Add, contentDescription = "Create workspace")
                         }
                         IconButton(
                             onClick = onDismiss,
@@ -198,6 +221,63 @@ internal fun WorkspaceTreeDrawer(
                     LazyColumn(
                         modifier = Modifier.weight(1f).fillMaxWidth().testTag("workspace-tree-list"),
                     ) {
+                        item(key = "workspace-tree-workspaces-title") {
+                            Text(
+                                "WORKSPACES",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.fillMaxWidth().padding(start = 8.dp, top = 10.dp, bottom = 4.dp),
+                            )
+                        }
+                        items(workspaces, key = { "workspace-tree-workspace-" + it.id }) { workspace ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .combinedClickable(
+                                        onClick = { onSelectWorkspace(workspace) },
+                                        onLongClick = { onLongPressWorkspace(workspace) },
+                                    )
+                                    .padding(horizontal = 8.dp, vertical = 9.dp)
+                                    .testTag("workspace-tree-workspace-" + workspace.id),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    Icons.Filled.FolderOpen,
+                                    contentDescription = null,
+                                    tint = if (workspace.id == activeWorkspaceId) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Text(
+                                    workspace.name,
+                                    modifier = Modifier.weight(1f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    style = if (workspace.id == activeWorkspaceId) {
+                                        MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                                    } else {
+                                        MaterialTheme.typography.bodyMedium
+                                    },
+                                )
+                                if (workspace.id == activeWorkspaceId) {
+                                    Text(
+                                        "Current",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                            }
+                        }
+                        item(key = "workspace-tree-files-title") {
+                            Divider()
+                            Text(
+                                "FILES",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.fillMaxWidth().padding(start = 8.dp, top = 10.dp, bottom = 4.dp),
+                            )
+                        }
                         item(key = "workspace-tree-root") {
                             WorkspaceTreeRow(
                                 path = "",
