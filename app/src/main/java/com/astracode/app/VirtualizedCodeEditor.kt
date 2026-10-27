@@ -57,6 +57,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 internal const val VIRTUALIZED_EDITOR_THRESHOLD_CHARS = 64 * 1024
 
@@ -258,6 +259,7 @@ internal fun VirtualizedCodeEditor(
     label: String = "File contents",
     placeholder: String? = null,
     testTag: String = "file-editor-input",
+    fontSizeSp: Int = 14,
 ) {
     val source = value.text
     val clipboardManager = LocalClipboardManager.current
@@ -360,7 +362,7 @@ internal fun VirtualizedCodeEditor(
                             modifier = Modifier.width(52.dp).padding(end = 8.dp),
                             color = lineNumberColor,
                             textAlign = TextAlign.End,
-                            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace, fontSize = fontSizeSp.sp),
                             maxLines = 1,
                         )
                         BasicTextField(
@@ -421,6 +423,7 @@ internal fun VirtualizedCodeEditor(
                             textStyle = MaterialTheme.typography.bodyMedium.copy(
                                 color = textColor,
                                 fontFamily = FontFamily.Monospace,
+                                fontSize = fontSizeSp.sp,
                             ),
                             cursorBrush = SolidColor(cursorColor),
                             keyboardOptions = KeyboardOptions(

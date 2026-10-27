@@ -123,6 +123,7 @@ import com.astracode.app.storage.SafWorkspaceStorage
 import com.astracode.app.storage.WorkspaceArchive
 import com.astracode.app.storage.WorkspaceSafety
 import com.astracode.app.storage.WorkspaceSyncLink
+import com.astracode.app.ui.drawer.*
 import com.astracode.app.storage.loadWorkspaceSyncLinks
 import com.astracode.app.storage.mapBetweenWorkspacePaths
 import com.astracode.app.storage.propagateWorkspaceChange
@@ -1039,6 +1040,9 @@ private fun FileManagementScreen(
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val editorPreferences = remember(context) {
+        context.getSharedPreferences("astracode_editor_preferences", Context.MODE_PRIVATE)
+    }
     val snackbarHostState = remember { SnackbarHostState() }
     val editorSaveMutex = remember(storage) { Mutex() }
 
@@ -1090,6 +1094,37 @@ private fun FileManagementScreen(
     var showSavedDocuments by remember(storage) { mutableStateOf(false) }
     var showWorkspaceSafety by remember(storage) { mutableStateOf(false) }
     var showWorkspaceTree by remember(storage) { mutableStateOf(false) }
+    var showEditorDrawer by remember(storage) { mutableStateOf(false) }
+    var drawerSelectedSection by remember(storage) { mutableStateOf(DrawerSection.Files) }
+    var drawerOptionsTargetId by remember(storage) { mutableStateOf<String?>(null) }
+    var drawerFileOpsExpanded by remember(storage) { mutableStateOf(true) }
+    var drawerLspExpanded by remember(storage) { mutableStateOf(false) }
+    var drawerPrefsExpanded by remember(storage) { mutableStateOf(false) }
+    val recentEditorJson = editorPreferences.getString("recent_files_" + activeWorkspaceId, null)
+    var recentEditorPaths by remember(activeWorkspaceId) {
+        mutableStateOf(
+            runCatching {
+                val json = JSONArray(recentEditorJson ?: "[]")
+                buildList {
+                    for (index in 0 until json.length()) {
+                        val path = json.optString(index)
+                        if (path.isNotBlank()) add(path)
+                    }
+                }.take(10)
+            }.getOrDefault(emptyList()),
+        )
+    }
+    var showRecentFilesDialog by remember(storage) { mutableStateOf(false) }
+    var showGoToLineDialog by remember(storage) { mutableStateOf(false) }
+    var goToLineInput by remember(storage) { mutableStateOf("") }
+    var goToLineError by remember(storage) { mutableStateOf<String?>(null) }
+    var goToLineRequest by remember(storage) { mutableStateOf<Int?>(null) }
+    var editorFontSize by remember(editorPreferences) {
+        mutableStateOf(editorPreferences.getInt("font_size_sp", 14).coerceIn(8, 32))
+    }
+    var editorWordWrap by remember(editorPreferences) {
+        mutableStateOf(editorPreferences.getBoolean("word_wrap", true))
+    }
     var treeWorkspaceContextEntry by remember(storage) { mutableStateOf<WorkspaceTreeWorkspace?>(null) }
     var showCreateWorkspaceDialog by remember(storage) { mutableStateOf(false) }
     var newWorkspaceName by remember(storage) { mutableStateOf("") }
@@ -1126,6 +1161,13 @@ private fun FileManagementScreen(
 
     fun notify(message: String) {
         scope.launch { snackbarHostState.showSnackbar(message) }
+    }
+
+    fun recordRecentFile(path: String) {
+        if (path.isBlank()) return
+        val updated = (listOf(path) + recentEditorPaths.filterNot { it == path }).take(10)
+        recentEditorPaths = updated
+        editorPreferences.edit().putString("recent_files_" + activeWorkspaceId, JSONArray(updated).toString()).apply()
     }
 
     fun clearEditorAutosaveSchedule(path: String) {
@@ -1362,6 +1404,7 @@ private fun FileManagementScreen(
         clearEditorAutosaveSchedule(oldestPath)
         currentDirectory = parentPath(newPath)
         openedFile = newPath
+        recordRecentFile(newPath)
         pendingEditorEviction = null
         replacingOldestTab = false
         pendingEditorTabClosePath = null
@@ -1794,6 +1837,7 @@ private fun FileManagementScreen(
         if (editorTabs.any { it.path == path }) {
             currentDirectory = parentPath(path)
             openedFile = path
+            recordRecentFile(path)
             return
         }
         if (replacingOldestTab) return
@@ -1834,6 +1878,23 @@ private fun FileManagementScreen(
         editorTabs = editorTabs + EditorTab(path = path, isLoading = true)
         currentDirectory = parentPath(path)
         openedFile = path
+        recordRecentFile(path)
+    }
+
+    fun openWorkspaceEditorPath(path: String) {
+        showEditorDrawer = false
+        if (selectedDocument != null) {
+            requestNavigation {
+                onCloseStandaloneDocument()
+                scope.launch {
+                    withFrameNanos { }
+                    withFrameNanos { }
+                    openFile(path)
+                }
+            }
+        } else {
+            openFile(path)
+        }
     }
 
     fun saveFile() {
@@ -1949,6 +2010,7 @@ private fun FileManagementScreen(
 
     fun requestWorkspaceTreeNavigation(action: () -> Unit) {
         showWorkspaceTree = false
+        showEditorDrawer = false
         requestWorkspaceSwitch {
             if (selectedDocument != null) {
                 onCloseStandaloneDocument()
@@ -1961,6 +2023,14 @@ private fun FileManagementScreen(
                 action()
             }
         }
+    }
+
+    fun navigateToSearchScreen() {
+        if (activeMainScreen != Screen.Search) screenBackStack.add(activeMainScreen)
+        activeMainScreen = Screen.Search
+        openedFile = null
+        selectionMode = false
+        selectedPaths = emptySet()
     }
 
     fun prepareWorkspaceSync(entry: FileEntry) {
@@ -2276,12 +2346,80 @@ private fun FileManagementScreen(
     }
 
     val hasModalUi = showNewFileDialog || showNewFolderDialog || pendingDeletePath != null ||
-        showWorkspaceTree || contextMenuEntry != null || treeContextEntry != null || changePathEntry != null || operationEntry != null || syncEntry != null ||
+        showWorkspaceTree || showEditorDrawer || showRecentFilesDialog || showGoToLineDialog ||
+        contextMenuEntry != null || treeContextEntry != null || changePathEntry != null || operationEntry != null || syncEntry != null ||
         treeWorkspaceContextEntry != null || showCreateWorkspaceDialog || renameWorkspaceEntry != null ||
         pendingDeleteWorkspaceEntry != null || showDiscardDialog || showEditorTabDiscardDialog ||
         showWorkspaceManager || showSavedDocuments || showWorkspaceSafety || bulkActionKind != null || bulkActionInProgress
     val canNavigateBack = inspectorEntry != null || openedFile != null || selectedDocument != null ||
         activeMainScreen != Screen.Files || screenBackStack.isNotEmpty() || currentDirectory.isNotEmpty() || selectionMode
+
+    val dirtyWorkspaceBufferCount = editorTabs.count { !it.isLoading && it.text != it.savedText } +
+        if (selectedDocument != null && editorText != savedText) 1 else 0
+    val drawerWorkspaces = buildList {
+        val privateActive = activeWorkspaceId == PRIVATE_WORKSPACE_ID
+        add(WorkspaceUi(PRIVATE_WORKSPACE_ID, privateWorkspaceName, WorkspaceKind.Private,
+            if (privateActive) "Active private workspace" else "Private app workspace",
+            if (privateActive) "" else "Private", if (privateActive) dirtyWorkspaceBufferCount else 0, privateActive))
+        managedWorkspaceFolders.forEach { bookmark ->
+            val isActive = activeWorkspaceId == bookmark.id
+            add(WorkspaceUi(bookmark.id, bookmark.name, WorkspaceKind.Managed,
+                if (isActive) "Active app-managed workspace" else "App-managed workspace",
+                if (isActive) "" else "Managed", if (isActive) dirtyWorkspaceBufferCount else 0, isActive))
+        }
+        savedWorkspaceFolders.forEach { bookmark ->
+            val isActive = activeWorkspaceId == bookmark.id
+            add(WorkspaceUi(bookmark.id, bookmark.name, WorkspaceKind.RemoteBookmark,
+                if (isActive) "Active external workspace" else "Saved external folder",
+                if (isActive) "" else "External", if (isActive) dirtyWorkspaceBufferCount else 0, isActive))
+        }
+    }
+    val drawerBuffers = if (selectedDocument != null) {
+        listOf(BufferUi(selectedDocument.name, fileBadgeForPath(selectedDocument.name),
+            if (standaloneDocumentLoading) "Loading" else "External", true, selectedDocument.id,
+            !standaloneDocumentLoading && editorText != savedText))
+    } else {
+        editorTabs.map { tab ->
+            BufferUi(fileName(tab.path), fileBadgeForPath(tab.path),
+                if (tab.isLoading) "Loading" else (tab.text.count { it == '\n' } + 1).toString() + " L",
+                tab.path == openedFile, tab.path, !tab.isLoading && tab.text != tab.savedText)
+        }
+    }
+    val drawerUiState = DrawerUiState.Empty.copy(
+        versionLabel = "v0.1.0",
+        syncLabel = if (storage.storageType == WorkspaceStorageType.DOCUMENT_TREE) "External workspace" else "Local workspace",
+        selectedSection = drawerSelectedSection,
+        project = DrawerUiState.Empty.project.copy(
+            name = workspaceDisplayName,
+            badge = openedFile?.let(::fileBadgeForPath) ?: FileBadge.Text,
+            branch = "Git not connected",
+            path = selectedDocument?.name ?: currentDirectory.ifBlank { "/" },
+            modifiedCount = dirtyWorkspaceBufferCount,
+            autoSync = false,
+            localSizeLabel = "Not measured",
+        ),
+        workspaces = drawerWorkspaces,
+        optionsTarget = drawerWorkspaces.firstOrNull { it.id == drawerOptionsTargetId },
+        fileCount = entries.count { it.type == FileEntryType.FILE },
+        projectTypeLabel = openedFile?.let { fileBadgeForPath(it).label } ?: "WORKSPACE",
+        buffers = drawerBuffers,
+        unsavedCount = dirtyWorkspaceBufferCount,
+        aiModelLabel = "Not connected",
+        aiFixLabel = "AI tools are not connected",
+        aiFixCode = "",
+        lspName = "Language services",
+        lspStatus = "Not connected",
+        lspErrors = 0,
+        lspWarnings = 0,
+        gitAdded = 0,
+        gitRemoved = 0,
+        gitAvailable = false,
+        fileOpsExpanded = drawerFileOpsExpanded,
+        lspExpanded = drawerLspExpanded,
+        prefsExpanded = drawerPrefsExpanded,
+        fontSize = editorFontSize,
+        wordWrap = editorWordWrap,
+    )
     BackHandler(enabled = !hasModalUi && canNavigateBack) {
         when {
             inspectorEntry != null -> inspectorEntry = null
@@ -2354,7 +2492,14 @@ private fun FileManagementScreen(
                     }
                 },
                 onSave = ::saveFile,
-                onOpenWorkspaceTree = { showWorkspaceTree = true },
+                onOpenEditorDrawer = {
+                    showWorkspaceTree = false
+                    showEditorDrawer = true
+                },
+                onOpenWorkspaceTree = {
+                    showEditorDrawer = false
+                    showWorkspaceTree = true
+                },
             )
             Divider(color = Border, thickness = 1.dp)
 
@@ -2384,6 +2529,14 @@ private fun FileManagementScreen(
                                 if (sameDocument) updateCurrentEditorText(panelPath, newText) else false
                             },
                             onSave = ::saveFile,
+                            fontSizeSp = editorFontSize,
+                            wordWrapEnabled = editorWordWrap,
+                            onWordWrapChanged = { enabled ->
+                                editorWordWrap = enabled
+                                editorPreferences.edit().putBoolean("word_wrap", enabled).apply()
+                            },
+                            goToLineRequest = goToLineRequest,
+                            onGoToLineConsumed = { goToLineRequest = null },
                         )
                     }
                 }
@@ -2622,6 +2775,278 @@ private fun FileManagementScreen(
                 )
             }
         }
+    }
+
+
+    if (showEditorDrawer) {
+        AstraEditorDrawer(
+            state = drawerUiState,
+            onEvent = { event ->
+                when (event) {
+                    is DrawerEvent.SectionSelected -> drawerSelectedSection = event.section
+                    is DrawerEvent.WorkspaceClicked -> {
+                        val target = drawerWorkspaces.firstOrNull { it.id == event.id }
+                        if (target == null || target.isActive) showEditorDrawer = false
+                        else requestWorkspaceTreeNavigation {
+                            when (target.kind) {
+                                WorkspaceKind.Private -> onSelectPrivateWorkspace()
+                                WorkspaceKind.Managed -> managedWorkspaceFolders.firstOrNull { it.id == target.id }?.let(onSelectManagedWorkspace)
+                                WorkspaceKind.RemoteBookmark -> savedWorkspaceFolders.firstOrNull { it.id == target.id }?.let(onSelectSavedWorkspace)
+                                WorkspaceKind.Active -> Unit
+                            }
+                        }
+                    }
+                    is DrawerEvent.WorkspaceLongPressed -> drawerOptionsTargetId = event.id
+                    DrawerEvent.WorkspaceOptionsDismissed -> drawerOptionsTargetId = null
+                    is DrawerEvent.WorkspaceOptionSelected -> {
+                        drawerOptionsTargetId = null
+                        val target = drawerWorkspaces.firstOrNull { it.id == event.workspaceId }
+                        val treeEntry = when {
+                            target == null -> null
+                            target.id == PRIVATE_WORKSPACE_ID -> WorkspaceTreeWorkspace(target.id, target.name, WorkspaceTreeWorkspaceKind.PRIVATE)
+                            managedWorkspaceFolders.any { it.id == target.id } -> WorkspaceTreeWorkspace(target.id, target.name, WorkspaceTreeWorkspaceKind.MANAGED)
+                            savedWorkspaceFolders.any { it.id == target.id } -> WorkspaceTreeWorkspace(target.id, target.name, WorkspaceTreeWorkspaceKind.EXTERNAL)
+                            else -> null
+                        }
+                        when (event.action) {
+                            WorkspaceAction.Rename -> {
+                                if (treeEntry == null) notify("This workspace is no longer available.")
+                                else {
+                                    showEditorDrawer = false
+                                    renameWorkspaceEntry = treeEntry
+                                    renameWorkspaceName = treeEntry.name
+                                }
+                            }
+                            WorkspaceAction.DeleteWorkspace -> {
+                                if (treeEntry == null) notify("This workspace is no longer available.")
+                                else {
+                                    showEditorDrawer = false
+                                    pendingDeleteWorkspaceEntry = treeEntry
+                                }
+                            }
+                            WorkspaceAction.CreateFile -> {
+                                showEditorDrawer = false
+                                newItemParentDirectory = currentDirectory
+                                newFileName = ""
+                                showNewFileDialog = true
+                            }
+                            WorkspaceAction.CreateFolder -> {
+                                showEditorDrawer = false
+                                newItemParentDirectory = currentDirectory
+                                newFolderName = ""
+                                showNewFolderDialog = true
+                            }
+                            WorkspaceAction.Cancel -> Unit
+                        }
+                    }
+                    is DrawerEvent.BufferClicked -> {
+                        if (selectedDocument != null && event.path == selectedDocument.id) showEditorDrawer = false
+                        else openWorkspaceEditorPath(event.path)
+                    }
+                    is DrawerEvent.BufferClosed -> {
+                        showEditorDrawer = false
+                        if (selectedDocument != null && event.path == selectedDocument.id) requestNavigation(onCloseStandaloneDocument)
+                        else requestCloseEditorTab(event.path)
+                    }
+                    is DrawerEvent.Action -> when (event.action) {
+                        DrawerAction.CreateWorkspace -> {
+                            showEditorDrawer = false
+                            newWorkspaceName = ""
+                            showCreateWorkspaceDialog = true
+                        }
+                        DrawerAction.NewFile -> {
+                            showEditorDrawer = false
+                            newItemParentDirectory = currentDirectory
+                            newFileName = ""
+                            showNewFileDialog = true
+                        }
+                        DrawerAction.NewFolder -> {
+                            showEditorDrawer = false
+                            newItemParentDirectory = currentDirectory
+                            newFolderName = ""
+                            showNewFolderDialog = true
+                        }
+                        DrawerAction.Save -> {
+                            showEditorDrawer = false
+                            saveFile()
+                        }
+                        DrawerAction.SaveAll -> {
+                            showEditorDrawer = false
+                            if (selectedDocument != null) saveFile()
+                            else {
+                                val dirtyTabs = editorTabs.filter { !it.isLoading && it.text != it.savedText }
+                                if (dirtyTabs.isEmpty()) notify("All open editor files are already saved.")
+                                else {
+                                    val workspaceAtStart = storage
+                                    scope.launch {
+                                        var savedCount = 0
+                                        val failures = mutableListOf<String>()
+                                        for (tab in dirtyTabs) {
+                                            if (storage !== workspaceAtStart) {
+                                                failures.add("Workspace changed before every file could be saved.")
+                                                break
+                                            }
+                                            val result = saveWorkspaceEditorTab(tab.path, tab.text)
+                                            if (result.isSuccess) savedCount++
+                                            else failures.add(fileName(tab.path) + ": " + (result.exceptionOrNull()?.message ?: "save failed"))
+                                        }
+                                        if (failures.isEmpty()) notify("Saved " + savedCount + " editor file(s).")
+                                        else notify("Saved " + savedCount + " file(s); failed: " + failures.joinToString("; "))
+                                    }
+                                }
+                            }
+                        }
+                        DrawerAction.RecentFiles -> {
+                            showEditorDrawer = false
+                            showRecentFilesDialog = true
+                        }
+                        DrawerAction.FindInFiles -> {
+                            showEditorDrawer = false
+                            if (selectedDocument != null) requestNavigation {
+                                onCloseStandaloneDocument()
+                                scope.launch {
+                                    withFrameNanos { }
+                                    withFrameNanos { }
+                                    navigateToSearchScreen()
+                                }
+                            } else navigateToSearchScreen()
+                        }
+                        DrawerAction.GoToLine -> {
+                            showEditorDrawer = false
+                            if (openedFile == null && selectedDocument == null) notify("Open a file before using Go to Line.")
+                            else if (standaloneDocumentLoading || activeEditorTab?.isLoading == true) notify("Wait for the current file to finish loading.")
+                            else {
+                                goToLineInput = ""
+                                goToLineError = null
+                                showGoToLineDialog = true
+                            }
+                        }
+                        DrawerAction.OpenExplorer -> {
+                            showEditorDrawer = false
+                            showWorkspaceTree = true
+                        }
+                        DrawerAction.OpenConfig -> {
+                            showEditorDrawer = false
+                            scope.launch {
+                                val requestedStorage = storage
+                                val candidates = listOf(
+                                    "settings.gradle.kts", "build.gradle.kts", "app/build.gradle.kts",
+                                    "gradle/libs.versions.toml", "Cargo.toml", "package.json",
+                                    "pyproject.toml", "pom.xml", "AndroidManifest.xml", ".editorconfig",
+                                )
+                                val found = withContext(Dispatchers.IO) {
+                                    candidates.firstOrNull { candidate ->
+                                        runCatching { findWorkspaceEntry(requestedStorage, candidate)?.type == FileEntryType.FILE }.getOrDefault(false)
+                                    }
+                                }
+                                if (storage !== requestedStorage) return@launch
+                                if (found == null) notify("No supported project configuration file was found in this workspace.")
+                                else openWorkspaceEditorPath(found)
+                            }
+                        }
+                        DrawerAction.AskAi,
+                        DrawerAction.FixBorrowChecker,
+                        DrawerAction.GenerateCode,
+                        DrawerAction.ExplainCode -> notify("AI tools are not connected in this build.")
+                        DrawerAction.GoToDefinition,
+                        DrawerAction.FindReferences -> notify("Language-server navigation is unavailable until a language server is connected.")
+                        DrawerAction.OpenTerminal -> notify("Terminal execution is not connected to this drawer yet.")
+                        DrawerAction.OpenGitChanges -> notify("Git integration is not connected in this build.")
+                        DrawerAction.RunTests -> notify("In-app test execution is not connected in this build.")
+                    }
+                    DrawerEvent.ToggleFileOps -> drawerFileOpsExpanded = !drawerFileOpsExpanded
+                    DrawerEvent.ToggleLsp -> drawerLspExpanded = !drawerLspExpanded
+                    DrawerEvent.TogglePrefs -> drawerPrefsExpanded = !drawerPrefsExpanded
+                    is DrawerEvent.FontSizeStep -> {
+                        editorFontSize = (editorFontSize + event.delta).coerceIn(8, 32)
+                        editorPreferences.edit().putInt("font_size_sp", editorFontSize).apply()
+                    }
+                    DrawerEvent.WordWrapToggled -> {
+                        editorWordWrap = !editorWordWrap
+                        editorPreferences.edit().putBoolean("word_wrap", editorWordWrap).apply()
+                    }
+                }
+            },
+            onClose = {
+                showEditorDrawer = false
+                drawerOptionsTargetId = null
+            },
+        )
+    }
+
+    if (showRecentFilesDialog) {
+        AlertDialog(
+            onDismissRequest = { showRecentFilesDialog = false },
+            title = { Text("Recent files") },
+            text = {
+                if (recentEditorPaths.isEmpty()) Text("No recently opened files in this workspace yet.")
+                else Column(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    recentEditorPaths.forEach { path ->
+                        TextButton(
+                            onClick = {
+                                showRecentFilesDialog = false
+                                openWorkspaceEditorPath(path)
+                            },
+                            modifier = Modifier.fillMaxWidth().testTag("recent-file-" + path.replace("/", "__")),
+                        ) {
+                            Column(Modifier.fillMaxWidth()) {
+                                Text(fileName(path), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(path, color = MutedText, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showRecentFilesDialog = false }) { Text("Close") } },
+        )
+    }
+
+    if (showGoToLineDialog) {
+        val maximumLine = editorText.count { it == '\n' } + 1
+        AlertDialog(
+            onDismissRequest = {
+                showGoToLineDialog = false
+                goToLineError = null
+            },
+            title = { Text("Go to Line") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Enter a line from 1 to " + maximumLine + ".")
+                    OutlinedTextField(
+                        value = goToLineInput,
+                        onValueChange = {
+                            goToLineInput = it.filter { character -> character.isDigit() }.take(7)
+                            goToLineError = null
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("go-to-line-input"),
+                        label = { Text("Line number") },
+                        singleLine = true,
+                        isError = goToLineError != null,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    )
+                    goToLineError?.let { Text(it, color = Danger, fontSize = 12.sp) }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val requestedLine = goToLineInput.toIntOrNull()
+                        if (requestedLine == null || requestedLine !in 1..maximumLine) {
+                            goToLineError = "Enter a valid line number between 1 and " + maximumLine + "."
+                        } else {
+                            goToLineError = null
+                            goToLineRequest = requestedLine
+                            showGoToLineDialog = false
+                        }
+                    },
+                    modifier = Modifier.testTag("go-to-line-confirm"),
+                ) { Text("Go") }
+            },
+            dismissButton = { TextButton(onClick = { showGoToLineDialog = false }) { Text("Cancel") } },
+        )
     }
 
     if (showWorkspaceTree) {
@@ -3841,6 +4266,7 @@ private fun AppTopBar(
     canSave: Boolean = true,
     onBack: () -> Unit,
     onSave: () -> Unit,
+    onOpenEditorDrawer: () -> Unit,
     onOpenWorkspaceTree: () -> Unit,
 ) {
     Row(
@@ -3851,10 +4277,16 @@ private fun AppTopBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(
+            onClick = onOpenEditorDrawer,
+            modifier = Modifier.testTag("open-editor-drawer-button"),
+        ) {
+            Icon(Icons.Filled.Menu, contentDescription = "Open editor drawer")
+        }
+        IconButton(
             onClick = onOpenWorkspaceTree,
             modifier = Modifier.testTag("open-workspace-tree-button"),
         ) {
-            Icon(Icons.Filled.Menu, contentDescription = "Open workspace tree")
+            Icon(Icons.Filled.FolderOpen, contentDescription = "Open workspace explorer")
         }
         if (openedFile != null) {
             IconButton(onClick = onBack, modifier = Modifier.testTag("editor-back")) {
@@ -4559,10 +4991,14 @@ private fun EditorPanel(
     onCloseTab: (String) -> Unit = {},
     onTextChange: (String) -> Boolean,
     onSave: () -> Unit,
+    fontSizeSp: Int = 14,
+    wordWrapEnabled: Boolean = true,
+    onWordWrapChanged: (Boolean) -> Unit = {},
+    goToLineRequest: Int? = null,
+    onGoToLineConsumed: () -> Unit = {},
 ) {
     var editorFieldValue by remember(path) { mutableStateOf(TextFieldValue(text)) }
     val useVirtualizedEditor = shouldUseVirtualizedEditor(editorFieldValue.text.length)
-    var wordWrapEnabled by remember(path) { mutableStateOf(true) }
     val editorHorizontalScrollState = rememberScrollState()
     var collapsedFoldStarts by remember(path, useVirtualizedEditor) { mutableStateOf(emptySet<Int>()) }
     val foldableRegions = remember(editorFieldValue.text.takeUnless { useVirtualizedEditor }) {
@@ -4618,6 +5054,27 @@ private fun EditorPanel(
         if (editorFieldValue.text != text) {
             editorFieldValue = TextFieldValue(text, selection = TextRange(text.length))
         }
+    }
+
+    LaunchedEffect(path, goToLineRequest) {
+        val requestedLine = goToLineRequest ?: return@LaunchedEffect
+        val source = editorFieldValue.text
+        val lineStarts = buildList {
+            add(0)
+            source.forEachIndexed { index, character ->
+                if (character == '\n') add(index + 1)
+            }
+        }
+        val targetOffset = lineStarts.getOrNull(requestedLine - 1)
+        if (targetOffset != null) {
+            editorFieldValue = editorFieldValue.copy(selection = TextRange(targetOffset))
+            editorToolMessage = "Moved to line " + requestedLine + "."
+            withFrameNanos { }
+            runCatching { editorFocusRequester.requestFocus() }
+        } else {
+            editorToolMessage = "The requested line is not available in this file."
+        }
+        onGoToLineConsumed()
     }
 
     Column(
@@ -4810,7 +5267,7 @@ private fun EditorPanel(
             )
         }
         TextButton(
-            onClick = { wordWrapEnabled = !wordWrapEnabled },
+            onClick = { onWordWrapChanged(!wordWrapEnabled) },
             modifier = Modifier.testTag("editor-word-wrap-toggle"),
         ) { Text(if (wordWrapEnabled) "Word wrap: On" else "Word wrap: Off") }
         Text(
@@ -4919,6 +5376,7 @@ private fun EditorPanel(
                 },
                 readOnly = readOnly,
                 wordWrapEnabled = wordWrapEnabled,
+                fontSizeSp = fontSizeSp,
                 focusRequester = editorFocusRequester,
                 interactionSource = editorInteractionSource,
                 textColor = PrimaryText,
@@ -4950,7 +5408,10 @@ private fun EditorPanel(
                 onTextLayout = viewportTracker::onTextLayout,
                 interactionSource = editorInteractionSource,
                 cursorBrush = SolidColor(Mint),
-                textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                textStyle = MaterialTheme.typography.bodyMedium.copy(
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = fontSizeSp.sp,
+                ),
                 keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.None,
                     keyboardType = KeyboardType.Text,

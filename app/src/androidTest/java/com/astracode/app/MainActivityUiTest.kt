@@ -1588,4 +1588,31 @@ class MainActivityUiTest {
         }
         assertEquals("fun main() = Unit\n", String(Files.readAllBytes(sample), Charsets.UTF_8))
     }
+    @Test
+    fun editorHamburgerDrawerUsesLiveBuffersAndKeepsWorkspaceExplorerAvailable() {
+        composeRule.onNodeWithTag("workspace-create-menu-button").performClick()
+        composeRule.onNodeWithTag("new-file-button").performClick()
+        composeRule.onNodeWithTag("new-file-name-input").performTextInput("Drawer.kt")
+        composeRule.onNodeWithTag("confirm-create-file").performClick()
+
+        val editor = composeRule.onNodeWithTag("file-editor-input")
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching { editor.assertIsDisplayed() }.isSuccess
+        }
+        editor.assertIsDisplayed()
+
+        composeRule.onNodeWithTag("open-editor-drawer-button").performClick()
+        composeRule.onNodeWithTag("editor-hamburger-drawer").assertIsDisplayed()
+        composeRule.onNodeWithTag("drawer-buffer-Drawer.kt").assertIsDisplayed()
+        composeRule.onNodeWithTag("drawer-workspace-private").assertIsDisplayed()
+
+        composeRule.onNodeWithText("Files").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithText("Open Explorer").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithText("Open Explorer").performScrollTo()
+        composeRule.onNodeWithText("Open Explorer").performClick()
+        composeRule.onNodeWithTag("workspace-tree-list").assertIsDisplayed()
+    }
+
 }
