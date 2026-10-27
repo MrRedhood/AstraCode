@@ -582,9 +582,6 @@ class MainActivity : ComponentActivity() {
                             val fallback = createPrivateWorkspace()
                             storage = fallback
                             activeStorage = fallback
-                            currentDirectory = ""
-                            openedFile = null
-                            editorTabs = emptyList()
                             activeWorkspaceId = PRIVATE_WORKSPACE_ID
                             preferences.edit()
                                 .putString(ACTIVE_WORKSPACE_KEY, PRIVATE_WORKSPACE_ID)
@@ -681,8 +678,9 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    FileManagementScreen(
-                        storage = storage,
+                    key(storage) {
+                        FileManagementScreen(
+                            storage = storage,
                         activeWorkspaceId = activeWorkspaceId,
                         savedWorkspaceFolders = savedWorkspaceFolders,
                         savedDocuments = savedDocuments,
@@ -711,7 +709,8 @@ class MainActivity : ComponentActivity() {
                         onCreateManagedWorkspace = { name -> createManagedWorkspaceFromName(name) },
                         onRenameWorkspaceEntry = { entry, name -> renameWorkspaceEntry(entry, name) },
                         onDeleteWorkspaceEntry = { entry -> deleteWorkspaceEntry(entry) },
-                    )
+                        )
+                    }
                 }
             }
         }
