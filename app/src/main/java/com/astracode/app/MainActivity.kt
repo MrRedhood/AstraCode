@@ -498,41 +498,6 @@ class MainActivity : ComponentActivity() {
                 return true
             }
 
-            fun deleteWorkspaceEntry(entry: WorkspaceTreeWorkspace) {
-                when (entry.kind) {
-                    WorkspaceTreeWorkspaceKind.PRIVATE -> {
-                        workspaceNotice = "The built-in workspace cannot be deleted. You can rename it or delete individual files."
-                    }
-                    WorkspaceTreeWorkspaceKind.EXTERNAL -> {
-                        savedWorkspaceFolders.firstOrNull { it.id == entry.id }?.let(::removeSavedWorkspace)
-                    }
-                    WorkspaceTreeWorkspaceKind.MANAGED -> {
-                        val bookmark = managedWorkspaceFolders.firstOrNull { it.id == entry.id } ?: return
-                        val previous = if (activeWorkspaceId == bookmark.id) storage else null
-                        if (previous != null) {
-                            val nextStorage = createPrivateWorkspace()
-                            storage = nextStorage
-                            activeStorage = nextStorage
-                            activeWorkspaceId = PRIVATE_WORKSPACE_ID
-                            preferences.edit().putString(ACTIVE_WORKSPACE_KEY, PRIVATE_WORKSPACE_ID).apply()
-                            previous.close()
-                        }
-                        val parent = File(filesDir, "named-workspaces").canonicalFile
-                        val directory = File(parent, bookmark.id).canonicalFile
-                        if (!isValidManagedWorkspaceId(bookmark.id) || directory.parentFile != parent) {
-                            workspaceNotice = "Refused to delete a workspace outside AstraCode's workspace folder."
-                            return
-                        }
-                        if (directory.exists() && !directory.deleteRecursively()) {
-                            workspaceNotice = "Could not fully delete workspace " + bookmark.name
-                            return
-                        }
-                        persistManagedWorkspaceFolders(managedWorkspaceFolders.filterNot { it.id == bookmark.id })
-                        workspaceNotice = "Deleted workspace " + bookmark.name
-                    }
-                }
-            }
-
             fun activateSavedWorkspace(bookmark: WorkspaceBookmark) {
                 if (activeWorkspaceId == bookmark.id) return
                 runCatching {
@@ -576,6 +541,41 @@ class MainActivity : ComponentActivity() {
                     "Removed " + bookmark.name + " from the workspace list. Sync links keep access to its original files."
                 } else {
                     "Removed " + bookmark.name + " from AstraCode. Its files were not deleted."
+                }
+            }
+
+            fun deleteWorkspaceEntry(entry: WorkspaceTreeWorkspace) {
+                when (entry.kind) {
+                    WorkspaceTreeWorkspaceKind.PRIVATE -> {
+                        workspaceNotice = "The built-in workspace cannot be deleted. You can rename it or delete individual files."
+                    }
+                    WorkspaceTreeWorkspaceKind.EXTERNAL -> {
+                        savedWorkspaceFolders.firstOrNull { it.id == entry.id }?.let(::removeSavedWorkspace)
+                    }
+                    WorkspaceTreeWorkspaceKind.MANAGED -> {
+                        val bookmark = managedWorkspaceFolders.firstOrNull { it.id == entry.id } ?: return
+                        val previous = if (activeWorkspaceId == bookmark.id) storage else null
+                        if (previous != null) {
+                            val nextStorage = createPrivateWorkspace()
+                            storage = nextStorage
+                            activeStorage = nextStorage
+                            activeWorkspaceId = PRIVATE_WORKSPACE_ID
+                            preferences.edit().putString(ACTIVE_WORKSPACE_KEY, PRIVATE_WORKSPACE_ID).apply()
+                            previous.close()
+                        }
+                        val parent = File(filesDir, "named-workspaces").canonicalFile
+                        val directory = File(parent, bookmark.id).canonicalFile
+                        if (!isValidManagedWorkspaceId(bookmark.id) || directory.parentFile != parent) {
+                            workspaceNotice = "Refused to delete a workspace outside AstraCode's workspace folder."
+                            return
+                        }
+                        if (directory.exists() && !directory.deleteRecursively()) {
+                            workspaceNotice = "Could not fully delete workspace " + bookmark.name
+                            return
+                        }
+                        persistManagedWorkspaceFolders(managedWorkspaceFolders.filterNot { it.id == bookmark.id })
+                        workspaceNotice = "Deleted workspace " + bookmark.name
+                    }
                 }
             }
 
