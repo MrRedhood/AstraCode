@@ -1295,6 +1295,7 @@ class MainActivityUiTest {
         workspaceRoot.mkdirs()
         val sample = File(workspaceRoot, "FloatingTools.kt")
         sample.writeText("val answer = 42")
+        recreateToFiles()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("workspace-file-list").assertIsDisplayed() }.isSuccess
         }
@@ -1332,6 +1333,7 @@ class MainActivityUiTest {
         workspaceRoot.mkdirs()
         val sample = File(workspaceRoot, "ContextCapsule.kt")
         sample.writeText("fun main() = 42")
+        recreateToFiles()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("workspace-file-list").assertIsDisplayed() }.isSuccess
         }
