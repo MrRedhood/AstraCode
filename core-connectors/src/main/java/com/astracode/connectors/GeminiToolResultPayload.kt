@@ -28,8 +28,7 @@ internal object GeminiToolResultPayload {
                                     .put("text", result.content),
                             ),
                         ),
-                    )
-                    .put("is_error", !result.succeeded),
+                    ),
             )
         }
         return input
