@@ -1124,6 +1124,9 @@ private fun FileManagementScreen(
     var aiUseAgentWorkflow by remember(aiPreferences) {
         mutableStateOf(aiPreferences.getBoolean("agent_workflow_enabled", false))
     }
+    var aiReadOnlyToolsEnabled by remember(aiPreferences) {
+        mutableStateOf(aiPreferences.getBoolean("read_only_tools_enabled", true))
+    }
     var aiStreamingPreview by remember { mutableStateOf("") }
     var aiProgressEvents by remember { mutableStateOf(emptyList<String>()) }
     var aiAgentSummary by remember { mutableStateOf<String?>(null) }
@@ -1297,6 +1300,7 @@ private fun FileManagementScreen(
             provider.id to aiPreferences.getString("base_url_" + provider.id, "").orEmpty()
         }
         val requestedAgentWorkflow = aiUseAgentWorkflow
+        val requestedReadOnlyToolsEnabled = aiReadOnlyToolsEnabled
         val unsavedEditorText = editorTabs
             .filterNot { it.isLoading }
             .associate { it.path to it.text }
@@ -1405,6 +1409,7 @@ private fun FileManagementScreen(
                             fallbackPolicy = requestedFallbackPolicy,
                             fallbackModels = requestedFallbackModels,
                             fallbackBaseUrls = requestedFallbackBaseUrls,
+                            enableReadOnlyTools = requestedReadOnlyToolsEnabled,
                             onEvent = ::onAiStreamEvent,
                         )
                         AiWorkspaceRequestResult(
@@ -1427,7 +1432,7 @@ private fun FileManagementScreen(
                             fallbackPolicy = requestedFallbackPolicy,
                             fallbackModels = requestedFallbackModels,
                             fallbackBaseUrls = requestedFallbackBaseUrls,
-                            enableTools = true,
+                            enableTools = requestedReadOnlyToolsEnabled,
                             onEvent = ::onAiStreamEvent,
                         )
                         AiWorkspaceRequestResult(baselines, snapshots.size, proposal)
@@ -5065,6 +5070,22 @@ private fun FileManagementScreen(
                         )
                         Text("Use agent workflow: split the task and run independent agents")
                     }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = aiReadOnlyToolsEnabled,
+                            onCheckedChange = { enabled ->
+                                aiReadOnlyToolsEnabled = enabled
+                                aiPreferences.edit().putBoolean("read_only_tools_enabled", enabled).apply()
+                            },
+                            enabled = !aiBusy,
+                        )
+                        Text("Allow read-only workspace tools (list, read, search selected files)")
+                    }
+                    Text(
+                        "AI tools cannot run terminal commands, access the network, or write/delete files. File changes stay in the review screen.",
+                        color = MutedText,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
                     if (aiProvider.customEndpoint) {
                         OutlinedTextField(
                             value = aiCustomBaseUrl,
