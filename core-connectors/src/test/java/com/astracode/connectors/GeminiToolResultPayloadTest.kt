@@ -32,18 +32,26 @@ class GeminiToolResultPayloadTest {
     }
 
     @Test
-    fun marksFailedToolResultsAsErrors() {
+    fun failedToolResultsCarryErrorTextInDocumentedResultContent() {
         val payload = GeminiToolResultPayload.from(
             listOf(AiToolResult("call-err", "read_workspace_file", """{"error":"not found"}""", false)),
         )
-        assertTrue(payload.getJSONObject(0).getBoolean("is_error"))
+        val item = payload.getJSONObject(0)
+        val text = item.getJSONObject("result")
+            .getJSONArray("content")
+            .getJSONObject(0)
+            .getString("text")
+        assertTrue(text.contains("not found"))
+        assertFalse(item.has("is_error"))
     }
 
     @Test
-    fun successfulToolResultsAreNotMarkedAsErrors() {
+    fun successfulToolResultsUseTheSameDocumentedResultShape() {
         val payload = GeminiToolResultPayload.from(
             listOf(AiToolResult("call-ok", "list_workspace_files", """{"files":[]}""", true)),
         )
-        assertFalse(payload.getJSONObject(0).optBoolean("is_error", false))
+        val item = payload.getJSONObject(0)
+        assertTrue(item.getJSONObject("result").has("content"))
+        assertFalse(item.has("is_error"))
     }
 }
