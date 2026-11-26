@@ -9,20 +9,9 @@ class LspPositionCodecTest {
     private val source = "Aह😀\r\nnext".toByteArray(UTF_8)
 
     @Test
-    fun usesUtf8BytesForPreferredPositions() {
+    fun mapsUtf8BytePositions() {
         assertEquals(8, LspPositionCodec.byteOffsetForPosition(source, LspPosition(0, 8)))
         assertEquals(LspPosition(0, 8), LspPositionCodec.positionForByteOffset(source, 8))
-    }
-
-    @Test
-    fun translatesUtf16OnlyForLegacyLspServers() {
-        assertEquals(8, LspPositionCodec.byteOffsetForPosition(
-            source, LspPosition(0, 4), LspPositionEncoding.UTF16,
-        ))
-        assertEquals(
-            LspPosition(0, 4),
-            LspPositionCodec.positionForByteOffset(source, 8, LspPositionEncoding.UTF16),
-        )
     }
 
     @Test
@@ -31,5 +20,10 @@ class LspPositionCodecTest {
         assertFailsWith<IllegalArgumentException> {
             LspPositionCodec.byteOffsetForPosition(source, LspPosition(0, 2))
         }
+    }
+
+    @Test
+    fun onlyAdvertisesUtf8PositionEncoding() {
+        assertEquals("utf-8", LspPositionCodec.POSITION_ENCODING)
     }
 }
