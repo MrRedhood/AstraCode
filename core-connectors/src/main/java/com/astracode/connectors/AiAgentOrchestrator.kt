@@ -55,7 +55,7 @@ data class AiAgentRunReport(
     val auditTrail: List<AiAgentAuditEntry>,
 ) {
     val succeeded: Boolean get() = taskResults.all {
-        it.status == AiAgentTaskStatus.COMPLETED || it.status == AiAgentTaskStatus.CONFLICTED
+        it.status == AiAgentTaskStatus.COMPLETED
     }
 }
 
@@ -276,11 +276,14 @@ class AiAgentOrchestrator(
                     }
                 }
             }
-        val failed = results.count { it.status == AiAgentTaskStatus.FAILED || it.status == AiAgentTaskStatus.BLOCKED }
+        val completedCount = results.count { it.status == AiAgentTaskStatus.COMPLETED }
+        val failedCount = results.count {
+            it.status == AiAgentTaskStatus.FAILED || it.status == AiAgentTaskStatus.BLOCKED
+        }
         val summary = buildString {
-            append(results.size)
+            append(completedCount)
             append(" agent task(s) completed; ")
-            append(failed)
+            append(failedCount)
             append(" failed or blocked; ")
             append(conflicts.size)
             append(" conflicting file path(s) withheld from the proposal.")
@@ -311,7 +314,7 @@ class AiAgentOrchestrator(
         task: AiAgentTask,
         completed: Map<String, AiAgentTaskResult>,
     ): List<WorkspaceFileSnapshot> {
-        val taskByIdForDependencyOrder = completed.mapValues { it.value.task }
+        val taskByIdForDependencyOrder = completed.mapValues { it.value.task } + (task.id to task)
         fun dependsTransitively(taskId: String, ancestorId: String): Boolean {
             val pending = taskByIdForDependencyOrder[taskId]?.dependsOn.orEmpty().toMutableList()
             val visited = mutableSetOf<String>()
@@ -387,7 +390,11 @@ class AiAgentOrchestrator(
                 id = id,
                 title = task.title.trim().take(120).ifBlank { "Task " + (index + 1) },
                 instructions = task.instructions.trim().take(4_000),
-                dependsOn = task.dependsOn.distinct().filter { it != id },
+                dependsOn = task.dependsOn.distinct().also { dependencies ->
+                    require(id !in dependencies) {
+                        "Agent task " + id + " cannot depend on itself"
+                    }
+                },
             )
         }
         val allowedIds = normalized.map { it.id }.toSet()
