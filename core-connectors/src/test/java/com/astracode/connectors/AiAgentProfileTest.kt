@@ -35,6 +35,25 @@ class AiAgentProfileTest {
     }
 
     @Test
+    fun profileRejectsBlankModelAndEndpointOverrides() {
+        assertFailsWith<IllegalArgumentException> {
+            AiAgentProfile(modelOverride = " ")
+        }
+        assertFailsWith<IllegalArgumentException> {
+            AiAgentProfile(customBaseUrlOverride = "")
+        }
+    }
+
+    @Test
+    fun profileDefaultsToBoundedReadOnlyWorkspaceTools() {
+        val profile = AiAgentProfile()
+        assertEquals(AiToolRegistry.DEFAULT_TOOL_NAMES, profile.allowedToolNames)
+        assertEquals(4, profile.maxAgentTasks)
+        assertEquals(3, profile.maxParallelAgents)
+        assertEquals(4, profile.maxToolRounds)
+    }
+
+    @Test
     fun profileRejectsShellAndOtherUndeclaredTools() {
         assertFailsWith<IllegalArgumentException> {
             AiAgentProfile(allowedToolNames = setOf("run_shell"))
