@@ -346,7 +346,7 @@ class BuildProcessRunner {
  */
 internal class BuildOutputRedactor(secrets: List<String>) {
     private val values = secrets.filter { it.isNotEmpty() }.distinct()
-    private val carryLength = values.maxOfOrNull { it.length } ?: 0
+    private val carryLength = values.maxOfOrNull { it.length } ?: 1
     private val pending = StringBuilder()
 
     fun append(chunk: String): String {
