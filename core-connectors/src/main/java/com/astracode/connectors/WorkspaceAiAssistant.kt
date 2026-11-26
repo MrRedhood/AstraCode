@@ -67,16 +67,33 @@ class WorkspaceAiAssistant(context: Context) {
         "astracode_ai_capability_overrides",
         Context.MODE_PRIVATE,
     )
-    private val modelCatalogCache = mutableMapOf<String, List<AiModelCapabilities>>()
+    private data class ModelCatalogCacheEntry(
+        val cachedAtEpochMillis: Long,
+        val models: List<AiModelCapabilities>,
+    )
+    private val modelCatalogCache = mutableMapOf<String, ModelCatalogCacheEntry>()
 
     fun hasApiKey(provider: AiProvider): Boolean =
         !vaults.getValue(provider).read().isNullOrBlank()
 
-    fun saveApiKey(provider: AiProvider, value: String) =
+    fun saveApiKey(provider: AiProvider, value: String) {
         vaults.getValue(provider).save(value)
+        invalidateModelCatalog(provider)
+    }
 
-    fun removeApiKey(provider: AiProvider) =
+    fun removeApiKey(provider: AiProvider) {
         vaults.getValue(provider).clear()
+        invalidateModelCatalog(provider)
+    }
+
+    private fun invalidateModelCatalog(provider: AiProvider) {
+        synchronized(modelCatalogCache) {
+            val prefix = provider.id + "|"
+            modelCatalogCache.keys.filter { it.startsWith(prefix) }.forEach {
+                modelCatalogCache.remove(it)
+            }
+        }
+    }
 
     @Throws(IOException::class)
     fun fetchModels(provider: AiProvider, customBaseUrl: String = ""): List<String> =
@@ -104,7 +121,11 @@ class WorkspaceAiAssistant(context: Context) {
         }
         val cacheKey = provider.id + "|" + url
         synchronized(modelCatalogCache) {
-            modelCatalogCache[cacheKey]?.let { return it }
+            val cached = modelCatalogCache[cacheKey]
+            if (
+                cached != null &&
+                System.currentTimeMillis() - cached.cachedAtEpochMillis < MODEL_CATALOG_CACHE_TTL_MS
+            ) return cached.models
         }
         val response = transport.getJson(url, key, provider)
         val items = response.optJSONArray("data")
@@ -121,7 +142,10 @@ class WorkspaceAiAssistant(context: Context) {
         }
         val normalized = catalog.distinctBy { it.modelId }.sortedBy { it.modelId }
         synchronized(modelCatalogCache) {
-            modelCatalogCache[cacheKey] = normalized
+            modelCatalogCache[cacheKey] = ModelCatalogCacheEntry(
+                cachedAtEpochMillis = System.currentTimeMillis(),
+                models = normalized,
+            )
         }
         return normalized
     }
@@ -1267,6 +1291,7 @@ class WorkspaceAiAssistant(context: Context) {
         const val MAX_REASON_CHARS = 500
         const val MAX_OUTPUT_TOKENS = 12_000
         const val MAX_MODELS = 500
+        const val MODEL_CATALOG_CACHE_TTL_MS = 15L * 60L * 1_000L
         const val MAX_MANUAL_CONTEXT_TOKENS = 10_000_000_000L
         const val MAX_TOOL_CALLS_PER_ROUND = 6
         const val DEFAULT_TOOL_ROUNDS = 4
