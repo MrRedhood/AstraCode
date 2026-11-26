@@ -4922,20 +4922,36 @@ private fun FileManagementScreen(
         var aiManualStreaming by remember(aiProvider, aiModel, aiCapabilityRefresh) {
             mutableStateOf(selectedCapability?.supportsStreaming == AiCapabilitySupport.SUPPORTED)
         }
+        var aiCapabilitySaving by remember { mutableStateOf(false) }
         fun persistModelCapabilityOverrides() {
-            if (aiModel.isBlank()) return
-            runCatching {
-                workspaceAiAssistant.saveUserCapabilityOverrides(
-                    provider = aiProvider,
-                    modelId = aiModel,
-                    contextWindowTokens = aiManualContextTokens.trim().toLongOrNull(),
-                    toolCallingConfirmed = aiManualToolCalling,
-                    streamingConfirmed = aiManualStreaming,
-                )
-            }.onFailure { error ->
-                aiMessage = error.message ?: "Model capability confirmations could not be saved."
+            if (aiModel.isBlank() || aiCapabilitySaving || aiBusy) return
+            val requestedProvider = aiProvider
+            val requestedModel = aiModel
+            val requestedContextTokens = aiManualContextTokens.trim().toLongOrNull()
+            val requestedToolCalling = aiManualToolCalling
+            val requestedStreaming = aiManualStreaming
+            aiCapabilitySaving = true
+            scope.launch {
+                val result = runCatchingCancellable {
+                    withContext(Dispatchers.IO) {
+                        workspaceAiAssistant.saveUserCapabilityOverrides(
+                            provider = requestedProvider,
+                            modelId = requestedModel,
+                            contextWindowTokens = requestedContextTokens,
+                            toolCallingConfirmed = requestedToolCalling,
+                            streamingConfirmed = requestedStreaming,
+                        )
+                    }
+                }
+                result.onSuccess {
+                    aiCapabilityRefresh++
+                    aiMessage = "Verified capability settings saved for " +
+                        requestedProvider.displayName + " / " + requestedModel + "."
+                }.onFailure { error ->
+                    aiMessage = error.message ?: "Model capability confirmations could not be saved."
+                }
+                aiCapabilitySaving = false
             }
-            aiCapabilityRefresh++
         }
         val containsDelete = proposal?.changes?.any {
             it.operation == AiChangeOperation.DELETE
@@ -5099,7 +5115,6 @@ private fun FileManagementScreen(
                             onValueChange = { value ->
                                 if (value.length <= 10 && value.all { it.isDigit() }) {
                                     aiManualContextTokens = value
-                                    persistModelCapabilityOverrides()
                                 }
                             },
                             modifier = Modifier.fillMaxWidth().testTag("ai-model-context-input"),
@@ -5114,7 +5129,6 @@ private fun FileManagementScreen(
                                 checked = aiManualToolCalling,
                                 onCheckedChange = { checked ->
                                     aiManualToolCalling = checked
-                                    persistModelCapabilityOverrides()
                                 },
                                 enabled = !aiBusy &&
                                     selectedCapabilityBase?.supportsToolCalling != AiCapabilitySupport.SUPPORTED,
@@ -5130,7 +5144,6 @@ private fun FileManagementScreen(
                                 checked = aiManualStreaming,
                                 onCheckedChange = { checked ->
                                     aiManualStreaming = checked
-                                    persistModelCapabilityOverrides()
                                 },
                                 enabled = !aiBusy &&
                                     selectedCapabilityBase?.supportsStreaming != AiCapabilitySupport.SUPPORTED,
@@ -5146,6 +5159,13 @@ private fun FileManagementScreen(
                             color = MutedText,
                             style = MaterialTheme.typography.labelSmall,
                         )
+                        OutlinedButton(
+                            onClick = { persistModelCapabilityOverrides() },
+                            enabled = !aiBusy && !aiCapabilitySaving,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(if (aiCapabilitySaving) "Saving verification…" else "Save verified capabilities")
+                        }
                     }
                     if (aiModelCatalog.isNotEmpty()) {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
