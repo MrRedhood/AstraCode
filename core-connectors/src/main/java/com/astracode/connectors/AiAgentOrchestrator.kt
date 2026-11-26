@@ -11,6 +11,8 @@ data class AiAgentTask(
     val title: String,
     val instructions: String,
     val dependsOn: List<String> = emptyList(),
+    val inputPaths: List<String> = emptyList(),
+    val expectedOutput: String = "",
 )
 
 data class AiAgentProfile(
@@ -155,7 +157,11 @@ class AiAgentOrchestrator(
                 auditTrail = synchronized(audit) { audit.sortedBy { it.sequence } },
             )
         }
-        val tasks = AiAgentTaskGraph.normalize(plannedTasks, profile.maxAgentTasks)
+        val tasks = AiAgentTaskGraph.normalize(
+            tasks = plannedTasks,
+            maximumTasks = profile.maxAgentTasks,
+            allowedInputPaths = files.map { it.path }.toSet(),
+        )
         record(profile.id, "planned", tasks.joinToString { it.id })
 
         val completed = linkedMapOf<String, AiAgentTaskResult>()
@@ -205,6 +211,14 @@ class AiAgentOrchestrator(
                                     error.message ?: "Dependency context could not be built",
                                 )
                             }
+                            val dependencyTaskIds = AiAgentTaskGraph.ancestorIds(task, tasks)
+                            val dependencyPaths = dependencyTaskIds.flatMap { dependencyId ->
+                                completed[dependencyId]?.proposal?.changes.orEmpty().map { it.path }
+                            }.toSet()
+                            val selectedInputPaths = task.inputPaths.toSet()
+                            val scopedFiles = taskFiles.filter { file ->
+                                file.path in selectedInputPaths || file.path in dependencyPaths
+                            }
                             val prompt = buildString {
                                 appendLine("Main objective:")
                                 appendLine(objective)
@@ -212,6 +226,11 @@ class AiAgentOrchestrator(
                                 appendLine("Your assignment:")
                                 appendLine(task.title)
                                 appendLine(task.instructions)
+                                appendLine("Expected output:")
+                                appendLine(task.expectedOutput.ifBlank { "A complete, reviewable code proposal for this assignment." })
+                                appendLine("Input files available to this agent:")
+                                if (scopedFiles.isEmpty()) appendLine("(No source files were assigned.)")
+                                else scopedFiles.forEach { appendLine("- " + it.path) }
                                 if (dependencyNotes.isNotEmpty()) {
                                     appendLine()
                                     appendLine("Completed dependency outputs:")
@@ -230,7 +249,7 @@ class AiAgentOrchestrator(
                                     model = agentModel,
                                     customBaseUrl = agentBaseUrl,
                                     task = prompt,
-                                    files = taskFiles,
+                                    files = scopedFiles,
                                     fallbackPolicy = fallbackPolicy,
                                     fallbackModels = fallbackModels,
                                     fallbackBaseUrls = fallbackBaseUrls,
