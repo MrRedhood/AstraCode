@@ -197,14 +197,25 @@ class PieceTable(
 
     /** Compacts all pieces into one original UTF-8 buffer and clears history. */
     fun compact() {
+        compactInternal(clearHistory = true)
+    }
+
+    /**
+     * Rebuilds the piece storage without changing logical document contents.
+     * Edit history remains valid because every stored edit uses document byte
+     * offsets and the document snapshot itself has not changed.
+     */
+    private fun compactInternal(clearHistory: Boolean) {
         val snapshot = toByteArray()
         original = snapshot
         additions.reset(byteArrayOf())
         pieces.clear()
         if (snapshot.isNotEmpty()) pieces += Piece(Source.ORIGINAL, 0, snapshot.size)
         documentLength = snapshot.size
-        undoHistory.clear()
-        redoHistory.clear()
+        if (clearHistory) {
+            undoHistory.clear()
+            redoHistory.clear()
+        }
     }
 
     fun toByteArray(): ByteArray = sliceBytesUnchecked(0, documentLength)
@@ -273,7 +284,7 @@ class PieceTable(
     private fun compactIfNeeded() {
         val retainedAddBytes = additions.size.toLong()
         val threshold = maxOf(256L * 1024L, documentLength.toLong() * 4L)
-        if (retainedAddBytes > threshold) compact()
+        if (retainedAddBytes > threshold) compactInternal(clearHistory = false)
     }
 
     private fun byteAt(source: Source, index: Int): Byte =
