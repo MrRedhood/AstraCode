@@ -497,6 +497,11 @@ class WorkspaceAiAssistant(context: Context) {
         while (true) {
             val body = JSONObject().put("model", model).put("max_tokens", MAX_OUTPUT_TOKENS)
                 .put("messages", messages)
+            if (provider == AiProvider.OPENROUTER) {
+                // AstraCode owns cross-provider fallback. Do not silently delegate
+                // upstream provider switching to the routing service.
+                body.put("provider", JSONObject().put("allow_fallbacks", false))
+            }
             if (enableTools) body.put("tools", chatTools(registry))
             val response = transport.stream(url, key, provider, body, onEvent)
             if (response.toolCalls.isEmpty()) return response.text.ifBlank {
