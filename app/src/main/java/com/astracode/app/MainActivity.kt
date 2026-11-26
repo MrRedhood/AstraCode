@@ -2783,8 +2783,8 @@ private fun FileManagementScreen(
         projectTypeLabel = openedFile?.let { fileBadgeForPath(it).label } ?: "WORKSPACE",
         buffers = drawerBuffers,
         unsavedCount = dirtyWorkspaceBufferCount,
-        aiModelLabel = "Not connected",
-        aiFixLabel = "AI tools are not connected",
+        aiModelLabel = if (aiHasApiKey) "OpenAI · GPT-6.2 Astra" else "Not connected",
+        aiFixLabel = if (aiHasApiKey) "Ready to propose workspace file changes" else "Add an OpenAI API key to connect",
         aiFixCode = "",
         lspName = "Language services",
         lspStatus = "Not connected",
@@ -4759,7 +4759,7 @@ private fun FileManagementScreen(
                         style = MaterialTheme.typography.labelSmall,
                     )
                     Text(
-                        "Your personal key is encrypted at rest with Android Keystore. A compromised or rooted device may still expose it while in use. Selected source files are sent to OpenAI when you request a plan; never embed a shared developer key.",
+                        "Your personal key is encrypted at rest with Android Keystore. A compromised or rooted device may still expose it while in use. Selected source files are sent to OpenAI when you request a plan. API usage is billed separately by OpenAI; set a spend limit in your API project.",
                         color = MutedText,
                         style = MaterialTheme.typography.bodySmall,
                     )
