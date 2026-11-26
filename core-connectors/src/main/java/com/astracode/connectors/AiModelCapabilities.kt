@@ -21,8 +21,9 @@ data class AiModelCapabilities(
     val displayName: String,
     val contextWindowTokens: Long? = null,
     val maxOutputTokens: Long? = null,
-    val inputModalities: Set<String> = setOf("text"),
-    val outputModalities: Set<String> = setOf("text"),
+    // Empty means provider metadata did not disclose the supported modalities.
+    val inputModalities: Set<String> = emptySet(),
+    val outputModalities: Set<String> = emptySet(),
     val supportsToolCalling: AiCapabilitySupport = AiCapabilitySupport.UNKNOWN,
     val supportsStreaming: AiCapabilitySupport = AiCapabilitySupport.UNKNOWN,
     val supportedParameters: Set<String> = emptySet(),
@@ -51,8 +52,8 @@ data class AiModelCapabilities(
             output,
             "tools " + supportsToolCalling.name.lowercase(),
             "streaming " + supportsStreaming.name.lowercase(),
-            "input " + inputModalities.sorted().joinToString(","),
-            "output " + outputModalities.sorted().joinToString(","),
+            "input " + inputModalities.sorted().joinToString(",").ifBlank { "unknown" },
+            "output " + outputModalities.sorted().joinToString(",").ifBlank { "unknown" },
         ).joinToString(" · ")
     }
 }
@@ -61,6 +62,6 @@ data class AiCapabilityRequirements(
     val requiresToolCalling: Boolean = false,
     val requiresStreaming: Boolean = true,
     val minimumContextTokens: Long? = null,
-    val requiredInputModalities: Set<String> = setOf("text"),
-    val requiredOutputModalities: Set<String> = setOf("text"),
+    val requiredInputModalities: Set<String> = emptySet(),
+    val requiredOutputModalities: Set<String> = emptySet(),
 )
