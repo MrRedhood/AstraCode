@@ -921,7 +921,7 @@ class WorkspaceAiAssistant(context: Context) {
         user: String,
         schema: JSONObject?,
         onEvent: (AiStreamEvent) -> Unit,
-        maxOutputTokens: Int = maxOutputTokens,
+        maxOutputTokens: Int = MAX_OUTPUT_TOKENS,
     ): String {
         val response = when (provider) {
             AiProvider.OPENAI -> {
@@ -973,8 +973,6 @@ class WorkspaceAiAssistant(context: Context) {
                     .put("messages", JSONArray()
                         .put(JSONObject().put("role", "system").put("content", system))
                         .put(JSONObject().put("role", "user").put("content", user)))
-                // Keep upstream provider choice under AstraCode's fallback policy.
-                body.put("provider", JSONObject().put("allow_fallbacks", false))
                 transport.stream(
                     endpoint(validateCustomBaseUrl(customBaseUrl), "chat/completions"),
                     key, provider, body, onEvent,
