@@ -23,12 +23,11 @@ class GeminiToolResultPayloadTest {
         assertEquals("function_result", item.getString("type"))
         assertEquals("call-123", item.getString("call_id"))
         assertEquals("read_workspace_file", item.getString("name"))
-        val result = item.getJSONObject("result")
-        val content = result.getJSONArray("content")
-        assertEquals(1, content.length())
-        assertEquals("text", content.getJSONObject(0).getString("type"))
-        assertTrue(content.getJSONObject(0).getString("text").contains("src/Main.kt"))
-        assertTrue(item.opt("result") is org.json.JSONObject)
+        val result = item.getJSONArray("result")
+        assertEquals(1, result.length())
+        assertEquals("text", result.getJSONObject(0).getString("type"))
+        assertTrue(result.getJSONObject(0).getString("text").contains("src/Main.kt"))
+        assertTrue(item.opt("result") is org.json.JSONArray)
     }
 
     @Test
@@ -37,8 +36,7 @@ class GeminiToolResultPayloadTest {
             listOf(AiToolResult("call-err", "read_workspace_file", """{"error":"not found"}""", false)),
         )
         val item = payload.getJSONObject(0)
-        val text = item.getJSONObject("result")
-            .getJSONArray("content")
+        val text = item.getJSONArray("result")
             .getJSONObject(0)
             .getString("text")
         assertTrue(text.contains("not found"))
@@ -51,7 +49,7 @@ class GeminiToolResultPayloadTest {
             listOf(AiToolResult("call-ok", "list_workspace_files", """{"files":[]}""", true)),
         )
         val item = payload.getJSONObject(0)
-        assertTrue(item.getJSONObject("result").has("content"))
+        assertEquals("text", item.getJSONArray("result").getJSONObject(0).getString("type"))
         assertFalse(item.has("is_error"))
     }
 }
