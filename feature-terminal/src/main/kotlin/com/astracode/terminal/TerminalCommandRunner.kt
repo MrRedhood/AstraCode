@@ -28,9 +28,11 @@ private data class CapturedOutput(
 )
 
 /**
- * Executes user-entered commands in the Android app's own UID and workspace.
+ * Executes user-entered commands as the Android app's normal UID.
  *
- * On Android this uses /system/bin/sh and the OS-provided utilities (normally
+ * The workspace is the initial working directory, not a filesystem sandbox:
+ * shell commands can access any paths allowed by the app's Android permissions.
+ * On Android this uses /system/bin/sh and OS-provided utilities (normally
  * Toybox). It is deliberately not described as a full Linux distribution:
  * PRoot, a Linux root filesystem, package managers and PTY-backed TUI programs
  * require a separate, device-compatible userland installation.
