@@ -169,14 +169,9 @@ internal class AiProviderTransport {
             connection.doOutput = true
             connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
         }
-        when {
-            provider.googleKeyHeader -> connection.setRequestProperty("x-goog-api-key", apiKey)
-            provider.anthropicHeaders -> {
-                connection.setRequestProperty("x-api-key", apiKey)
-                connection.setRequestProperty("anthropic-version", ANTHROPIC_VERSION)
-            }
-            else -> connection.setRequestProperty("Authorization", "Bearer " + apiKey)
-        }
+        AiProviderAdapters.forProvider(provider)
+            .authenticationHeaders(apiKey)
+            .forEach { (name, value) -> connection.setRequestProperty(name, value) }
         return connection
     }
 
@@ -245,7 +240,6 @@ internal class AiProviderTransport {
     }
 
     private companion object {
-        const val ANTHROPIC_VERSION = "2026-10-21"
         const val CONNECT_TIMEOUT_MS = 15_000
         const val READ_TIMEOUT_MS = 120_000
         const val MAX_RESPONSE_CHARS = 2 * 1024 * 1024
