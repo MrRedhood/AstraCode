@@ -5,7 +5,8 @@ data class AiRedactionResult(
     val wasRedacted: Boolean,
     val redactionCount: Int,
 )
-\ndata class AiWorkspaceSnapshotRedaction(
+
+data class AiWorkspaceSnapshotRedaction(
     val content: String,
     val writeProtected: Boolean,
     val redactionCount: Int,
