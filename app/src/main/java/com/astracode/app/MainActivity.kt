@@ -135,6 +135,15 @@ import com.astracode.connectors.AiAgentOrchestrator
 import com.astracode.connectors.AiStreamEvent
 import com.astracode.connectors.WorkspaceAiAssistant
 import com.astracode.connectors.WorkspaceFileSnapshot
+import com.astracode.buildengine.BuildArtifactScanner
+import com.astracode.buildengine.BuildDiagnosticParser
+import com.astracode.buildengine.BuildExecutionEvent
+import com.astracode.buildengine.BuildExecutionProfile
+import com.astracode.buildengine.BuildProcessRunner
+import com.astracode.buildengine.BuildRuntimeArchitecture
+import com.astracode.buildengine.BuildRuntimeRegistry
+import com.astracode.buildengine.BuildTaskKind
+import com.astracode.buildengine.BuildCancellationToken
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.astracode.app.storage.SafWorkspaceStorage
 import com.astracode.app.storage.WorkspaceArchive
@@ -1140,6 +1149,14 @@ private fun FileManagementScreen(
     var aiDeleteAcknowledged by remember(storage) { mutableStateOf(false) }
     var aiExpandedPreviewPaths by remember(storage) { mutableStateOf(emptySet<String>()) }
     var showTerminalPanel by remember(storage) { mutableStateOf(false) }
+    var showBuildPanel by remember(storage) { mutableStateOf(false) }
+    var buildTaskInput by remember(storage) { mutableStateOf(":app:assembleDebug") }
+    var buildOutput by remember(storage) { mutableStateOf("") }
+    var buildMessage by remember(storage) { mutableStateOf<String?>(null) }
+    var buildBusy by remember(storage) { mutableStateOf(false) }
+    var buildCancellation by remember(storage) { mutableStateOf<BuildCancellationToken?>(null) }
+    var buildDiagnostics by remember(storage) { mutableStateOf(emptyList<com.astracode.buildengine.BuildDiagnostic>()) }
+    var buildArtifacts by remember(storage) { mutableStateOf(emptyList<com.astracode.buildengine.BuildArtifact>()) }
     var terminalCommand by remember(storage) { mutableStateOf("pwd") }
     var terminalWorkingDirectory by remember(terminalWorkspaceRoot) {
         mutableStateOf(terminalWorkspaceRoot.absolutePath)
@@ -1611,6 +1628,144 @@ private fun FileManagementScreen(
                 }
                 aiBusy = false
             }
+        }
+    }
+
+    fun executeBuildTasks() {
+        if (buildBusy) return
+        val requestedStorage = storage
+        val workspace = (requestedStorage as? FileManagementSystem)?.rootDirectory?.toFile()
+        if (workspace == null) {
+            buildMessage = "Builds currently require a private file-backed workspace. Document Tree workspaces cannot be passed directly to Gradle yet."
+            return
+        }
+        val wrapper = File(workspace, "gradlew")
+        if (!wrapper.isFile) {
+            buildMessage = "This workspace does not contain a Gradle wrapper file named gradlew."
+            return
+        }
+        val shell = listOf(File("/system/bin/sh"), File("/bin/sh"))
+            .firstOrNull { it.canExecute() }
+        if (shell == null) {
+            buildMessage = "No compatible system shell was found to start the Gradle wrapper."
+            return
+        }
+        val tasks = buildTaskInput.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+        val validTask = Regex("^(?:[A-Za-z][A-Za-z0-9_.-]*|:[A-Za-z0-9_.:-]+)$")
+        if (tasks.isEmpty() || tasks.size > 16 || tasks.any { !validTask.matches(it) }) {
+            buildMessage = "Enter one to sixteen Gradle task names, separated by spaces. Example: :app:assembleDebug"
+            return
+        }
+        val runtimeRoot = File(context.filesDir, "runtimes/jdks")
+        val runtime = BuildRuntimeRegistry(
+            runtimeRoot,
+            BuildRuntimeArchitecture.from(System.getProperty("os.arch")),
+        ).findUsableJdk()
+        if (runtime == null) {
+            buildMessage = "No compatible JDK was found in " + runtimeRoot.absolutePath +
+                ". Install an ARM64-compatible JDK before building."
+            return
+        }
+
+        val sdkRoot = File(context.filesDir, "runtimes/android-sdk")
+        val environment = if (sdkRoot.isDirectory) {
+            mapOf(
+                "ANDROID_HOME" to sdkRoot.absolutePath,
+                "ANDROID_SDK_ROOT" to sdkRoot.absolutePath,
+            )
+        } else {
+            emptyMap()
+        }
+        val profile = runCatching {
+            BuildExecutionProfile(
+                taskName = "Gradle · " + tasks.joinToString(" "),
+                kind = if (tasks.any { "test" in it.lowercase() }) BuildTaskKind.TEST else BuildTaskKind.BUILD,
+                workspaceRoot = workspace,
+                workingDirectory = workspace,
+                command = listOf(shell.absolutePath, "./gradlew", "--no-daemon", "--stacktrace") + tasks,
+                environment = environment,
+                javaHome = runtime.home,
+                timeoutMillis = 30 * 60 * 1_000L,
+                maximumOutputCharacters = 512 * 1024,
+            )
+        }.getOrElse { error ->
+            buildMessage = error.message ?: "The Gradle build profile is invalid."
+            return
+        }
+
+        buildBusy = true
+        buildMessage = "Starting " + profile.taskName + " with JDK " + runtime.version + " (" +
+            runtime.architecture.name.lowercase() + ")…"
+        buildOutput = ""
+        buildDiagnostics = emptyList()
+        buildArtifacts = emptyList()
+        val token = BuildCancellationToken()
+        buildCancellation = token
+
+        scope.launch {
+            val result = runCatchingCancellable {
+                withContext(Dispatchers.IO) {
+                    BuildProcessRunner().run(profile, token) { event ->
+                        when (event) {
+                            is BuildExecutionEvent.Output -> {
+                                scope.launch(Dispatchers.Main.immediate) {
+                                    if (storage === requestedStorage) {
+                                        buildOutput = (buildOutput + event.text).takeLast(96 * 1024)
+                                    }
+                                }
+                            }
+                            is BuildExecutionEvent.Started -> {
+                                scope.launch(Dispatchers.Main.immediate) {
+                                    buildMessage = "Running Gradle tasks…"
+                                }
+                            }
+                            is BuildExecutionEvent.Failed -> {
+                                scope.launch(Dispatchers.Main.immediate) {
+                                    buildMessage = event.message
+                                }
+                            }
+                            is BuildExecutionEvent.TimedOut -> {
+                                scope.launch(Dispatchers.Main.immediate) {
+                                    buildMessage = "Build timed out after " +
+                                        (event.timeoutMillis / 60_000L) + " minute(s)."
+                                }
+                            }
+                            BuildExecutionEvent.Cancelled -> {
+                                scope.launch(Dispatchers.Main.immediate) {
+                                    buildMessage = "Build cancelled."
+                                }
+                            }
+                            is BuildExecutionEvent.Finished -> Unit
+                        }
+                    }
+                }
+            }
+            if (storage === requestedStorage) {
+                result.onSuccess { execution ->
+                    buildDiagnostics = BuildDiagnosticParser().parse(execution.output, workspace)
+                    val outputDirectories = listOf(
+                        File(workspace, "app/build/outputs"),
+                        File(workspace, "build/outputs"),
+                        File(workspace, "app/build/libs"),
+                    )
+                    buildArtifacts = outputDirectories.flatMap { directory ->
+                        BuildArtifactScanner().scan(directory)
+                    }.distinctBy { it.file.absolutePath }
+                    buildMessage = when {
+                        execution.cancelled -> "Build cancelled."
+                        execution.timedOut -> "Build timed out."
+                        execution.failureMessage != null -> execution.failureMessage
+                        execution.succeeded -> "Build succeeded · " + execution.durationMillis + " ms · " +
+                            buildArtifacts.size + " artifact(s) found."
+                        else -> "Build failed with exit code " + execution.exitCode +
+                            " · " + buildDiagnostics.size + " compiler diagnostic(s)."
+                    }
+                }.onFailure { error ->
+                    buildMessage = error.message ?: "The build could not be started."
+                }
+            }
+            buildCancellation = null
+            buildBusy = false
         }
     }
 
@@ -2888,7 +3043,7 @@ private fun FileManagementScreen(
         treeWorkspaceContextEntry != null || showCreateWorkspaceDialog || renameWorkspaceEntry != null ||
         pendingDeleteWorkspaceEntry != null || showDiscardDialog || showEditorTabDiscardDialog ||
         showWorkspaceManager || showSavedDocuments || showWorkspaceSafety || bulkActionKind != null || bulkActionInProgress ||
-        showAiAssistant || showTerminalPanel
+        showAiAssistant || showTerminalPanel || showBuildPanel
     val canNavigateBack = inspectorEntry != null || openedFile != null || selectedDocument != null ||
         activeMainScreen != Screen.Editor || screenBackStack.isNotEmpty() || currentDirectory.isNotEmpty() || selectionMode
 
@@ -3525,7 +3680,14 @@ private fun FileManagementScreen(
                             showTerminalPanel = true
                         }
                         DrawerAction.OpenGitChanges -> notify("Git integration is not connected in this build.")
-                        DrawerAction.RunTests -> notify("In-app test execution is not connected in this build.")
+                        DrawerAction.RunTests -> {
+                            showEditorDrawer = false
+                            buildOutput = ""
+                            buildDiagnostics = emptyList()
+                            buildArtifacts = emptyList()
+                            buildMessage = null
+                            showBuildPanel = true
+                        }
                     }
                     DrawerEvent.ToggleFileOps -> drawerFileOpsExpanded = !drawerFileOpsExpanded
                     DrawerEvent.ToggleLsp -> drawerLspExpanded = !drawerLspExpanded
@@ -4826,6 +4988,109 @@ private fun FileManagementScreen(
             onSync = {
                 inspectorEntry = null
                 prepareWorkspaceSync(entry)
+            },
+        )
+    }
+
+    if (showBuildPanel) {
+        AlertDialog(
+            onDismissRequest = {
+                if (!buildBusy) showBuildPanel = false
+            },
+            title = { Text("Build and test") },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        "Runs the Gradle wrapper for the active private workspace. It requires a compatible ARM64 JDK in the app runtime folder. SAF Document Tree workspaces are not supported by this first build path.",
+                        color = MutedText,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedTextField(
+                        value = buildTaskInput,
+                        onValueChange = { buildTaskInput = it },
+                        modifier = Modifier.fillMaxWidth().testTag("build-task-input"),
+                        label = { Text("Gradle tasks") },
+                        placeholder = { Text(":app:assembleDebug") },
+                        singleLine = true,
+                        enabled = !buildBusy,
+                    )
+                    buildMessage?.let { message ->
+                        Text(
+                            message,
+                            color = if (message.contains("failed", true) ||
+                                message.contains("not found", true) ||
+                                message.contains("require", true)
+                            ) Danger else MutedText,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    if (buildDiagnostics.isNotEmpty()) {
+                        Text(
+                            "Compiler diagnostics · " + buildDiagnostics.size,
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                        buildDiagnostics.take(20).forEach { diagnostic ->
+                            Text(
+                                diagnostic.path + ":" + diagnostic.line +
+                                    (diagnostic.column?.let { ":" + it } ?: "") +
+                                    " · " + diagnostic.message,
+                                color = if (diagnostic.severity.name == "ERROR") Danger else MutedText,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                    if (buildArtifacts.isNotEmpty()) {
+                        Text("Artifacts", style = MaterialTheme.typography.labelLarge)
+                        buildArtifacts.take(12).forEach { artifact ->
+                            Text(
+                                artifact.kind.name + " · " + artifact.file.name +
+                                    " · " + (artifact.sizeBytes / 1024) + " KiB · " +
+                                    if (artifact.valid) "archive valid" else
+                                        (artifact.validationMessage ?: "invalid"),
+                                color = if (artifact.valid) Mint else Danger,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        Text(
+                            "Archive validation does not verify APK signing, device compatibility, or Play Store readiness.",
+                            color = MutedText,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                    if (buildOutput.isNotBlank()) {
+                        Text("Build output", style = MaterialTheme.typography.labelLarge)
+                        Text(
+                            buildOutput,
+                            color = MutedText,
+                            fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.fillMaxWidth().testTag("build-output"),
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { executeBuildTasks() },
+                    enabled = !buildBusy && buildTaskInput.isNotBlank(),
+                ) { Text(if (buildBusy) "Building…" else "Run") }
+            },
+            dismissButton = {
+                Row {
+                    if (buildBusy) {
+                        TextButton(
+                            onClick = { buildCancellation?.cancel() },
+                        ) { Text("Cancel build") }
+                    }
+                    TextButton(
+                        onClick = { if (!buildBusy) showBuildPanel = false },
+                        enabled = !buildBusy,
+                    ) { Text("Close") }
+                }
             },
         )
     }
