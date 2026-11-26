@@ -268,6 +268,8 @@ class AiStreamAccumulator(private val provider: AiProvider) {
             "timeout",
             "temporarily unavailable",
             "temporarily_unavailable",
+            "gateway_timeout",
+            "gateway timeout",
             "internal server",
             "server_error",
             "service unavailable",
