@@ -56,6 +56,14 @@ data class AiWorkspaceProposal(
     val changes: List<AiWorkspaceFileChange>,
 )
 
+data class AiProviderConnectionResult(
+    val provider: AiProvider,
+    val succeeded: Boolean,
+    val modelCount: Int,
+    val elapsedMillis: Long,
+    val message: String,
+)
+
 /**
  * Multi-provider AI gateway.
  *
@@ -111,6 +119,7 @@ class WorkspaceAiAssistant(context: Context) {
     fun fetchModelCatalog(
         provider: AiProvider,
         customBaseUrl: String = "",
+        forceRefresh: Boolean = false,
     ): List<AiModelCapabilities> {
         val key = readKey(provider)
         val url = when (provider) {
@@ -127,6 +136,7 @@ class WorkspaceAiAssistant(context: Context) {
         synchronized(modelCatalogCache) {
             val cached = modelCatalogCache[cacheKey]
             if (
+                !forceRefresh &&
                 cached != null &&
                 System.currentTimeMillis() - cached.cachedAtEpochMillis < MODEL_CATALOG_CACHE_TTL_MS
             ) return cached.models
@@ -152,6 +162,40 @@ class WorkspaceAiAssistant(context: Context) {
             )
         }
         return normalized
+    }
+
+    /**
+     * Forces a fresh authenticated model-catalog request, so a cached list can
+     * never make a failed credential or endpoint look connected.
+     */
+    fun testConnection(
+        provider: AiProvider,
+        customBaseUrl: String = "",
+    ): AiProviderConnectionResult {
+        val startedAt = System.currentTimeMillis()
+        return try {
+            val models = fetchModelCatalog(provider, customBaseUrl, forceRefresh = true)
+            val elapsed = System.currentTimeMillis() - startedAt
+            AiProviderConnectionResult(
+                provider = provider,
+                succeeded = true,
+                modelCount = models.size,
+                elapsedMillis = elapsed,
+                message = if (models.isEmpty()) {
+                    "Connected successfully; the provider returned an empty model catalogue."
+                } else {
+                    "Connected successfully; discovered " + models.size + " model(s)."
+                },
+            )
+        } catch (error: Exception) {
+            AiProviderConnectionResult(
+                provider = provider,
+                succeeded = false,
+                modelCount = 0,
+                elapsedMillis = System.currentTimeMillis() - startedAt,
+                message = error.message ?: "Connection test failed.",
+            )
+        }
     }
 
     /**
