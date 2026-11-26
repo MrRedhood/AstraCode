@@ -108,6 +108,9 @@ internal class AiProviderTransport {
             input.use { reader -> AiSseReader.read(reader, accumulator, onEvent) }
             return accumulator.result().let { rawResult ->
                 val result = rawResult.copy(usage = rawResult.usage?.withPricing(pricing))
+                // A failed or incomplete response may still have consumed billable
+                // tokens. Report its final usage before returning the error.
+                result.usage?.let { usage -> onEvent(AiStreamEvent.Usage(usage)) }
                 val terminalStatus = result.finalPayload?.optString("status")
                 if (terminalStatus in setOf("failed", "cancelled", "incomplete")) {
                     throw AiProviderRequestException(
@@ -126,7 +129,6 @@ internal class AiProviderTransport {
                 ) {
                     throw AiProviderProtocolException(provider.displayName + " returned no text or tool calls")
                 }
-                result.usage?.let { usage -> onEvent(AiStreamEvent.Usage(usage)) }
                 result
             }
         } catch (error: AiProviderRequestException) {
