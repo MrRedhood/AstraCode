@@ -89,8 +89,8 @@ class WorkspaceAiAssistant(context: Context) {
         val key = readKey(provider)
         val url = when (provider) {
             AiProvider.OPENAI -> "https://api.openai.com/v1/models"
-            AiProvider.GOOGLE_GEMINI -> "https://generativelanguage.googleapis.com/v1beta/models"
-            AiProvider.ANTHROPIC -> "https://api.anthropic.com/v1/models?limit=1000"
+            AiProvider.GOOGLE_GEMINI -> "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000"
+            AiProvider.ANTHROPIC -> "https://api.anthropic.com/v1/models?limit=1000&lifecycle=active"
             AiProvider.OPENROUTER -> "https://openrouter.ai/api/v1/models"
             AiProvider.OPENAI_COMPATIBLE -> endpoint(
                 validateCustomBaseUrl(customBaseUrl),
@@ -262,7 +262,9 @@ class WorkspaceAiAssistant(context: Context) {
             val contextBytes = files.sumOf {
                 it.content.toByteArray(StandardCharsets.UTF_8).size.toLong()
             } + user.toByteArray(StandardCharsets.UTF_8).size.toLong()
-            val estimatedTokens = contextBytes / 3L + 1_000L
+            // Conservatively assume one token per UTF-8 byte plus fixed prompt overhead.
+            // This intentionally prefers a skipped fallback to a context overflow.
+            val estimatedTokens = contextBytes + 4_000L
             var fallbackOutput: String? = null
             for (candidate in fallbackPolicy.candidates(provider)) {
                 val candidateModel = fallbackModels[candidate.id].orEmpty().trim()
@@ -847,7 +849,9 @@ class WorkspaceAiAssistant(context: Context) {
                     AiCapabilitySupport.UNKNOWN
                 },
                 supportedParameters = parameters,
-                source = if (capabilities != null || item.has("max_input_tokens")) {
+                source = if (capabilities != null && item.has("max_input_tokens")) {
+                    AiCapabilitySource.PROVIDER_METADATA_AND_API_CONTRACT
+                } else if (capabilities != null || item.has("max_input_tokens")) {
                     AiCapabilitySource.PROVIDER_MODEL_METADATA
                 } else {
                     AiCapabilitySource.UNKNOWN
