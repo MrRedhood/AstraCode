@@ -578,9 +578,9 @@ class WorkspaceAiAssistant(context: Context) {
                         .put("schema", proposalSchema()),
                 )
             }
-            if (enableTools && previousInteractionId == null) {
-                body.put("tools", geminiTools(registry))
-            }
+            // The REST continuation request must include the same tool
+            // declarations alongside previous_interaction_id.
+            if (enableTools) body.put("tools", geminiTools(registry))
             if (previousInteractionId != null) {
                 body.put("previous_interaction_id", previousInteractionId)
             }
@@ -778,6 +778,9 @@ class WorkspaceAiAssistant(context: Context) {
                     .put("messages", JSONArray()
                         .put(JSONObject().put("role", "system").put("content", system))
                         .put(JSONObject().put("role", "user").put("content", user)))
+                // Do not let OpenRouter silently select another upstream
+                // provider; cross-provider fallback is controlled by AstraCode.
+                body.put("provider", JSONObject().put("allow_fallbacks", false))
                 transport.stream(
                     "https://openrouter.ai/api/v1/chat/completions", key, provider, body, onEvent,
                 )
