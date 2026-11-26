@@ -102,12 +102,15 @@ class AiStreamAccumulator(private val provider: AiProvider) {
                     val index = json.optInt("output_index", tools.size).toString()
                     val tool = tools.getOrPut(index) { ToolBuilder() }
                     tool.id = item.optString("call_id", item.optString("id", tool.id))
+                    val previousName = tool.name
                     tool.name = item.optString("name", tool.name)
                     val arguments = item.optString("arguments")
                     if (arguments.isNotBlank() && tool.arguments.isEmpty()) {
                         appendToolArguments(tool, arguments)
                     }
-                    if (tool.name.isNotBlank()) onEvent(AiStreamEvent.ToolStarted(tool.name))
+                    if (previousName.isBlank() && tool.name.isNotBlank()) {
+                        onEvent(AiStreamEvent.ToolStarted(tool.name))
+                    }
                 }
             }
             "response.function_call_arguments.delta" -> {
