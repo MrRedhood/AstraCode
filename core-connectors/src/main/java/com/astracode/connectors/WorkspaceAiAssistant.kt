@@ -99,10 +99,13 @@ class WorkspaceAiAssistant(context: Context) {
         files.forEach {
             validatePath(it.path)
             require(paths.add(it.path)) { "Duplicate workspace path in AI context: " + it.path }
-            require(it.content.length <= MAX_FILE_CHARS) { "A file in the AI context is too large: " + it.path }
-            total += it.content.length
+            val fileBytes = it.content.toByteArray(StandardCharsets.UTF_8).size
+            require(fileBytes <= MAX_FILE_BYTES) {
+                "A file in the AI context is too large: " + it.path
+            }
+            total += fileBytes.toLong()
         }
-        require(total <= MAX_CONTEXT_CHARS) { "The AI context is too large" }
+        require(total <= MAX_CONTEXT_BYTES) { "The AI context is too large" }
 
         val user = buildString {
             appendLine("User task:")
@@ -391,8 +394,8 @@ class WorkspaceAiAssistant(context: Context) {
         const val MAX_MODEL_CHARS = 256
         const val MAX_ENDPOINT_CHARS = 2_048
         const val MAX_FILES = 60
-        const val MAX_FILE_CHARS = 96 * 1024
-        const val MAX_CONTEXT_CHARS = 600L * 1024L
+        const val MAX_FILE_BYTES = 96 * 1024
+        const val MAX_CONTEXT_BYTES = 600L * 1024L
         const val MAX_RESPONSE_CHARS = 2 * 1024 * 1024
         const val MAX_CHANGES = 40
         const val MAX_PROPOSED_FILE_CHARS = 1_000_000
