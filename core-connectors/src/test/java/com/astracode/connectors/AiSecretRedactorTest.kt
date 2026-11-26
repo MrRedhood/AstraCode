@@ -24,6 +24,27 @@ class AiSecretRedactorTest {
     }
 
     @Test
+    fun redactsGenericEnvironmentSecretsAndCommonProviderTokens() {
+        val source = """
+            AWS_SECRET_ACCESS_KEY=abcdef0123456789secret
+            SLACK_TOKEN=xoxb-1234567890-abcdefghijk
+            NPM_TOKEN=npm_abcdefghijklmnopqrstuvwxyz1234567890
+            val stripe = "sk_live_abcdefghijklmnop123456"
+            val gitlab = "glpat-abcdefghijklmnopqrstuvwxyz123456"
+            val huggingFace = "hf_abcdefghijklmnopqrstuvwxyz123456"
+        """.trimIndent()
+
+        val result = AiSecretRedactor.redact(source)
+        assertTrue(result.wasRedacted)
+        assertFalse(result.content.contains("abcdef0123456789secret"))
+        assertFalse(result.content.contains("xoxb-1234567890-abcdefghijk"))
+        assertFalse(result.content.contains("npm_abcdefghijklmnopqrstuvwxyz"))
+        assertFalse(result.content.contains("sk_live_abcdefghijklmnop"))
+        assertFalse(result.content.contains("glpat-abcdefghijklmnopqrstuvwxyz"))
+        assertFalse(result.content.contains("hf_abcdefghijklmnopqrstuvwxyz"))
+    }
+
+    @Test
     fun redactsEnvironmentAssignmentsAndPrivateKeyBlocks() {
         val source = """
             OPENAI_API_KEY=abcdef0123456789secret
