@@ -9,8 +9,9 @@ data class LspGeneralClientCapabilities(
     val positionEncodings: List<String> = listOf(LspPositionCodec.POSITION_ENCODING),
 ) {
     init {
-        require(positionEncodings.isNotEmpty())
-        require(positionEncodings.all { it.isNotBlank() })
+        require(positionEncodings == listOf(LspPositionCodec.POSITION_ENCODING)) {
+            "AstraCode must advertise only UTF-8 because its editor coordinates are UTF-8 bytes"
+        }
     }
 
     fun toWireMap(): Map<String, Any> = mapOf(
