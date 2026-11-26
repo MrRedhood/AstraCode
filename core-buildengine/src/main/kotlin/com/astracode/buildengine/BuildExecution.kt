@@ -150,7 +150,7 @@ class BuildProcessRunner {
                         BuildOutputStream.STDOUT,
                         output,
                         BuildOutputRedactor(secrets),
-                        emit,
+                        ::emit,
                     )
                 }),
                 readerPool.submit(Callable {
@@ -159,7 +159,7 @@ class BuildProcessRunner {
                         BuildOutputStream.STDERR,
                         output,
                         BuildOutputRedactor(secrets),
-                        emit,
+                        ::emit,
                     )
                 }),
             )
