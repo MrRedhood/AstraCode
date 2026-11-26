@@ -927,7 +927,10 @@ class WorkspaceAiAssistant(context: Context) {
                 if (schema != null) body.put("text", JSONObject().put("format", JSONObject()
                     .put("type", "json_schema").put("name", "astracode_agent_plan")
                     .put("strict", true).put("schema", schema)))
-                transport.stream("https://api.openai.com/v1/responses", key, provider, body, onEvent)
+                transport.stream(
+                    AiProviderAdapters.forProvider(provider).streamingUrl(),
+                    key, provider, body, onEvent,
+                )
             }
             AiProvider.GOOGLE_GEMINI -> {
                 val body = JSONObject().put("model", model).put("system_instruction", system)
@@ -935,7 +938,7 @@ class WorkspaceAiAssistant(context: Context) {
                 if (schema != null) body.put("response_format", JSONObject()
                     .put("type", "text").put("mime_type", "application/json").put("schema", schema))
                 transport.stream(
-                    "https://generativelanguage.googleapis.com/v1beta/interactions",
+                    AiProviderAdapters.forProvider(provider).streamingUrl(),
                     key, provider, body, onEvent,
                 )
             }
@@ -943,7 +946,10 @@ class WorkspaceAiAssistant(context: Context) {
                 val body = JSONObject().put("model", model).put("max_tokens", maxOutputTokens)
                     .put("system", system)
                     .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", user)))
-                transport.stream("https://api.anthropic.com/v1/messages", key, provider, body, onEvent)
+                transport.stream(
+                    AiProviderAdapters.forProvider(provider).streamingUrl(),
+                    key, provider, body, onEvent,
+                )
             }
             AiProvider.OPENROUTER -> {
                 val body = JSONObject().put("model", model).put("max_tokens", maxOutputTokens)
