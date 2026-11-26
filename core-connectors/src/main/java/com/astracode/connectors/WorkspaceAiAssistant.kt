@@ -235,7 +235,10 @@ class WorkspaceAiAssistant(context: Context) {
             onEvent(AiStreamEvent.Status(
                 provider.displayName + " is temporarily unavailable. Checking explicitly allowed fallbacks.",
             ))
-            val estimatedTokens = contextText.toByteArray(StandardCharsets.UTF_8).size.toLong() / 3L + 1_000L
+            // Assume up to one token per UTF-8 byte plus fixed prompt overhead.
+            // A skipped fallback is safer than selecting a model with too little context.
+            val estimatedTokens = contextText.toByteArray(StandardCharsets.UTF_8).size.toLong() + 4_000L
+            var lastFallbackError: AiProviderRequestException? = null
             for (candidate in fallbackPolicy.candidates(provider)) {
                 val candidateModel = fallbackModels[candidate.id].orEmpty().trim()
                 if (candidateModel.isBlank()) {
@@ -273,20 +276,28 @@ class WorkspaceAiAssistant(context: Context) {
                     "Using explicitly allowed fallback: " + candidate.displayName + " · " + candidateModel,
                 ))
                 val fallbackKey = fallbackKeyResult.getOrThrow()
-                val fallbackOutput = runProviderToolLoop(
-                    candidate,
-                    candidateModel,
-                    candidateBaseUrl,
-                    fallbackKey,
-                    contextText,
-                    registry,
-                    useTools,
-                    maxToolRounds,
-                    onEvent,
-                )
-                return parseProposal(fallbackOutput)
+                try {
+                    val fallbackOutput = runProviderToolLoop(
+                        candidate,
+                        candidateModel,
+                        candidateBaseUrl,
+                        fallbackKey,
+                        contextText,
+                        registry,
+                        useTools,
+                        maxToolRounds,
+                        onEvent,
+                    )
+                    return parseProposal(fallbackOutput)
+                } catch (fallbackError: AiProviderRequestException) {
+                    lastFallbackError = fallbackError
+                    onEvent(AiStreamEvent.Status(
+                        candidate.displayName + " fallback failed: " + fallbackError.message,
+                    ))
+                    // Continue only to other destinations the user explicitly approved.
+                }
             }
-            throw primaryError
+            throw lastFallbackError ?: primaryError
         }
     }
 
@@ -333,6 +344,7 @@ class WorkspaceAiAssistant(context: Context) {
             // This intentionally prefers a skipped fallback to a context overflow.
             val estimatedTokens = contextBytes + 4_000L
             var fallbackOutput: String? = null
+            var lastFallbackError: AiProviderRequestException? = null
             for (candidate in fallbackPolicy.candidates(provider)) {
                 val candidateModel = fallbackModels[candidate.id].orEmpty().trim()
                 if (candidateModel.isBlank()) continue
@@ -352,13 +364,21 @@ class WorkspaceAiAssistant(context: Context) {
                     "Agent planner is using explicitly allowed fallback: " +
                         candidate.displayName + " · " + candidateModel,
                 ))
-                fallbackOutput = runSimpleStreaming(
-                    candidate, candidateModel, candidateBaseUrl, candidateKey,
-                    system, user, schema, onEvent,
-                )
-                break
+                try {
+                    fallbackOutput = runSimpleStreaming(
+                        candidate, candidateModel, candidateBaseUrl, candidateKey,
+                        system, user, schema, onEvent,
+                    )
+                    break
+                } catch (fallbackError: AiProviderRequestException) {
+                    lastFallbackError = fallbackError
+                    onEvent(AiStreamEvent.Status(
+                        candidate.displayName + " agent-planner fallback failed: " +
+                            fallbackError.message,
+                    ))
+                }
             }
-            fallbackOutput ?: throw primaryError
+            fallbackOutput ?: throw (lastFallbackError ?: primaryError)
         }
         return parseAgentTasks(output)
     }
