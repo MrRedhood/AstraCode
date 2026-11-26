@@ -137,6 +137,9 @@ import com.astracode.connectors.AiConversationStore
 import com.astracode.connectors.AiConversationThread
 import com.astracode.connectors.AiConversationMessage
 import com.astracode.connectors.AiConversationRole
+import com.astracode.connectors.AiGitIgnoreFile
+import com.astracode.connectors.AiGitIgnoreMatcher
+import com.astracode.connectors.AiSecretRedactor
 import com.astracode.connectors.WorkspaceAiAssistant
 import com.astracode.connectors.WorkspaceFileSnapshot
 import com.astracode.buildengine.BuildArtifactScanner
@@ -1553,14 +1556,11 @@ private fun FileManagementScreen(
                     var totalContextBytes = 0L
 
                     val candidates = mutableListOf<FileEntry>()
+                    val ignoreEntries = mutableListOf<FileEntry>()
                     val pendingFolders = mutableListOf("" to 0)
                     var folderIndex = 0
                     var visitedItems = 0
-                    while (
-                        folderIndex < pendingFolders.size &&
-                        candidates.size < 60 &&
-                        visitedItems < 2_000
-                    ) {
+                    while (folderIndex < pendingFolders.size && visitedItems < 2_000) {
                         val (directory, depth) = pendingFolders[folderIndex++]
                         val children = requestedStorage.listDirectory(directory)
                             .sortedBy { it.name.lowercase() }
@@ -1575,28 +1575,52 @@ private fun FileManagementScreen(
                                     if (
                                         entry.readable &&
                                         entry.sizeBytes <= 96L * 1024L &&
-                                        isAiWorkspaceTextFile(entry.path)
-                                    ) candidates += entry
+                                        entry.name == ".gitignore"
+                                    ) {
+                                        if (ignoreEntries.size < 50) ignoreEntries += entry
+                                    } else if (
+                                        entry.readable &&
+                                        entry.sizeBytes <= 96L * 1024L &&
+                                        isAiWorkspaceTextFile(entry.path) &&
+                                        candidates.size < 500
+                                    ) {
+                                        candidates += entry
+                                    }
                                 }
                                 else -> Unit
                             }
-                            if (candidates.size >= 60) break
                         }
                     }
 
-                    for (entry in candidates) {
+                    val ignoreFiles = ignoreEntries.mapNotNull { entry ->
+                        runCatching {
+                            val content = requestedStorage.readText(entry.path).text
+                            AiGitIgnoreFile(
+                                directory = entry.path.substringBeforeLast('/', ""),
+                                content = content.take(32 * 1024),
+                            )
+                        }.getOrNull()
+                    }
+                    val gitIgnoreMatcher = AiGitIgnoreMatcher(ignoreFiles)
+                    val selectedCandidates = candidates
+                        .filterNot { gitIgnoreMatcher.isIgnored(it.path, isDirectory = false) }
+                        .take(60)
+
+                    for (entry in selectedCandidates) {
                         val diskText = requestedStorage.readText(entry.path).text
                         val diskBytes = diskText.toByteArray(Charsets.UTF_8).size
-                        if (diskBytes > 96 * 1024 || containsLikelyEmbeddedSecret(diskText)) continue
+                        if (diskBytes > 96 * 1024) continue
                         val contextText = unsavedEditorText[entry.path] ?: diskText
-                        val contextBytes = contextText.toByteArray(Charsets.UTF_8).size
-                        if (
-                            contextBytes > 96 * 1024 ||
-                            containsLikelyEmbeddedSecret(contextText)
-                        ) continue
+                        val redacted = AiSecretRedactor.redact(contextText)
+                        val contextBytes = redacted.content.toByteArray(Charsets.UTF_8).size
+                        if (contextBytes > 96 * 1024) continue
                         if (totalContextBytes + contextBytes > 600L * 1024L) break
                         baselines[entry.path] = diskText
-                        snapshots += WorkspaceFileSnapshot(entry.path, contextText)
+                        snapshots += WorkspaceFileSnapshot(
+                            path = entry.path,
+                            content = redacted.content,
+                            writeProtected = redacted.wasRedacted,
+                        )
                         totalContextBytes += contextBytes
                     }
 
