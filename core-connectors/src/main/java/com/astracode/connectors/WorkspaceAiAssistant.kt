@@ -159,21 +159,10 @@ class WorkspaceAiAssistant(context: Context) {
             .takeIf { it > 0L }
         val toolsConfirmed = capabilityPreferences.getBoolean(prefix + "_tools", false)
         val streamingConfirmed = capabilityPreferences.getBoolean(prefix + "_streaming", false)
-        val hasOverrides = contextOverride != null || toolsConfirmed || streamingConfirmed
-        if (!hasOverrides) return capability
-        return capability.copy(
-            contextWindowTokens = contextOverride ?: capability.contextWindowTokens,
-            supportsToolCalling = if (toolsConfirmed) {
-                AiCapabilitySupport.SUPPORTED
-            } else {
-                capability.supportsToolCalling
-            },
-            supportsStreaming = if (streamingConfirmed) {
-                AiCapabilitySupport.SUPPORTED
-            } else {
-                capability.supportsStreaming
-            },
-            source = AiCapabilitySource.USER_CONFIRMED,
+        return capability.withUserConfirmedCapabilities(
+            verifiedContextWindowTokens = contextOverride,
+            toolCallingConfirmed = toolsConfirmed,
+            streamingConfirmed = streamingConfirmed,
         )
     }
 
