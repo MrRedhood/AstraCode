@@ -56,12 +56,6 @@ data class AiWorkspaceProposal(
     val changes: List<AiWorkspaceFileChange>,
 )
 
-data class AiProviderConnectionTestResult(
-    val provider: AiProvider,
-    val modelId: String,
-    val elapsedMillis: Long,
-    val responsePreview: String,
-)
 
 data class AiProviderConnectionResult(
     val provider: AiProvider,
@@ -180,34 +174,50 @@ class WorkspaceAiAssistant(context: Context) {
     }
 
     /**
-     * Forces a fresh authenticated model-catalog request, so a cached list can
-     * never make a failed credential or endpoint look connected.
+     * Sends one short generation request to the selected model. This verifies
+     * the actual inference and streaming endpoint rather than only model listing.
+     * Providers may bill a small amount for the request.
      */
     fun testConnection(
         provider: AiProvider,
+        model: String,
         customBaseUrl: String = "",
     ): AiProviderConnectionResult {
         val startedAt = System.currentTimeMillis()
         return try {
-            val models = fetchModelCatalog(provider, customBaseUrl, forceRefresh = true)
-            val elapsed = System.currentTimeMillis() - startedAt
+            require(model.isNotBlank() && model.length <= MAX_MODEL_CHARS) {
+                "Choose a model ID before testing the connection"
+            }
+            if (provider.customEndpoint) validateCustomBaseUrl(customBaseUrl)
+            val response = runSimpleStreaming(
+                provider = provider,
+                model = model,
+                customBaseUrl = customBaseUrl,
+                key = readKey(provider),
+                system = "You are testing an API connection. Reply with exactly OK and nothing else.",
+                user = "Reply with exactly OK.",
+                schema = null,
+                onEvent = {},
+                maxOutputTokens = CONNECTION_TEST_MAX_OUTPUT_TOKENS,
+            ).trim()
+            if (response.isBlank()) {
+                throw AiProviderProtocolException(
+                    provider.displayName + " completed the test without returning any text",
+                )
+            }
             AiProviderConnectionResult(
                 provider = provider,
                 succeeded = true,
-                modelCount = models.size,
-                elapsedMillis = elapsed,
-                message = if (models.isEmpty()) {
-                    "Connected successfully; the provider returned an empty model catalogue."
-                } else {
-                    "Connected successfully; discovered " + models.size + " model(s)."
-                },
+                modelCount = 1,
+                elapsedMillis = (System.currentTimeMillis() - startedAt).coerceAtLeast(0L),
+                message = provider.displayName + " / " + model + " generated a streamed response successfully.",
             )
         } catch (error: Exception) {
             AiProviderConnectionResult(
                 provider = provider,
                 succeeded = false,
                 modelCount = 0,
-                elapsedMillis = System.currentTimeMillis() - startedAt,
+                elapsedMillis = (System.currentTimeMillis() - startedAt).coerceAtLeast(0L),
                 message = error.message ?: "Connection test failed.",
             )
         }
@@ -512,55 +522,6 @@ class WorkspaceAiAssistant(context: Context) {
             }
             throw lastFallbackError ?: primaryError
         }
-    }
-
-    /**
-     * Tests the selected model with one short streamed request.
-     *
-     * This validates the actual generation endpoint, not just the model-list
-     * endpoint. The provider may charge a small amount for the test tokens.
-     */
-    @Throws(IOException::class)
-    fun testConnection(
-        provider: AiProvider,
-        model: String,
-        customBaseUrl: String = "",
-        onEvent: (AiStreamEvent) -> Unit = {},
-    ): AiProviderConnectionTestResult {
-        require(model.isNotBlank() && model.length <= MAX_MODEL_CHARS) {
-            "Choose a model ID before testing the connection"
-        }
-        if (provider.customEndpoint) validateCustomBaseUrl(customBaseUrl)
-        val startedAt = System.currentTimeMillis()
-        onEvent(AiStreamEvent.Status(
-            "Testing " + provider.displayName + " with a short streamed request",
-        ))
-        val response = runSimpleStreaming(
-            provider = provider,
-            model = model,
-            customBaseUrl = customBaseUrl,
-            key = readKey(provider),
-            system = "You are testing an API connection. Reply with exactly OK and nothing else.",
-            user = "Reply with exactly OK.",
-            schema = null,
-            onEvent = onEvent,
-            maxOutputTokens = CONNECTION_TEST_MAX_OUTPUT_TOKENS,
-        ).trim()
-        if (response.isBlank()) {
-            throw AiProviderProtocolException(
-                provider.displayName + " completed the test without returning any text",
-            )
-        }
-        val elapsed = (System.currentTimeMillis() - startedAt).coerceAtLeast(0L)
-        onEvent(AiStreamEvent.Status(
-            provider.displayName + " streamed a response successfully in " + elapsed + " ms",
-        ))
-        return AiProviderConnectionTestResult(
-            provider = provider,
-            modelId = model,
-            elapsedMillis = elapsed,
-            responsePreview = response.take(100),
-        )
     }
 
     /**
