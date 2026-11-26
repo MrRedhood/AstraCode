@@ -520,7 +520,7 @@ class WorkspaceAiAssistant(context: Context) {
             messages.put(
                 JSONObject()
                     .put("role", "assistant")
-                    .put("content", response.text.ifBlank { JSONObject.NULL })
+                    .put("content", if (response.text.isBlank()) JSONObject.NULL else response.text)
                     .put("tool_calls", assistantCalls),
             )
             executeToolCalls(response.toolCalls, registry, onEvent).forEach { result ->
