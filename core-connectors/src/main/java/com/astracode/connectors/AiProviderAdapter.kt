@@ -18,6 +18,11 @@ internal data class AiProviderAdapter(
     private val extraHeaders: Map<String, String> = emptyMap(),
     private val customEndpoint: Boolean = false,
 ) {
+    fun validateBaseUrl(customBaseUrl: String): String {
+        require(customEndpoint) { provider.displayName + " does not use a custom endpoint" }
+        return validateCustomBaseUrl(customBaseUrl)
+    }
+
     fun modelCatalogUrl(customBaseUrl: String = ""): String =
         customEndpointUrl(customBaseUrl, "models")
             ?: modelCatalogEndpoint
