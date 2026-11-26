@@ -25,11 +25,18 @@ object AiSecretRedactor {
         Regex("""(?i)\bAKIA[0-9A-Z]{16}\b"""),
         Regex("""(?i)\bBearer\s+[A-Za-z0-9._~-]{20,}"""),
         Regex(
-            """(?im)^(\s*(?:OPENAI_API_KEY|ANTHROPIC_API_KEY|GITHUB_TOKEN|API_KEY|ACCESS_TOKEN|REFRESH_TOKEN|CLIENT_SECRET|PASSWORD)\s*[:=]\s*)["']?[^\s"']{10,}["']?""",
+            """(?im)^(\s*(?:[A-Z0-9_.-]*(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD|PASSWD|PRIVATE[_-]?KEY|ACCESS[_-]?KEY))\s*[:=]\s*)["']?[^\s"']{8,}["']?""",
         ),
         Regex(
             """(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----""",
         ),
+        Regex("""(?i)\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}\b"""),
+        Regex("""(?i)\bglpat-[A-Za-z0-9_-]{20,}\b"""),
+        Regex("""(?i)\bxox[baprs]-[A-Za-z0-9-]{10,}\b"""),
+        Regex("""(?i)\bnpm_[A-Za-z0-9]{30,}\b"""),
+        Regex("""(?i)\bhf_[A-Za-z0-9]{20,}\b"""),
+        Regex("""\bya29\.[A-Za-z0-9_-]{20,}\b"""),
+        Regex("""(?i)\bshpat_[A-Za-z0-9]{20,}\b"""),
     )
 
     /**
