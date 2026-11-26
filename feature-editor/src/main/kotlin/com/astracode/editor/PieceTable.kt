@@ -30,9 +30,11 @@ class PieceTable(
 
         fun append(bytes: ByteArray): Int {
             val start = size
-            ensureCapacity(size + bytes.size)
+            val required = size.toLong() + bytes.size.toLong()
+            require(required <= Int.MAX_VALUE.toLong()) { "Document is too large" }
+            ensureCapacity(required.toInt())
             bytes.copyInto(storage, start)
-            size += bytes.size
+            size = required.toInt()
             return start
         }
 
@@ -52,8 +54,10 @@ class PieceTable(
             if (required <= storage.size) return
             var capacity = storage.size
             while (capacity < required) {
-                capacity = (capacity.toLong() * 2L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-                require(capacity >= required || capacity == Int.MAX_VALUE) { "Document is too large" }
+                val nextCapacity = (capacity.toLong() * 2L)
+                    .coerceAtMost(Int.MAX_VALUE.toLong())
+                require(nextCapacity > capacity.toLong()) { "Document is too large" }
+                capacity = nextCapacity.toInt()
             }
             storage = storage.copyOf(capacity)
         }
