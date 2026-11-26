@@ -1549,7 +1549,8 @@ private fun FileManagementScreen(
             modelOverride = aiAgentModelOverride.trim().takeIf { it.isNotBlank() },
             customBaseUrlOverride = requestedAgentProvider
                 ?.takeIf { it.customEndpoint }
-                ?.let { aiPreferences.getString("base_url_" + it.id, "").orEmpty() },
+                ?.let { aiPreferences.getString("base_url_" + it.id, "").orEmpty() }
+                ?.takeIf { it.isNotBlank() },
             allowedToolNames = buildSet {
                 if (aiAgentAllowListFiles) add("list_workspace_files")
                 if (aiAgentAllowReadFile) add("read_workspace_file")
