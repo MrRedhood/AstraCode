@@ -167,8 +167,8 @@ class FileManagementSystem(
     }
 
     /**
-     * Save canonical UTF-8 text via temp-file + ATOMIC_MOVE. Malformed UTF-16
-     * code units from callers are normalized to U+FFFD before encoding.
+     * Save canonical UTF-8 text via temp-file + ATOMIC_MOVE. Unpaired Unicode
+     * surrogates from callers are normalized to U+FFFD before encoding.
      */
     override fun writeText(relativePath: String, text: String): TextFileWriteResult {
         ensureOpen()
