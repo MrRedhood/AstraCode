@@ -6084,6 +6084,145 @@ private fun FileManagementScreen(
             },
         )
     }
+    if (aiShowHistoryDialog) {
+        AlertDialog(
+            onDismissRequest = { aiShowHistoryDialog = false },
+            title = { Text("Conversation history") },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedTextField(
+                        value = aiConversationSearch,
+                        onValueChange = {
+                            aiConversationSearch = it
+                            refreshAiConversationHistory()
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("ai-conversation-search"),
+                        label = { Text("Search conversations") },
+                        singleLine = true,
+                    )
+                    if (aiHistoryLoading) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Text("Loading history…", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    if (!aiHistoryLoading && aiConversationHistory.isEmpty()) {
+                        Text(
+                            "No conversations found in this workspace.",
+                            color = MutedText,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    aiConversationHistory.forEach { thread ->
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                thread.title,
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                thread.messageCount.toString() + " message(s) · " +
+                                    java.text.DateFormat.getDateTimeInstance(
+                                        java.text.DateFormat.SHORT,
+                                        java.text.DateFormat.SHORT,
+                                    ).format(java.util.Date(thread.updatedAtEpochMillis)),
+                                color = MutedText,
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                TextButton(
+                                    onClick = { loadAiConversation(thread.id) },
+                                    enabled = !aiBusy,
+                                ) { Text("Open") }
+                                TextButton(
+                                    onClick = {
+                                        aiRenameTarget = thread
+                                        aiRenameValue = thread.title
+                                    },
+                                    enabled = !aiBusy,
+                                ) { Text("Rename") }
+                                TextButton(
+                                    onClick = { exportAiConversation(thread) },
+                                    enabled = !aiBusy,
+                                ) { Text("Export") }
+                                TextButton(
+                                    onClick = { aiDeleteTarget = thread },
+                                    enabled = !aiBusy,
+                                ) { Text("Delete") }
+                            }
+                        }
+                        Divider()
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { aiShowHistoryDialog = false }) { Text("Close") }
+            },
+        )
+    }
+
+    aiRenameTarget?.let { thread ->
+        AlertDialog(
+            onDismissRequest = {
+                aiRenameTarget = null
+                aiRenameValue = ""
+            },
+            title = { Text("Rename conversation") },
+            text = {
+                OutlinedTextField(
+                    value = aiRenameValue,
+                    onValueChange = { aiRenameValue = it.take(80) },
+                    modifier = Modifier.fillMaxWidth().testTag("ai-conversation-rename-input"),
+                    label = { Text("Conversation title") },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { renameAiConversation(thread, aiRenameValue) },
+                    enabled = aiRenameValue.isNotBlank(),
+                ) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        aiRenameTarget = null
+                        aiRenameValue = ""
+                    },
+                ) { Text("Cancel") }
+            },
+        )
+    }
+
+    aiDeleteTarget?.let { thread ->
+        AlertDialog(
+            onDismissRequest = { aiDeleteTarget = null },
+            title = { Text("Delete conversation?") },
+            text = {
+                Text("Delete \"" + thread.title + "\" and all of its stored messages? This cannot be undone.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { deleteAiConversation(thread) },
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { aiDeleteTarget = null }) { Text("Cancel") }
+            },
+        )
+    }
+
 
 }
 
