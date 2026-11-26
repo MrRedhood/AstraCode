@@ -14,7 +14,7 @@ class EditorBuffer(
 
     val length: Int get() = table.byteLength
     val byteLength: Int get() = table.byteLength
-    val lineCount: Int get() = table.lineCount
+    val lineCount: Int get() = table.lineCount()
     val canUndo: Boolean get() = table.canUndo
     val canRedo: Boolean get() = table.canRedo
 
