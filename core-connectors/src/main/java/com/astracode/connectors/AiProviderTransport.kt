@@ -89,6 +89,7 @@ internal class AiProviderTransport {
         provider: AiProvider,
         body: JSONObject,
         onEvent: (AiStreamEvent) -> Unit,
+        pricing: AiModelPricing? = null,
     ): AiStreamResult {
         body.put("stream", true)
         val connection = openConnection(url, "POST", apiKey, provider, true)
@@ -105,7 +106,8 @@ internal class AiProviderTransport {
             val accumulator = AiStreamAccumulator(provider)
             val input = connection.inputStream.bufferedReader(StandardCharsets.UTF_8)
             input.use { reader -> AiSseReader.read(reader, accumulator, onEvent) }
-            return accumulator.result().let { result ->
+            return accumulator.result().let { rawResult ->
+                val result = rawResult.copy(usage = rawResult.usage?.withPricing(pricing))
                 val terminalStatus = result.finalPayload?.optString("status")
                 if (terminalStatus in setOf("failed", "cancelled", "incomplete")) {
                     throw AiProviderRequestException(
@@ -124,6 +126,7 @@ internal class AiProviderTransport {
                 ) {
                     throw AiProviderProtocolException(provider.displayName + " returned no text or tool calls")
                 }
+                result.usage?.let { usage -> onEvent(AiStreamEvent.Usage(usage)) }
                 result
             }
         } catch (error: AiProviderRequestException) {
