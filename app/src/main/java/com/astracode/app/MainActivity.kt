@@ -5930,6 +5930,11 @@ private fun FileManagementScreen(
                             }
                         }
                     }
+                    Text(
+                        "Test connection sends a short streamed request to the selected model. The provider may charge a small amount for these test tokens.",
+                        color = MutedText,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(
                             onClick = {
@@ -5938,25 +5943,25 @@ private fun FileManagementScreen(
                                 val selectedEndpoint = aiCustomBaseUrl
                                 scope.launch {
                                     aiTestingConnection = true
-                                    val result = runCatchingCancellable {
-                                        withContext(Dispatchers.IO) {
-                                            workspaceAiAssistant.testConnection(
-                                                selectedProvider,
-                                                selectedModel,
-                                                selectedEndpoint,
-                                            )
-                                        }
-                                    }
-                                    if (aiProvider == selectedProvider) {
-                                        result.onSuccess { connection ->
-                                            aiMessage = connection.message + " · " +
-                                                connection.elapsedMillis + " ms"
-                                            if (connection.succeeded) {
-                                                aiModels = aiModelCatalog.map { it.modelId }
+                                    try {
+                                        val result = runCatchingCancellable {
+                                            withContext(Dispatchers.IO) {
+                                                workspaceAiAssistant.testConnection(
+                                                    selectedProvider,
+                                                    selectedModel,
+                                                    selectedEndpoint,
+                                                )
                                             }
-                                        }.onFailure { error ->
-                                            aiMessage = error.message ?: "Connection test failed."
                                         }
+                                        if (aiProvider == selectedProvider && aiModel.trim() == selectedModel) {
+                                            result.onSuccess { connection ->
+                                                aiMessage = connection.message + " · " +
+                                                    connection.elapsedMillis + " ms"
+                                            }.onFailure { error ->
+                                                aiMessage = error.message ?: "Connection test failed."
+                                            }
+                                        }
+                                    } finally {
                                         aiTestingConnection = false
                                     }
                                 }
