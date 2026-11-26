@@ -5934,6 +5934,7 @@ private fun FileManagementScreen(
                         TextButton(
                             onClick = {
                                 val selectedProvider = aiProvider
+                                val selectedModel = aiModel.trim()
                                 val selectedEndpoint = aiCustomBaseUrl
                                 scope.launch {
                                     aiTestingConnection = true
@@ -5941,6 +5942,7 @@ private fun FileManagementScreen(
                                         withContext(Dispatchers.IO) {
                                             workspaceAiAssistant.testConnection(
                                                 selectedProvider,
+                                                selectedModel,
                                                 selectedEndpoint,
                                             )
                                         }
@@ -5960,6 +5962,7 @@ private fun FileManagementScreen(
                                 }
                             },
                             enabled = !aiBusy && !aiTestingConnection && aiHasApiKey &&
+                                aiModel.isNotBlank() &&
                                 (!aiProvider.customEndpoint || aiCustomBaseUrl.isNotBlank()),
                         ) { Text(if (aiTestingConnection) "Testing…" else "Test connection") }
                         TextButton(
