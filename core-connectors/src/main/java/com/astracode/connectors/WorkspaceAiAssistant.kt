@@ -964,7 +964,6 @@ class WorkspaceAiAssistant(context: Context) {
                 if (imageInput == AiCapabilitySupport.SUPPORTED) add("image")
             }
             val parameters = buildSet {
-                if (isCurrentModel) add("client_tool_use")
                 if (imageInput == AiCapabilitySupport.SUPPORTED) add("image_input")
                 listOf("pdf_input", "structured_outputs", "server_tools", "code_execution").forEach {
                     if (readNestedSupport(capabilities, it) == AiCapabilitySupport.SUPPORTED) add(it)
@@ -978,13 +977,10 @@ class WorkspaceAiAssistant(context: Context) {
                 maxOutputTokens = item.optLongValue("max_tokens"),
                 inputModalities = modalities,
                 outputModalities = setOf("text"),
-                // Client-side function tools and Messages streaming are API-level
-                // capabilities for active Claude models; deprecated models stay UNKNOWN.
-                supportsToolCalling = if (isCurrentModel) {
-                    AiCapabilitySupport.SUPPORTED
-                } else {
-                    AiCapabilitySupport.UNKNOWN
-                },
+                // The model catalogue does not expose a separate client-function
+                // tool capability. Keep it UNKNOWN instead of inferring it from lifecycle.
+                // Active Messages API models support the documented streaming interface.
+                supportsToolCalling = AiCapabilitySupport.UNKNOWN,
                 supportsStreaming = if (isCurrentModel) {
                     AiCapabilitySupport.SUPPORTED
                 } else {
