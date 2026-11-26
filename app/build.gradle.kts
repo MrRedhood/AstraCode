@@ -44,6 +44,9 @@ kotlin {
 
 dependencies {
     implementation(project(":core-filesystem"))
+    implementation(project(":feature-editor"))
+    implementation(project(":feature-terminal"))
+    implementation(project(":core-connectors"))
     implementation("androidx.documentfile:documentfile:1.1.0")
 
     val composeBom = platform("androidx.compose:compose-bom:2026.06.00")
