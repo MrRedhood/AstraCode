@@ -210,7 +210,7 @@ private const val MAX_STANDALONE_DOCUMENT_BYTES = 8L * 1024L * 1024L
 private const val MAX_EDITOR_FILE_BYTES = 8L * 1024L * 1024L
 private const val MAX_OPEN_EDITOR_TABS = 25
 // Count both each draft and its saved snapshot to keep retained editor text bounded.
-private const val MAX_OPEN_EDITOR_BUFFER_UNITS = 16L * 1024L * 1024L
+private const val MAX_OPEN_EDITOR_BUFFER_BYTES = 16L * 1024L * 1024L
 
 private data class EditorTab(
     val path: String,
@@ -219,8 +219,9 @@ private data class EditorTab(
     val isLoading: Boolean = true,
 )
 
-private fun editorTabBufferUnits(tab: EditorTab): Long =
-    tab.text.length.toLong() + tab.savedText.length.toLong()
+private fun editorTabBufferBytes(tab: EditorTab): Long =
+    tab.text.toByteArray(Charsets.UTF_8).size.toLong() +
+        tab.savedText.toByteArray(Charsets.UTF_8).size.toLong()
 
 private const val EDITOR_AUTOSAVE_DEBOUNCE_MS = 300L
 private const val EDITOR_AUTOSAVE_MAX_WAIT_MS = 15_000L
@@ -1598,10 +1599,10 @@ private fun FileManagementScreen(
         val path = pathAtEdit
         val currentTab = editorTabs.firstOrNull { it.path == path } ?: return false
         if (newText == currentTab.text) return true
-        val otherBufferUnits = editorTabs.asSequence()
+        val otherBufferBytes = editorTabs.asSequence()
             .filterNot { it.path == path }
             .sumOf(::editorTabBufferUnits)
-        val requestedUnits = otherBufferUnits + newText.length.toLong() + currentTab.savedText.length.toLong()
+        val requestedBytes = otherBufferUnits + newText.length.toLong() + currentTab.savedText.length.toLong()
         if (requestedUnits > MAX_OPEN_EDITOR_BUFFER_UNITS) {
             notify("Editor memory limit reached. Save and close another tab before adding more text.")
             return false
@@ -2270,7 +2271,7 @@ private fun FileManagementScreen(
 
         if (editorTabs.size >= MAX_OPEN_EDITOR_TABS) {
             val oldest = editorTabs.first()
-            val remainingBufferUnits = editorTabs.drop(1).sumOf(::editorTabBufferUnits)
+            val remainingBufferBytes = editorTabs.drop(1).sumOf(::editorTabBufferUnits)
             if (remainingBufferUnits + sizeBytes * 2L > MAX_OPEN_EDITOR_BUFFER_UNITS) {
                 notify("The editor memory limit would still be exceeded after closing the oldest tab.")
                 return
@@ -2286,7 +2287,7 @@ private fun FileManagementScreen(
             return
         }
 
-        val currentBufferUnits = editorTabs.sumOf(::editorTabBufferUnits)
+        val currentBufferBytes = editorTabs.sumOf(::editorTabBufferUnits)
         if (currentBufferUnits + sizeBytes * 2L > MAX_OPEN_EDITOR_BUFFER_UNITS) {
             notify("The open-file memory limit is reached. Save and close another tab before opening this file.")
             return
