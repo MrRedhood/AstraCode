@@ -4976,7 +4976,7 @@ private fun FileManagementScreen(
                     ) {
                         TextButton(
                             onClick = { aiProviderMenuExpanded = true },
-                            enabled = !aiBusy,
+                            enabled = !aiBusy && !aiCapabilitySaving,
                         ) { Text("Provider: " + aiProvider.displayName + " ▾") }
                         DropdownMenu(
                             expanded = aiProviderMenuExpanded,
@@ -5142,7 +5142,7 @@ private fun FileManagementScreen(
                             label = { Text("Verified context window in tokens") },
                             placeholder = { Text("Example: 200000") },
                             singleLine = true,
-                            enabled = !aiBusy,
+                            enabled = !aiBusy && !aiCapabilitySaving,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -5151,7 +5151,7 @@ private fun FileManagementScreen(
                                 onCheckedChange = { checked ->
                                     aiManualToolCalling = checked
                                 },
-                                enabled = !aiBusy &&
+                                enabled = !aiBusy && !aiCapabilitySaving &&
                                     selectedCapabilityBase?.supportsToolCalling != AiCapabilitySupport.SUPPORTED,
                             )
                             Text(
@@ -5166,7 +5166,7 @@ private fun FileManagementScreen(
                                 onCheckedChange = { checked ->
                                     aiManualStreaming = checked
                                 },
-                                enabled = !aiBusy &&
+                                enabled = !aiBusy && !aiCapabilitySaving &&
                                     selectedCapabilityBase?.supportsStreaming != AiCapabilitySupport.SUPPORTED,
                             )
                             Text(
