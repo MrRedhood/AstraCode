@@ -8,7 +8,7 @@ class EditorBufferTest {
     @Test
     fun exposesUtf8ByteLengthAndLineState() {
         val buffer = EditorBuffer("ह\nb")
-        assertEquals(4, buffer.byteLength)
+        assertEquals(5, buffer.byteLength)
         assertEquals(2, buffer.lineCount)
         buffer.insert(3, "x")
         assertEquals("हx\nb", buffer.text())
