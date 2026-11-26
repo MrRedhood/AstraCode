@@ -13,6 +13,11 @@ class AiProviderRequestException(
     cause: Throwable? = null,
 ) : IOException(message, cause)
 
+class AiProviderProtocolException(
+    message: String,
+    cause: Throwable? = null,
+) : IOException(message, cause)
+
 /** Small HTTP transport shared by all provider adapters. */
 internal class AiProviderTransport {
     fun getJson(
@@ -78,6 +83,13 @@ internal class AiProviderTransport {
             }
         } catch (error: AiProviderRequestException) {
             throw error
+        } catch (error: AiProviderProtocolException) {
+            throw AiProviderRequestException(
+                provider.displayName + " returned invalid streaming data: " + error.message,
+                null,
+                false,
+                error,
+            )
         } catch (error: IOException) {
             throw AiProviderRequestException(
                 provider.displayName + " streaming request failed: " + (error.message ?: "network error"),
@@ -99,6 +111,7 @@ internal class AiProviderTransport {
     ): HttpURLConnection {
         val connection = URL(url).openConnection() as HttpURLConnection
         connection.requestMethod = method
+        connection.instanceFollowRedirects = false
         connection.connectTimeout = CONNECT_TIMEOUT_MS
         connection.readTimeout = READ_TIMEOUT_MS
         connection.setRequestProperty("Accept", "application/json")
