@@ -36,6 +36,27 @@ data class AiTokenUsage(
         if (pricing == null || inputTokens == null || outputTokens == null) return this
         return copy(estimatedCostUsd = pricing.estimateCostUsd(inputTokens, outputTokens))
     }
+
+    /**
+     * Adds token counts from another completed provider request. If either
+     * request omitted a metric, the aggregate keeps that metric unknown rather
+     * than reporting a misleading partial total.
+     */
+    fun plus(other: AiTokenUsage): AiTokenUsage {
+        fun sumKnown(left: Long?, right: Long?): Long? =
+            if (left != null && right != null) left + right else null
+        return AiTokenUsage(
+            inputTokens = sumKnown(inputTokens, other.inputTokens),
+            outputTokens = sumKnown(outputTokens, other.outputTokens),
+            totalTokens = sumKnown(totalTokens, other.totalTokens),
+            cachedInputTokens = sumKnown(cachedInputTokens, other.cachedInputTokens),
+            estimatedCostUsd = if (estimatedCostUsd != null && other.estimatedCostUsd != null) {
+                estimatedCostUsd + other.estimatedCostUsd
+            } else {
+                null
+            },
+        )
+    }
 }
 
 data class AiStreamResult(
