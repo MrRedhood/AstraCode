@@ -46,6 +46,7 @@ dependencies {
     implementation(project(":feature-editor"))
     implementation(project(":feature-terminal"))
     implementation(project(":core-connectors"))
+    implementation(project(":core-buildengine"))
     implementation("androidx.documentfile:documentfile:1.1.0")
 
     val composeBom = platform("androidx.compose:compose-bom:2026.06.00")
