@@ -1088,7 +1088,6 @@ private fun FileManagementScreen(
     val context = LocalContext.current
     val workspaceAiAssistant = remember(context) { WorkspaceAiAssistant(context) }
     val aiConversationStore = remember(context) { AiConversationStore(context) }
-    val aiClipboardManager = LocalClipboardManager.current
     val aiPreferences = remember(context) {
         context.getSharedPreferences("astracode_ai_preferences", Context.MODE_PRIVATE)
     }
@@ -1311,7 +1310,7 @@ private fun FileManagementScreen(
                     aiConversationStore.listThreads(workspaceId, search)
                 }
             }
-            if (activeWorkspaceId == workspaceId) {
+            if (activeWorkspaceId == workspaceId && aiConversationSearch == search) {
                 result.onSuccess { aiConversationHistory = it }
                     .onFailure { error ->
                         aiMessage = error.message ?: "Conversation history could not be loaded."
@@ -1707,8 +1706,9 @@ private fun FileManagementScreen(
                         .apply()
                     val aiStartedAt = SystemClock.elapsedRealtime()
 
-                    val requestResult = if (requestedAgentWorkflow) {
-                        val report = AiAgentOrchestrator(workspaceAiAssistant).execute(
+                    val requestResult = try {
+                        if (requestedAgentWorkflow) {
+                            val report = AiAgentOrchestrator(workspaceAiAssistant).execute(
                             provider = requestedProvider,
                             model = requestedModel,
                             customBaseUrl = requestedBaseUrl,
@@ -1743,7 +1743,24 @@ private fun FileManagementScreen(
                             enableTools = requestedReadOnlyToolsEnabled,
                             onEvent = ::onAiStreamEvent,
                         )
-                        AiWorkspaceRequestResult(baselines, snapshots.size, proposal)
+                            AiWorkspaceRequestResult(baselines, snapshots.size, proposal)
+                        }
+                    } catch (error: java.util.concurrent.CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        runCatching {
+                            aiConversationStore.appendMessage(
+                                threadId = currentThread.id,
+                                role = AiConversationRole.ASSISTANT,
+                                content = "Request failed: " +
+                                    (error.message ?: "The provider request did not complete."),
+                                providerId = requestedProvider.id,
+                                modelId = requestedModel,
+                                durationMillis = (SystemClock.elapsedRealtime() - aiStartedAt).coerceAtLeast(0L),
+                                estimatedInputTokens = estimatedInputTokens,
+                            )
+                        }
+                        throw error
                     }
                     val assistantRecord = buildString {
                         appendLine("Proposal summary:")
@@ -5657,6 +5674,19 @@ private fun FileManagementScreen(
                                         maxLines = 2,
                                         overflow = TextOverflow.Ellipsis,
                                     )
+                                    val telemetry = buildList {
+                                        message.estimatedInputTokens?.let { add("~" + it + " input tokens") }
+                                        message.durationMillis?.let { add((it / 1_000.0).let { seconds ->
+                                            String.format("%.1f s", seconds)
+                                        }) }
+                                    }
+                                    if (telemetry.isNotEmpty()) {
+                                        Text(
+                                            telemetry.joinToString(" · "),
+                                            color = MutedText,
+                                            style = MaterialTheme.typography.labelSmall,
+                                        )
+                                    }
                                 }
                             }
                         }
