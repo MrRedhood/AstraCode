@@ -1315,6 +1315,9 @@ private fun FileManagementScreen(
                         aiStreamingPreview = (aiStreamingPreview + event.text).takeLast(8_000)
                     }
                     is AiStreamEvent.Status -> {
+                        if (event.message.contains("explicitly allowed fallback", ignoreCase = true)) {
+                            aiStreamingPreview = ""
+                        }
                         val source = event.agentId?.let { "Agent " + it + ": " }.orEmpty()
                         aiProgressEvents = (aiProgressEvents + (source + event.message)).takeLast(8)
                     }
