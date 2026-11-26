@@ -48,6 +48,26 @@ class AiToolRegistryTest {
     }
 
     @Test
+    fun exactlyFortySearchMatchesAreNotReportedAsTruncated() {
+        val lines = (1..40).joinToString("\n") { "needle $it" }
+        val onlyForty = AiToolRegistry(listOf(WorkspaceFileSnapshot("src/Only.kt", lines)))
+            .execute(AiToolCall("forty", "search_workspace_files", JSONObject().put("query", "needle")))
+        val fortyJson = JSONObject(onlyForty.content)
+        assertEquals(40, fortyJson.getJSONArray("matches").length())
+        assertFalse(fortyJson.getBoolean("truncated"))
+    }
+
+    @Test
+    fun moreThanFortySearchMatchesAreTruncated() {
+        val lines = (1..41).joinToString("\n") { "needle $it" }
+        val moreThanForty = AiToolRegistry(listOf(WorkspaceFileSnapshot("src/Many.kt", lines)))
+            .execute(AiToolCall("many", "search_workspace_files", JSONObject().put("query", "needle")))
+        val manyJson = JSONObject(moreThanForty.content)
+        assertEquals(40, manyJson.getJSONArray("matches").length())
+        assertTrue(manyJson.getBoolean("truncated"))
+    }
+
+    @Test
     fun rejectsUnknownToolsAndUnexpectedArguments() {
         assertFalse(registry.execute(AiToolCall("5", "run_shell", JSONObject())).succeeded)
         assertFalse(
