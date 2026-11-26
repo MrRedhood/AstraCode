@@ -114,6 +114,21 @@ class JsonRpcProcessTransport private constructor(
 ) : Closeable {
     private val closed = AtomicBoolean(false)
     private val writeLock = Any()
+    private val stderrThread = Thread({
+        runCatching {
+            process.errorStream.buffered().use { stream ->
+                val buffer = ByteArray(8 * 1024)
+                while (!closed.get() && stream.read(buffer) >= 0) {
+                    // Drain stderr to prevent a verbose language server from
+                    // blocking on a full OS pipe. Diagnostics are surfaced by
+                    // JSON-RPC notifications, not unbounded process logs.
+                }
+            }
+        }
+    }, "astracode-lsp-stderr").apply {
+        isDaemon = true
+        start()
+    }
     private val readerThread = Thread(::readLoop, "astracode-lsp-reader").apply {
         isDaemon = true
         start()
