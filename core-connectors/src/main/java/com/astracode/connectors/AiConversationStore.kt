@@ -296,7 +296,8 @@ class AiConversationStore(context: Context) : SQLiteOpenHelper(
             }
             val remaining = MAX_HISTORY_CONTEXT_CHARS - output.length
             if (remaining <= 0) return@forEach
-            val excerpt = message.content.take(minOf(MAX_HISTORY_MESSAGE_CHARS, remaining))
+            val safeContent = AiSecretRedactor.redact(message.content).content
+            val excerpt = safeContent.take(minOf(MAX_HISTORY_MESSAGE_CHARS, remaining))
             output.append('[').append(label).appendLine(']')
             output.appendLine(excerpt)
         }
@@ -314,7 +315,7 @@ class AiConversationStore(context: Context) : SQLiteOpenHelper(
                 JSONObject()
                     .put("id", message.id)
                     .put("role", message.role.wireValue)
-                    .put("content", message.content)
+                    .put("content", AiSecretRedactor.redact(message.content).content)
                     .put("provider", message.providerId ?: JSONObject.NULL)
                     .put("model", message.modelId ?: JSONObject.NULL)
                     .put("created_at", message.createdAtEpochMillis)
