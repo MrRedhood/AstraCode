@@ -105,7 +105,7 @@ class AiStreamAccumulator(private val provider: AiProvider) {
                     tool.name = item.optString("name", tool.name)
                     val arguments = item.optString("arguments")
                     if (arguments.isNotBlank() && tool.arguments.isEmpty()) {
-                        tool.arguments.append(arguments)
+                        appendToolArguments(tool, arguments)
                     }
                     if (tool.name.isNotBlank()) onEvent(AiStreamEvent.ToolStarted(tool.name))
                 }
@@ -113,14 +113,12 @@ class AiStreamAccumulator(private val provider: AiProvider) {
             "response.function_call_arguments.delta" -> {
                 val key = json.optInt("output_index", tools.size).toString()
                 val tool = tools.getOrPut(key) { ToolBuilder(id = json.optString("item_id")) }
-                tool.arguments.append(json.optString("delta"))
+                appendToolArguments(tool, json.optString("delta"))
             }
             "response.completed", "response.incomplete" -> {
                 finalPayload = json.optJSONObject("response")
             }
-            "error" -> throw IOException(
-                json.optJSONObject("error")?.optString("message") ?: "OpenAI streaming failed",
-            )
+            "error" -> throw AiProviderProtocolException("OpenAI returned an error event")
         }
     }
 
@@ -137,7 +135,7 @@ class AiStreamAccumulator(private val provider: AiProvider) {
                     tool.id = step.optString("id", tool.id)
                     tool.name = step.optString("name", tool.name)
                     step.optJSONObject("arguments")?.let { arguments ->
-                        if (arguments.length() > 0) tool.arguments.append(arguments.toString())
+                        if (arguments.length() > 0) appendToolArguments(tool, arguments.toString())
                     }
                     if (tool.name.isNotBlank()) onEvent(AiStreamEvent.ToolStarted(tool.name))
                 }
@@ -159,7 +157,7 @@ class AiStreamAccumulator(private val provider: AiProvider) {
                     geminiInteractionId = finalPayload?.optString("id").orEmpty()
                 }
             }
-            "error" -> throw IOException("Gemini streaming failed")
+            "error" -> throw AiProviderProtocolException("Gemini returned an error event")
         }
     }
 
@@ -174,7 +172,7 @@ class AiStreamAccumulator(private val provider: AiProvider) {
                     tool.id = block.optString("id", tool.id)
                     tool.name = block.optString("name", tool.name)
                     block.optJSONObject("input")?.let {
-                        if (it.length() > 0) tool.arguments.append(it.toString())
+                        if (it.length() > 0) appendToolArguments(tool, it.toString())
                     }
                     onEvent(AiStreamEvent.ToolStarted(tool.name))
                 }
@@ -191,9 +189,7 @@ class AiStreamAccumulator(private val provider: AiProvider) {
                 }
             }
             "message_delta" -> finalPayload = json
-            "error" -> throw IOException(
-                json.optJSONObject("error")?.optString("message") ?: "Anthropic streaming failed",
-            )
+            "error" -> throw AiProviderProtocolException("Anthropic returned an error event")
         }
     }
 
