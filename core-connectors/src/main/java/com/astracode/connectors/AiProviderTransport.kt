@@ -59,6 +59,9 @@ internal class AiProviderTransport {
         } catch (cancelled: AiRequestCancelledException) {
             throw cancelled
         } catch (error: AiProviderRequestException) {
+            if (cancellationRequested.get()) {
+                throw AiRequestCancelledException(cause = error)
+            }
             throw error
         } catch (error: AiProviderProtocolException) {
             throw AiProviderRequestException(
@@ -124,6 +127,9 @@ internal class AiProviderTransport {
                 result
             }
         } catch (error: AiProviderRequestException) {
+            if (cancellationRequested.get()) {
+                throw AiRequestCancelledException(cause = error)
+            }
             throw error
         } catch (error: AiProviderProtocolException) {
             throw AiProviderRequestException(
