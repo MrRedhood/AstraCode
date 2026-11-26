@@ -160,7 +160,7 @@ class FileManagementSystemTest {
     }
 
     @Test
-    fun `unpaired UTF16 surrogates are persisted as replacement characters`() {
+    fun `unpaired surrogate values are persisted as replacement characters`() {
         FileManagementSystem(temporaryDirectory.resolve("workspace")).use { fileSystem ->
             val result = fileSystem.writeText("bad-surrogate.txt", "a\uD800b\uDC00c")
             assertEquals("a\uFFFD" + "b\uFFFD" + "c", result.persistedText)
