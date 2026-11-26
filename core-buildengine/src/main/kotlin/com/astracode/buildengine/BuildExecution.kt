@@ -287,12 +287,12 @@ class BuildProcessRunner {
     private fun collectSensitiveValues(profile: BuildExecutionProfile): List<String> {
         val secrets = linkedSetOf<String>()
         profile.environment.forEach { (key, value) ->
-            if (isSensitiveName(key) && value.length >= MIN_SECRET_LENGTH) secrets += value
+            if (isSensitiveName(key) && value.isNotEmpty()) secrets += value
         }
         var redactNext = false
         profile.command.forEach { argument ->
             if (redactNext) {
-                if (argument.length >= MIN_SECRET_LENGTH) secrets += argument
+                if (argument.isNotEmpty()) secrets += argument
                 redactNext = false
             } else {
                 val equalIndex = argument.indexOf('=')
@@ -300,7 +300,7 @@ class BuildProcessRunner {
                 if (isSensitiveName(name)) {
                     if (equalIndex >= 0) {
                         val value = argument.substring(equalIndex + 1)
-                        if (value.length >= MIN_SECRET_LENGTH) secrets += value
+                        if (value.isNotEmpty()) secrets += value
                     } else {
                         redactNext = true
                     }
@@ -334,7 +334,6 @@ class BuildProcessRunner {
     private companion object {
         const val PROCESS_EXIT_GRACE_MS = 2_000L
         const val READER_JOIN_TIMEOUT_MS = 3_000L
-        const val MIN_SECRET_LENGTH = 4
         val SENSITIVE_NAME = Regex(
             "(?i)(password|passphrase|token|secret|credential|api[-_]?key|signing.*key)",
         )
@@ -345,24 +344,36 @@ class BuildProcessRunner {
  * Redacts known secret values even when a value is split between read chunks.
  * A suffix is retained until the next chunk so a partial secret is never emitted.
  */
-private class BuildOutputRedactor(secrets: List<String>) {
+internal class BuildOutputRedactor(secrets: List<String>) {
     private val values = secrets.filter { it.isNotEmpty() }.distinct()
     private val carryLength = values.maxOfOrNull { it.length } ?: 0
     private val pending = StringBuilder()
 
     fun append(chunk: String): String {
         if (chunk.isNotEmpty()) pending.append(chunk)
-        val safeLength = (pending.length - carryLength).coerceAtLeast(0)
-        return emitPrefix(safeLength)
+        val safeSourceLength = (pending.length - carryLength + 1).coerceAtLeast(0)
+        return emitSafePrefix(safeSourceLength)
     }
 
-    fun finish(): String = emitPrefix(pending.length)
+    fun finish(): String = emitSafePrefix(pending.length)
 
-    private fun emitPrefix(length: Int): String {
-        if (length <= 0) return ""
-        val prefix = pending.substring(0, length)
-        pending.delete(0, length)
-        return values.fold(prefix) { result, secret -> result.replace(secret, "<redacted>") }
+    private fun emitSafePrefix(limit: Int): String {
+        if (limit <= 0) return ""
+        val result = StringBuilder()
+        var position = 0
+        while (position < limit) {
+            val secret = values.firstOrNull { pending.indexOf(it, position) == position }
+            if (secret != null) {
+                if (position + secret.length > limit) break
+                result.append("<redacted>")
+                position += secret.length
+            } else {
+                result.append(pending[position])
+                position++
+            }
+        }
+        pending.delete(0, position)
+        return result.toString()
     }
 }
 
