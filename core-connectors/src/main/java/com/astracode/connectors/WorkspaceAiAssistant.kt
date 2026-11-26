@@ -683,8 +683,14 @@ class WorkspaceAiAssistant(context: Context) {
                 .put("messages", messages)
             if (provider == AiProvider.OPENROUTER) {
                 // AstraCode owns cross-provider fallback. Do not silently delegate
-                // upstream provider switching to the routing service.
-                body.put("provider", JSONObject().put("allow_fallbacks", false))
+                // upstream provider switching to the routing service. Require a
+                // provider endpoint that supports tools when the request includes them.
+                body.put(
+                    "provider",
+                    JSONObject()
+                        .put("allow_fallbacks", false)
+                        .put("require_parameters", enableTools),
+                )
             }
             if (enableTools) body.put("tools", chatTools(registry))
             val response = transport.stream(url, key, provider, body, onEvent)
@@ -896,16 +902,9 @@ class WorkspaceAiAssistant(context: Context) {
             val params = jsonStringSet(item.optJSONArray("supported_parameters"))
             val inputs = jsonStringSet(architecture?.optJSONArray("input_modalities"))
             val outputs = jsonStringSet(architecture?.optJSONArray("output_modalities"))
-            val endpoints = jsonStringSet(item.optJSONArray("endpoints"))
-            val supportsChatCompletions = if (item.has("endpoints")) {
-                "/api/v1/chat/completions" in endpoints
-            } else {
-                null
-            }
             val toolSupport = when {
                 "tools" in params -> AiCapabilitySupport.SUPPORTED
-                item.has("supported_parameters") && supportsChatCompletions == true ->
-                    AiCapabilitySupport.UNSUPPORTED
+                item.has("supported_parameters") -> AiCapabilitySupport.UNSUPPORTED
                 else -> AiCapabilitySupport.UNKNOWN
             }
             return AiModelCapabilities(
@@ -917,15 +916,15 @@ class WorkspaceAiAssistant(context: Context) {
                 inputModalities = inputs,
                 outputModalities = outputs,
                 supportsToolCalling = toolSupport,
-                // The OpenRouter chat-completions route exposes SSE streaming.
-                // Whether a given upstream provider can stream may still fail at runtime.
-                supportsStreaming = when (supportsChatCompletions) {
-                    true -> AiCapabilitySupport.SUPPORTED
-                    false -> AiCapabilitySupport.UNSUPPORTED
-                    null -> AiCapabilitySupport.UNKNOWN
+                // The OpenRouter Chat Completions route supports SSE streaming.
+                // The model catalogue supplies context/modalities and supported params.
+                supportsStreaming = AiCapabilitySupport.SUPPORTED,
+                supportedParameters = params,
+                source = if (architecture != null || item.has("context_length")) {
+                    AiCapabilitySource.PROVIDER_METADATA_AND_API_CONTRACT
+                } else {
+                    AiCapabilitySource.PROVIDER_API_CONTRACT
                 },
-                supportedParameters = params + endpoints.map { "endpoint:" + it },
-                source = AiCapabilitySource.PROVIDER_MODEL_METADATA,
             )
         }
 
