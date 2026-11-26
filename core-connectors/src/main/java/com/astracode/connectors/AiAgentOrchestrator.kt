@@ -138,6 +138,7 @@ class AiAgentOrchestrator(
                                     id + ": " + (dependency.proposal?.summary ?: dependency.error.orEmpty())
                                 }
                             }
+                            val taskFiles = applyDependencyProposals(files, task, completed)
                             val prompt = buildString {
                                 appendLine("Main objective:")
                                 appendLine(objective)
@@ -149,6 +150,7 @@ class AiAgentOrchestrator(
                                     appendLine()
                                     appendLine("Completed dependency outputs:")
                                     dependencyNotes.forEach { appendLine(it) }
+                                    appendLine("Their proposed file contents are included in the workspace context as the current draft state.")
                                 }
                                 appendLine()
                                 appendLine("Profile: " + profile.name + ". " + profile.role)
@@ -162,7 +164,7 @@ class AiAgentOrchestrator(
                                     model = model,
                                     customBaseUrl = customBaseUrl,
                                     task = prompt,
-                                    files = files,
+                                    files = taskFiles,
                                     fallbackPolicy = fallbackPolicy,
                                     fallbackModels = fallbackModels,
                                     fallbackBaseUrls = fallbackBaseUrls,
@@ -201,14 +203,69 @@ class AiAgentOrchestrator(
         }
 
         val results = tasks.mapNotNull { completed[it.id] }
+        val taskById = tasks.associateBy { it.id }
+        val depthCache = mutableMapOf<String, Int>()
+        fun dependencyDepth(taskId: String, visiting: MutableSet<String> = mutableSetOf()): Int {
+            depthCache[taskId]?.let { return it }
+            if (!visiting.add(taskId)) return 0
+            val depth = 1 + (taskById[taskId]?.dependsOn.orEmpty()
+                .maxOfOrNull { dependencyDepth(it, visiting.toMutableSet()) } ?: 0)
+            visiting.remove(taskId)
+            depthCache[taskId] = depth
+            return depth
+        }
+        fun dependsTransitively(taskId: String, ancestorId: String): Boolean {
+            val pendingDependencies = taskById[taskId]?.dependsOn.orEmpty().toMutableList()
+            val visited = mutableSetOf<String>()
+            while (pendingDependencies.isNotEmpty()) {
+                val dependency = pendingDependencies.removeAt(pendingDependencies.lastIndex)
+                if (!visited.add(dependency)) continue
+                if (dependency == ancestorId) return true
+                pendingDependencies += taskById[dependency]?.dependsOn.orEmpty()
+            }
+            return false
+        }
+
         val changesByPath = results.flatMap { result ->
             result.proposal?.changes.orEmpty().map { result.task.id to it }
         }.groupBy { it.second.path }
-        val conflicts = changesByPath.filterValues { it.map { pair -> pair.first }.distinct().size > 1 }.keys
+        val conflicts = changesByPath.filterValues { changes ->
+            val taskIds = changes.map { it.first }.distinct()
+            taskIds.indices.any { first ->
+                (first + 1 until taskIds.size).any { second ->
+                    val left = taskIds[first]
+                    val right = taskIds[second]
+                    !dependsTransitively(left, right) && !dependsTransitively(right, left)
+                }
+            }
+        }.keys
+        val originalPaths = files.map { it.path }.toSet()
         val mergedChanges = changesByPath
             .filterKeys { it !in conflicts }
-            .values
-            .mapNotNull { it.firstOrNull()?.second }
+            .mapNotNull { (path, entries) ->
+                val ordered = entries.sortedBy { dependencyDepth(it.first) }
+                val finalChange = ordered.last().second
+                if (ordered.size == 1) {
+                    finalChange
+                } else {
+                    val existedBeforeAgents = path in originalPaths
+                    when (finalChange.operation) {
+                        AiChangeOperation.DELETE -> {
+                            if (existedBeforeAgents) finalChange
+                            else null
+                        }
+                        AiChangeOperation.CREATE, AiChangeOperation.MODIFY -> {
+                            finalChange.copy(
+                                operation = if (existedBeforeAgents) {
+                                    AiChangeOperation.MODIFY
+                                } else {
+                                    AiChangeOperation.CREATE
+                                },
+                            )
+                        }
+                    }
+                }
+            }
         val failed = results.count { it.status == AiAgentTaskStatus.FAILED || it.status == AiAgentTaskStatus.BLOCKED }
         val summary = buildString {
             append(results.size)
@@ -233,6 +290,42 @@ class AiAgentOrchestrator(
             conflictingPaths = conflicts,
             auditTrail = synchronized(audit) { audit.sortedBy { it.sequence } },
         )
+    }
+
+    /**
+     * Applies completed dependency proposals to the next agent's in-memory
+     * context. It never writes to disk and refuses to pass oversized artifacts.
+     */
+    private fun applyDependencyProposals(
+        originalFiles: List<WorkspaceFileSnapshot>,
+        task: AiAgentTask,
+        completed: Map<String, AiAgentTaskResult>,
+    ): List<WorkspaceFileSnapshot> {
+        val current = linkedMapOf<String, WorkspaceFileSnapshot>()
+        originalFiles.forEach { current[it.path] = it }
+        task.dependsOn.forEach { dependencyId ->
+            val proposal = completed[dependencyId]?.proposal ?: return@forEach
+            proposal.changes.forEach { change ->
+                when (change.operation) {
+                    AiChangeOperation.DELETE -> current.remove(change.path)
+                    AiChangeOperation.CREATE, AiChangeOperation.MODIFY -> {
+                        val bytes = change.content.toByteArray(Charsets.UTF_8).size
+                        require(bytes <= MAX_DEPENDENCY_FILE_BYTES) {
+                            "Dependency output is too large to pass safely to the next agent: " + change.path
+                        }
+                        current[change.path] = WorkspaceFileSnapshot(change.path, change.content)
+                    }
+                }
+            }
+        }
+        val result = current.values.toList()
+        val totalBytes = result.sumOf {
+            it.content.toByteArray(Charsets.UTF_8).size.toLong()
+        }
+        require(totalBytes <= MAX_DEPENDENCY_CONTEXT_BYTES) {
+            "Dependency workspace context exceeds the safe agent context limit"
+        }
+        return result
     }
 
     private fun normalizeTasks(tasks: List<AiAgentTask>): List<AiAgentTask> {
@@ -265,5 +358,7 @@ class AiAgentOrchestrator(
 
     private companion object {
         const val MAX_AGENT_TASKS = 4
+        const val MAX_DEPENDENCY_FILE_BYTES = 96 * 1024
+        const val MAX_DEPENDENCY_CONTEXT_BYTES = 600L * 1024L
     }
 }
