@@ -412,11 +412,16 @@ class WorkspaceAiAssistant(context: Context) {
             val body = JSONObject().put("model", model)
                 .put("system_instruction", system)
                 .put("input", nextInput)
-                .put(
+            // Gemini Interactions currently does not accept JSON response MIME mode
+            // alongside function tools. Tool-enabled turns rely on the explicit
+            // JSON contract in the system instruction and the common validator.
+            if (!enableTools) {
+                body.put(
                     "response_format",
                     JSONObject().put("type", "text").put("mime_type", "application/json")
                         .put("schema", proposalSchema()),
                 )
+            }
             if (previousInteractionId == null) {
                 if (enableTools) body.put("tools", geminiTools(registry))
             } else {
