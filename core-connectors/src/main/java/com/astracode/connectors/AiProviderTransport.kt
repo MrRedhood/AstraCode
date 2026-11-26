@@ -176,7 +176,7 @@ internal class AiProviderTransport {
     }
 
     private companion object {
-        const val ANTHROPIC_VERSION = "2023-06-01"
+        const val ANTHROPIC_VERSION = "2026-10-21"
         const val CONNECT_TIMEOUT_MS = 15_000
         const val READ_TIMEOUT_MS = 120_000
         const val MAX_RESPONSE_CHARS = 2 * 1024 * 1024
