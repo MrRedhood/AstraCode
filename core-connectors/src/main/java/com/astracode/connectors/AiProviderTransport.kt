@@ -33,6 +33,13 @@ internal class AiProviderTransport {
             return parseJson(body, provider)
         } catch (error: AiProviderRequestException) {
             throw error
+        } catch (error: AiProviderProtocolException) {
+            throw AiProviderRequestException(
+                provider.displayName + " returned an invalid model catalogue",
+                null,
+                false,
+                error,
+            )
         } catch (error: Exception) {
             throw AiProviderRequestException(
                 provider.displayName + " network request failed",
@@ -77,7 +84,7 @@ internal class AiProviderTransport {
                             false,
                         )
                     }
-                    throw IOException(provider.displayName + " returned no text or tool calls")
+                    throw AiProviderProtocolException(provider.displayName + " returned no text or tool calls")
                 }
                 result
             }
@@ -139,7 +146,7 @@ internal class AiProviderTransport {
                 val count = reader.read(buffer)
                 if (count < 0) break
                 if (result.length + count > MAX_RESPONSE_CHARS) {
-                    throw IOException("AI response exceeded size limit")
+                    throw AiProviderProtocolException("AI response exceeded size limit")
                 }
                 result.append(buffer, 0, count)
             }
@@ -151,7 +158,7 @@ internal class AiProviderTransport {
         val result = try {
             JSONObject(value)
         } catch (error: Exception) {
-            throw IOException(provider.displayName + " returned invalid JSON", error)
+            throw AiProviderProtocolException(provider.displayName + " returned invalid JSON", error)
         }
         result.optJSONObject("error")?.let { error ->
             throw IOException(error.optString("message", provider.displayName + " request failed"))
