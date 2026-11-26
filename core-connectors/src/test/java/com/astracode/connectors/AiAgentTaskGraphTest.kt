@@ -94,6 +94,58 @@ class AiAgentTaskGraphTest {
     }
 
     @Test
+    fun workerSeesOnlyAssignedInputsAndCompletedDependencyOutputs() {
+        val base = AiAgentTask(
+            id = "base",
+            title = "Base",
+            instructions = "Create shared helper",
+            expectedOutput = "A shared helper",
+        )
+        val worker = AiAgentTask(
+            id = "worker",
+            title = "Worker",
+            instructions = "Use helper",
+            dependsOn = listOf("base"),
+            inputPaths = listOf("src/Editor.kt"),
+            expectedOutput = "Updated editor implementation",
+        )
+        val completed = mapOf(
+            "base" to AiAgentTaskResult(
+                task = base,
+                status = AiAgentTaskStatus.COMPLETED,
+                proposal = AiWorkspaceProposal(
+                    "Created helper",
+                    listOf(
+                        AiWorkspaceFileChange(
+                            AiChangeOperation.CREATE,
+                            "src/Shared.kt",
+                            "class Shared",
+                            "Dependency output",
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val available = listOf(
+            WorkspaceFileSnapshot("src/Editor.kt", "class Editor"),
+            WorkspaceFileSnapshot("src/Terminal.kt", "class Terminal"),
+            WorkspaceFileSnapshot("src/Shared.kt", "class Shared"),
+        )
+
+        val selected = AiAgentTaskGraph.selectInputFiles(
+            task = worker,
+            allTasks = listOf(base, worker),
+            availableFiles = available,
+            completedResults = completed,
+        )
+
+        assertEquals(
+            setOf("src/Editor.kt", "src/Shared.kt"),
+            selected.map { it.path }.toSet(),
+        )
+    }
+
+    @Test
     fun rejectsUnknownDependencies() {
         assertFailsWith<IllegalArgumentException> {
             AiAgentTaskGraph.normalize(
