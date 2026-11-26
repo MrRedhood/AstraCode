@@ -220,71 +220,9 @@ class AiAgentOrchestrator(
         }
 
         val results = tasks.mapNotNull { completed[it.id] }
-        val taskById = tasks.associateBy { it.id }
-        val depthCache = mutableMapOf<String, Int>()
-        fun dependencyDepth(taskId: String, visiting: MutableSet<String> = mutableSetOf()): Int {
-            depthCache[taskId]?.let { return it }
-            if (!visiting.add(taskId)) return 0
-            val depth = 1 + (taskById[taskId]?.dependsOn.orEmpty()
-                .maxOfOrNull { dependencyDepth(it, visiting.toMutableSet()) } ?: 0)
-            visiting.remove(taskId)
-            depthCache[taskId] = depth
-            return depth
-        }
-        fun dependsTransitively(taskId: String, ancestorId: String): Boolean {
-            val pendingDependencies = taskById[taskId]?.dependsOn.orEmpty().toMutableList()
-            val visited = mutableSetOf<String>()
-            while (pendingDependencies.isNotEmpty()) {
-                val dependency = pendingDependencies.removeAt(pendingDependencies.lastIndex)
-                if (!visited.add(dependency)) continue
-                if (dependency == ancestorId) return true
-                pendingDependencies += taskById[dependency]?.dependsOn.orEmpty()
-            }
-            return false
-        }
-
-        val changesByPath = results.flatMap { result ->
-            result.proposal?.changes.orEmpty().map { result.task.id to it }
-        }.groupBy { it.second.path }
-        val conflicts = changesByPath.filterValues { changes ->
-            val taskIds = changes.map { it.first }.distinct()
-            taskIds.indices.any { first ->
-                (first + 1 until taskIds.size).any { second ->
-                    val left = taskIds[first]
-                    val right = taskIds[second]
-                    !dependsTransitively(left, right) && !dependsTransitively(right, left)
-                }
-            }
-        }.keys
-        val originalPaths = files.map { it.path }.toSet()
-        val mergedChanges = changesByPath
-            .filterKeys { it !in conflicts }
-            .mapNotNull { (path, entries) ->
-                val ordered = entries.sortedBy { dependencyDepth(it.first) }
-                val finalChange = ordered.last().second
-                if (ordered.size == 1) {
-                    finalChange
-                } else {
-                    val existedBeforeAgents = path in originalPaths
-                    when (finalChange.operation) {
-                        AiChangeOperation.DELETE -> {
-                            if (existedBeforeAgents) finalChange
-                            else null
-                        }
-                        AiChangeOperation.CREATE, AiChangeOperation.MODIFY -> {
-                            finalChange.copy(
-                                operation = if (existedBeforeAgents) {
-                                    AiChangeOperation.MODIFY
-                                } else {
-                                    AiChangeOperation.CREATE
-                                },
-                            )
-                        }
-                    }
-                }
-            }
+        val merge = AiAgentProposalMerger.merge(files, tasks, results)
         val finalResults = results.map { result ->
-            if (result.proposal?.changes?.any { it.path in conflicts } == true) {
+            if (result.task.id in merge.conflictedTaskIds) {
                 result.copy(status = AiAgentTaskStatus.CONFLICTED)
             } else result
         }
@@ -299,16 +237,18 @@ class AiAgentOrchestrator(
             append(" failed or blocked; ")
             append(finalResults.count { it.status == AiAgentTaskStatus.CONFLICTED })
             append(" task(s) involved in ")
-            append(conflicts.size)
+            append(merge.conflictingPaths.size)
             append(" conflicting file path(s) withheld from the proposal.")
         }
-        conflicts.forEach { path -> record(profile.id, "conflict", "Withheld overlapping change: " + path) }
+        merge.conflictingPaths.forEach { path ->
+            record(profile.id, "conflict", "Withheld overlapping change: " + path)
+        }
         record(profile.id, "finished", summary)
         return AiAgentRunReport(
             summary = summary,
-            proposal = AiWorkspaceProposal(summary, mergedChanges),
+            proposal = AiWorkspaceProposal(summary, merge.changes),
             taskResults = finalResults,
-            conflictingPaths = conflicts,
+            conflictingPaths = merge.conflictingPaths,
             auditTrail = synchronized(audit) { audit.sortedBy { it.sequence } },
         )
     }
