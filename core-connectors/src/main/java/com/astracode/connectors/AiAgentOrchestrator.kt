@@ -311,9 +311,49 @@ class AiAgentOrchestrator(
         task: AiAgentTask,
         completed: Map<String, AiAgentTaskResult>,
     ): List<WorkspaceFileSnapshot> {
+        val taskByIdForDependencyOrder = completed.mapValues { it.value.task }
+        fun dependsTransitively(taskId: String, ancestorId: String): Boolean {
+            val pending = taskByIdForDependencyOrder[taskId]?.dependsOn.orEmpty().toMutableList()
+            val visited = mutableSetOf<String>()
+            while (pending.isNotEmpty()) {
+                val dependency = pending.removeAt(pending.lastIndex)
+                if (!visited.add(dependency)) continue
+                if (dependency == ancestorId) return true
+                pending += taskByIdForDependencyOrder[dependency]?.dependsOn.orEmpty()
+            }
+            return false
+        }
         val current = linkedMapOf<String, WorkspaceFileSnapshot>()
         originalFiles.forEach { current[it.path] = it }
-        task.dependsOn.forEach { dependencyId ->
+        val dependencyOrder = mutableListOf<String>()
+        val visitedDependencies = mutableSetOf<String>()
+        fun collectDependencies(taskId: String) {
+            taskByIdForDependencyOrder[taskId]?.dependsOn.orEmpty().forEach { dependencyId ->
+                if (visitedDependencies.add(dependencyId)) {
+                    collectDependencies(dependencyId)
+                    dependencyOrder += dependencyId
+                }
+            }
+        }
+        collectDependencies(task.id)
+
+        val changesByPath = dependencyOrder.flatMap { dependencyId ->
+            completed[dependencyId]?.proposal?.changes.orEmpty().map { dependencyId to it }
+        }.groupBy { it.second.path }
+        changesByPath.forEach { (path, changes) ->
+            val taskIds = changes.map { it.first }.distinct()
+            val hasIndependentEdits = taskIds.indices.any { first ->
+                (first + 1 until taskIds.size).any { second ->
+                    !dependsTransitively(taskIds[first], taskIds[second]) &&
+                        !dependsTransitively(taskIds[second], taskIds[first])
+                }
+            }
+            require(!hasIndependentEdits) {
+                "Dependency agents proposed conflicting changes to " + path
+            }
+        }
+
+        dependencyOrder.forEach { dependencyId ->
             val proposal = completed[dependencyId]?.proposal ?: return@forEach
             proposal.changes.forEach { change ->
                 when (change.operation) {
