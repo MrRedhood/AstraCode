@@ -6,6 +6,7 @@ import org.json.JSONObject
 import java.io.IOException
 import java.net.URI
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.CancellationException
 
 data class WorkspaceFileSnapshot(
     val path: String,
@@ -220,6 +221,8 @@ class WorkspaceAiAssistant(context: Context) {
                 elapsedMillis = (System.currentTimeMillis() - startedAt).coerceAtLeast(0L),
                 message = provider.displayName + " / " + model + " generated a streamed response successfully.",
             )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (error: Exception) {
             AiProviderConnectionResult(
                 provider = provider,
