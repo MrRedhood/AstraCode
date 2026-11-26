@@ -19,6 +19,81 @@ class AiAgentTaskGraphTest {
     }
 
     @Test
+    fun acceptsOnlyExplicitWorkspaceInputPaths() {
+        val tasks = listOf(
+            AiAgentTask(
+                id = "editor",
+                title = "Editor",
+                instructions = "Update editor code",
+                inputPaths = listOf("feature-editor/Editor.kt"),
+                expectedOutput = "A complete editor proposal",
+            ),
+        )
+
+        val normalized = AiAgentTaskGraph.normalize(
+            tasks = tasks,
+            allowedInputPaths = setOf("feature-editor/Editor.kt", "app/MainActivity.kt"),
+        )
+
+        assertEquals(listOf("feature-editor/Editor.kt"), normalized.single().inputPaths)
+        assertEquals("A complete editor proposal", normalized.single().expectedOutput)
+    }
+
+    @Test
+    fun rejectsInputPathsOutsideApprovedWorkspaceSnapshot() {
+        val tasks = listOf(
+            AiAgentTask(
+                id = "editor",
+                title = "Editor",
+                instructions = "Read another file",
+                inputPaths = listOf("../private/secret.txt"),
+                expectedOutput = "A result",
+            ),
+        )
+
+        assertFailsWith<IllegalArgumentException> {
+            AiAgentTaskGraph.normalize(
+                tasks = tasks,
+                allowedInputPaths = setOf("feature-editor/Editor.kt"),
+            )
+        }
+    }
+
+    @Test
+    fun deduplicatesInputPathsAndRejectsTooMany() {
+        val task = AiAgentTask(
+            id = "editor",
+            title = "Editor",
+            instructions = "Use selected files",
+            inputPaths = listOf("a.kt", "a.kt", "b.kt"),
+            expectedOutput = "A result",
+        )
+        val normalized = AiAgentTaskGraph.normalize(
+            tasks = listOf(task),
+            allowedInputPaths = setOf("a.kt", "b.kt"),
+        )
+        assertEquals(listOf("a.kt", "b.kt"), normalized.single().inputPaths)
+
+        val tooMany = task.copy(inputPaths = (1..61).map { "file$it.kt" })
+        assertFailsWith<IllegalArgumentException> {
+            AiAgentTaskGraph.normalize(listOf(tooMany))
+        }
+    }
+
+    @Test
+    fun computesTransitiveAncestorsInDependencyOrder() {
+        val first = AiAgentTask("first", "First", "One")
+        val second = AiAgentTask("second", "Second", "Two", dependsOn = listOf("first"))
+        val third = AiAgentTask("third", "Third", "Three", dependsOn = listOf("second"))
+        val tasks = listOf(first, second, third)
+
+        assertEquals(
+            linkedSetOf("second", "first"),
+            AiAgentTaskGraph.ancestorIds(third, tasks),
+        )
+    }
+
+    @Test
     fun rejectsUnknownDependencies() {
         assertFailsWith<IllegalArgumentException> {
             AiAgentTaskGraph.normalize(
