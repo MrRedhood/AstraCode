@@ -115,23 +115,27 @@ class AiToolRegistry(files: List<WorkspaceFileSnapshot>) {
         }
         val results = JSONArray()
         var count = 0
-        snapshots.values.sortedBy { it.path }.forEach { file ->
-            file.content.lineSequence().forEachIndexed { lineNumber, line ->
-                if (line.contains(query, ignoreCase = true) && count < MAX_SEARCH_RESULTS) {
-                    results.put(
-                        JSONObject()
-                            .put("path", file.path)
-                            .put("line", lineNumber + 1)
-                            .put("text", line.take(MAX_RESULT_LINE_CHARS)),
-                    )
-                    count++
+        var truncated = false
+        search@ for (file in snapshots.values.sortedBy { it.path }) {
+            for ((lineNumber, line) in file.content.lineSequence().withIndex()) {
+                if (!line.contains(query, ignoreCase = true)) continue
+                if (count == MAX_SEARCH_RESULTS) {
+                    truncated = true
+                    break@search
                 }
+                results.put(
+                    JSONObject()
+                        .put("path", file.path)
+                        .put("line", lineNumber + 1)
+                        .put("text", line.take(MAX_RESULT_LINE_CHARS)),
+                )
+                count++
             }
         }
         return JSONObject()
             .put("query", query)
             .put("matches", results)
-            .put("truncated", count == MAX_SEARCH_RESULTS)
+            .put("truncated", truncated)
             .toString()
     }
 
