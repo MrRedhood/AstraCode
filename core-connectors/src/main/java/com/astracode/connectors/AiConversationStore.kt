@@ -131,7 +131,7 @@ class AiConversationStore(context: Context) : SQLiteOpenHelper(
             "1",
         ).use { cursor ->
             if (!cursor.moveToFirst()) return null
-            return cursor.toThread(0)
+            return cursor.toThread(5)
         }
     }
 
