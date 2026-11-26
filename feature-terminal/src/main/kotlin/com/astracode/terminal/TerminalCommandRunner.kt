@@ -93,6 +93,9 @@ class TerminalCommandRunner(
                     .joinToString(File.pathSeparator)
             }
             .start()
+        // This runner is non-interactive; EOF lets commands that read stdin
+        // terminate instead of waiting until the timeout.
+        process.outputStream.close()
 
         val readers = Executors.newFixedThreadPool(2) { runnable ->
             Thread(runnable, "astracode-terminal-output").apply { isDaemon = true }
