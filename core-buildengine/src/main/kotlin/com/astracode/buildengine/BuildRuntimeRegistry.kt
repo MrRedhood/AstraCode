@@ -130,7 +130,9 @@ class BuildRuntimeRegistry(
     private fun readReleaseFile(file: File): Properties {
         val result = Properties()
         if (!file.isFile || file.length() > MAX_RELEASE_FILE_BYTES) return result
-        runCatching { file.inputStream().buffered().use(result::load) }
+        runCatching {
+            file.inputStream().buffered().use { stream -> result.load(stream) }
+        }
         return result
     }
 
