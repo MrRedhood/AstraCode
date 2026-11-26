@@ -81,6 +81,15 @@ class AiStreamingTest {
     }
 
     @Test
+    fun sseReaderRejectsAnUnboundedLine() {
+        val input = BufferedReader(StringReader("data: " + "x".repeat(2 * 1024 * 1024 + 1)))
+        val accumulator = AiStreamAccumulator(AiProvider.OPENAI)
+        kotlin.test.assertFailsWith<AiProviderProtocolException> {
+            AiSseReader.read(input, accumulator)
+        }
+    }
+
+    @Test
     fun sseReaderCombinesMultipleDataLinesAndIgnoresComments() {
         val input = BufferedReader(
             StringReader(
