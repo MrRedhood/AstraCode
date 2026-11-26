@@ -51,4 +51,34 @@ class AiSecretRedactorTest {
         assertEquals(0, result.redactionCount)
         assertEquals(source, result.content)
     }
+
+    @Test
+    fun protectsDiskSecretWhenUnsavedDraftHasRemovedIt() {
+        val disk = "OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz123456"
+        val draft = "OPENAI_API_KEY=[removed in editor]"
+        val result = AiSecretRedactor.redactWorkspaceSnapshot(disk, draft)
+        assertTrue(result.writeProtected)
+        assertEquals(draft, result.content)
+        assertFalse(result.content.contains("sk-abcdefghijklmnopqrstuvwxyz"))
+    }
+
+    @Test
+    fun protectsAndRedactsSecretsAddedOnlyInUnsavedDraft() {
+        val disk = "fun main() = Unit"
+        val draft = "val token = \"ghp_abcdefghijklmnopqrstuvwxyz123456\""
+        val result = AiSecretRedactor.redactWorkspaceSnapshot(disk, draft)
+        assertTrue(result.writeProtected)
+        assertFalse(result.content.contains("ghp_abcdefghijklmnopqrstuvwxyz"))
+        assertTrue(result.content.contains("[REDACTED]"))
+    }
+
+    @Test
+    fun ordinaryDiskAndDraftRemainEditable() {
+        val result = AiSecretRedactor.redactWorkspaceSnapshot(
+            diskContent = "fun main() = Unit",
+            draftContent = "fun main() = println(\"hello\")",
+        )
+        assertFalse(result.writeProtected)
+        assertEquals("fun main() = println(\"hello\")", result.content)
+    }
 }
