@@ -108,6 +108,18 @@ class AiModelCapabilitiesTest {
     }
 
     @Test
+    fun cachedInputPricingIsOptionalAndValidated() {
+        val pricing = AiModelPricing(
+            inputUsdPerMillionTokens = 1.0,
+            outputUsdPerMillionTokens = 2.0,
+            cachedInputUsdPerMillionTokens = 0.1,
+        )
+        assertEquals(0.000095, pricing.estimateCostUsd(100, 20, 50)!!, 0.0000000001)
+        assertEquals(null, AiModelPricing(1.0, 2.0).estimateCostUsd(100, 20, 50))
+        assertEquals(0.00014, AiModelPricing(1.0, 2.0).estimateCostUsd(100, 20, 0)!!, 0.0000000001)
+    }
+
+    @Test
     fun missingContextAndModalitiesDoNotPassRequirements() {
         val model = AiModelCapabilities(
             provider = AiProvider.ANTHROPIC,
