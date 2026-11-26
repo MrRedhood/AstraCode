@@ -1473,7 +1473,7 @@ private fun FileManagementScreen(
             aiMessage = "Describe the change you want the AI to make."
             return
         }
-        if (containsLikelyEmbeddedSecret(task)) {
+        if (containsLikelyEmbeddedSecret(task) || AiSecretRedactor.redact(task).wasRedacted) {
             aiMessage = "This request looks like it may contain a password, token, or private key. Remove it before saving or sending the conversation."
             return
         }
@@ -1606,10 +1606,11 @@ private fun FileManagementScreen(
                                     if (depth < 8) pendingFolders += entry.path to depth + 1
                                 }
                                 FileEntryType.FILE -> {
-                                    if (
+                                                    if (
                                         entry.readable &&
                                         entry.sizeBytes <= 96L * 1024L &&
-                                        entry.name == ".gitignore"
+                                        entry.name == ".gitignore" &&
+                                        isAiWorkspaceGitIgnoreFile(entry.path)
                                     ) {
                                         if (ignoreEntries.size < 50) ignoreEntries += entry
                                     } else if (
