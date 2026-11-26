@@ -46,6 +46,31 @@ data class AiModelCapabilities(
         return true
     }
 
+    fun withUserConfirmedCapabilities(
+        verifiedContextWindowTokens: Long?,
+        toolCallingConfirmed: Boolean,
+        streamingConfirmed: Boolean,
+    ): AiModelCapabilities {
+        require(verifiedContextWindowTokens == null || verifiedContextWindowTokens > 0)
+        val hasConfirmation = verifiedContextWindowTokens != null ||
+            toolCallingConfirmed || streamingConfirmed
+        if (!hasConfirmation) return this
+        return copy(
+            contextWindowTokens = verifiedContextWindowTokens ?: contextWindowTokens,
+            supportsToolCalling = if (toolCallingConfirmed) {
+                AiCapabilitySupport.SUPPORTED
+            } else {
+                supportsToolCalling
+            },
+            supportsStreaming = if (streamingConfirmed) {
+                AiCapabilitySupport.SUPPORTED
+            } else {
+                supportsStreaming
+            },
+            source = AiCapabilitySource.USER_CONFIRMED,
+        )
+    }
+
     fun capabilitySummary(): String {
         val context = contextWindowTokens?.let { it.toString() + " tokens context" } ?: "context unknown"
         val output = maxOutputTokens?.let { it.toString() + " max output" } ?: "output limit unknown"
