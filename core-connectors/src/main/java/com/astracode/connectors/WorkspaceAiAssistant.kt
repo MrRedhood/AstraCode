@@ -90,7 +90,7 @@ class WorkspaceAiAssistant(context: Context) {
         val url = when (provider) {
             AiProvider.OPENAI -> "https://api.openai.com/v1/models"
             AiProvider.GOOGLE_GEMINI -> "https://generativelanguage.googleapis.com/v1beta/models"
-            AiProvider.ANTHROPIC -> "https://api.anthropic.com/v1/models?limit=100"
+            AiProvider.ANTHROPIC -> "https://api.anthropic.com/v1/models?limit=1000"
             AiProvider.OPENROUTER -> "https://openrouter.ai/api/v1/models"
             AiProvider.OPENAI_COMPATIBLE -> endpoint(
                 validateCustomBaseUrl(customBaseUrl),
@@ -751,27 +751,23 @@ class WorkspaceAiAssistant(context: Context) {
         modelId: String,
         item: JSONObject,
     ): AiModelCapabilities {
-        val providerStreaming = if (provider.customEndpoint) {
-            AiCapabilitySupport.UNKNOWN
-        } else {
-            AiCapabilitySupport.SUPPORTED
-        }
         if (provider == AiProvider.OPENROUTER) {
             val architecture = item.optJSONObject("architecture")
             val topProvider = item.optJSONObject("top_provider")
             val params = jsonStringSet(item.optJSONArray("supported_parameters"))
             val inputs = jsonStringSet(architecture?.optJSONArray("input_modalities"))
-                .ifEmpty { setOf("text") }
             val outputs = jsonStringSet(architecture?.optJSONArray("output_modalities"))
-                .ifEmpty { setOf("text") }
-            val toolSupport = if (item.has("supported_parameters")) {
-                if ("tools" in params || "tool_choice" in params || "functions" in params) {
-                    AiCapabilitySupport.SUPPORTED
-                } else {
-                    AiCapabilitySupport.UNSUPPORTED
-                }
+            val endpoints = jsonStringSet(item.optJSONArray("endpoints"))
+            val supportsChatCompletions = if (item.has("endpoints")) {
+                "/api/v1/chat/completions" in endpoints
             } else {
-                AiCapabilitySupport.UNKNOWN
+                null
+            }
+            val toolSupport = when {
+                "tools" in params -> AiCapabilitySupport.SUPPORTED
+                item.has("supported_parameters") && supportsChatCompletions == true ->
+                    AiCapabilitySupport.UNSUPPORTED
+                else -> AiCapabilitySupport.UNKNOWN
             }
             return AiModelCapabilities(
                 provider = provider,
@@ -782,48 +778,138 @@ class WorkspaceAiAssistant(context: Context) {
                 inputModalities = inputs,
                 outputModalities = outputs,
                 supportsToolCalling = toolSupport,
-                supportsStreaming = AiCapabilitySupport.SUPPORTED,
-                supportedParameters = params,
+                // The OpenRouter chat-completions route exposes SSE streaming.
+                // Whether a given upstream provider can stream may still fail at runtime.
+                supportsStreaming = when (supportsChatCompletions) {
+                    true -> AiCapabilitySupport.SUPPORTED
+                    false -> AiCapabilitySupport.UNSUPPORTED
+                    null -> AiCapabilitySupport.UNKNOWN
+                },
+                supportedParameters = params + endpoints.map { "endpoint:" + it },
                 source = AiCapabilitySource.PROVIDER_MODEL_METADATA,
             )
         }
+
         if (provider == AiProvider.GOOGLE_GEMINI) {
             val methods = jsonStringSet(item.optJSONArray("supportedGenerationMethods"))
+            val hasTextGeneration = "generatecontent" in methods ||
+                "streamgeneratecontent" in methods
             return AiModelCapabilities(
                 provider = provider,
                 modelId = modelId,
                 displayName = item.optString("displayName").ifBlank { modelId },
                 contextWindowTokens = item.optLongValue("inputTokenLimit"),
                 maxOutputTokens = item.optLongValue("outputTokenLimit"),
-                inputModalities = setOf("text"),
-                outputModalities = setOf("text"),
+                inputModalities = if (hasTextGeneration) setOf("text") else emptySet(),
+                outputModalities = if (hasTextGeneration) setOf("text") else emptySet(),
                 supportsToolCalling = AiCapabilitySupport.UNKNOWN,
-                supportsStreaming = AiCapabilitySupport.SUPPORTED,
+                // The model list's generateContent methods do not establish
+                // compatibility with the separate Interactions streaming route.
+                supportsStreaming = AiCapabilitySupport.UNKNOWN,
                 supportedParameters = methods,
-                source = AiCapabilitySource.PROVIDER_MODEL_METADATA,
+                source = if (item.has("supportedGenerationMethods")) {
+                    AiCapabilitySource.PROVIDER_MODEL_METADATA
+                } else {
+                    AiCapabilitySource.UNKNOWN
+                },
             )
         }
-        val displayName = item.optString("display_name")
-            .takeIf { it.isNotBlank() && it != "null" }
-            ?: item.optString("name").takeIf { it.isNotBlank() && it != "null" }
-            ?: modelId
+
+        if (provider == AiProvider.ANTHROPIC) {
+            val capabilities = item.optJSONObject("capabilities")
+            val lifecycle = item.optString("lifecycle")
+            val imageInput = readNestedSupport(capabilities, "image_input")
+            val modalities = buildSet {
+                add("text")
+                if (imageInput == AiCapabilitySupport.SUPPORTED) add("image")
+            }
+            val parameters = buildSet {
+                if (imageInput == AiCapabilitySupport.SUPPORTED) add("image_input")
+                listOf("pdf_input", "structured_outputs", "server_tools", "code_execution").forEach {
+                    if (readNestedSupport(capabilities, it) == AiCapabilitySupport.SUPPORTED) add(it)
+                }
+            }
+            val isCurrentModel = lifecycle == "active"
+            return AiModelCapabilities(
+                provider = provider,
+                modelId = modelId,
+                displayName = item.optString("display_name").ifBlank { modelId },
+                contextWindowTokens = item.optLongValue("max_input_tokens"),
+                maxOutputTokens = item.optLongValue("max_tokens"),
+                inputModalities = modalities,
+                outputModalities = setOf("text"),
+                // The current Claude model overview states that current models
+                // support tool use; deprecated entries remain UNKNOWN here.
+                supportsToolCalling = if (isCurrentModel) {
+                    AiCapabilitySupport.SUPPORTED
+                } else {
+                    AiCapabilitySupport.UNKNOWN
+                },
+                supportsStreaming = if (isCurrentModel) {
+                    AiCapabilitySupport.SUPPORTED
+                } else {
+                    AiCapabilitySupport.UNKNOWN
+                },
+                supportedParameters = parameters,
+                source = if (capabilities != null || item.has("max_input_tokens")) {
+                    AiCapabilitySource.PROVIDER_MODEL_METADATA
+                } else {
+                    AiCapabilitySource.UNKNOWN
+                },
+            )
+        }
+
+        // OpenAI's API model-list response does not expose context windows,
+        // tool-call support or modality flags consistently across model families.
+        // Preserve any generic metadata fields but never infer missing capabilities.
+        val architecture = item.optJSONObject("architecture")
+        val parameters = jsonStringSet(item.optJSONArray("supported_parameters"))
         return AiModelCapabilities(
             provider = provider,
             modelId = modelId,
-            displayName = displayName,
+            displayName = item.optString("display_name")
+                .takeIf { it.isNotBlank() && it != "null" }
+                ?: item.optString("name").takeIf { it.isNotBlank() && it != "null" }
+                ?: modelId,
             contextWindowTokens = item.optLongValue("context_length")
                 ?: item.optLongValue("input_token_limit"),
-            maxOutputTokens = item.optLongValue("max_output_tokens"),
-            inputModalities = setOf("text"),
-            outputModalities = setOf("text"),
-            supportsToolCalling = AiCapabilitySupport.UNKNOWN,
-            supportsStreaming = providerStreaming,
-            source = if (item.has("context_length") || item.has("input_token_limit")) {
+            maxOutputTokens = item.optLongValue("max_output_tokens")
+                ?: item.optLongValue("max_completion_tokens"),
+            inputModalities = jsonStringSet(architecture?.optJSONArray("input_modalities")),
+            outputModalities = jsonStringSet(architecture?.optJSONArray("output_modalities")),
+            supportsToolCalling = when {
+                "tools" in parameters -> AiCapabilitySupport.SUPPORTED
+                item.has("supported_parameters") -> AiCapabilitySupport.UNSUPPORTED
+                else -> AiCapabilitySupport.UNKNOWN
+            },
+            supportsStreaming = if ("stream" in parameters) {
+                AiCapabilitySupport.SUPPORTED
+            } else {
+                AiCapabilitySupport.UNKNOWN
+            },
+            supportedParameters = parameters,
+            source = if (
+                item.has("context_length") || item.has("input_token_limit") ||
+                architecture != null || item.has("supported_parameters")
+            ) {
                 AiCapabilitySource.PROVIDER_MODEL_METADATA
             } else {
                 AiCapabilitySource.UNKNOWN
             },
         )
+    }
+
+    private fun readNestedSupport(
+        parent: JSONObject?,
+        key: String,
+    ): AiCapabilitySupport {
+        val value = parent?.optJSONObject(key) ?: return AiCapabilitySupport.UNKNOWN
+        if (!value.has("supported")) return AiCapabilitySupport.UNKNOWN
+        return if (value.optBoolean("supported")) {
+            AiCapabilitySupport.SUPPORTED
+        } else {
+            AiCapabilitySupport.UNSUPPORTED
+        }
     }
 
     private fun JSONObject.optLongValue(key: String): Long? {
