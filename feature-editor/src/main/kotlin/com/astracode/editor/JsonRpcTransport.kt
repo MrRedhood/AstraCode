@@ -55,7 +55,7 @@ object JsonRpcFrameCodec {
         if (bytes.size > maximumMessageBytes) {
             throw IOException("LSP message length exceeds the configured limit")
         }
-        val header = "Content-Length: " + bytes.size + "\r\n\r\n"
+        val header = ("Content-Length: " + bytes.size + "\r\n\r\n")
             .toByteArray(StandardCharsets.US_ASCII)
         output.write(header)
         output.write(bytes)
