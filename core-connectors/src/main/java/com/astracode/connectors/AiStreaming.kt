@@ -121,7 +121,13 @@ class AiStreamAccumulator(private val provider: AiProvider) {
             "response.completed", "response.incomplete" -> {
                 finalPayload = json.optJSONObject("response")
             }
-            "error" -> throw AiProviderProtocolException("OpenAI returned an error event")
+            "error" -> {
+                val message = json.optString("message", "OpenAI streaming failed")
+                val code = json.optString("code").lowercase()
+                val retryable = code.contains("rate") || code.contains("overloaded") ||
+                    code.contains("timeout") || code.contains("server")
+                throw AiProviderRequestException(message, null, retryable)
+            }
         }
     }
 
@@ -191,7 +197,18 @@ class AiStreamAccumulator(private val provider: AiProvider) {
                     }
                 }
             }
-            "message_delta" -> finalPayload = json
+            "message_delta" -> {
+                finalPayload = JSONObject()
+                    .put(
+                        "status",
+                        if (json.optJSONObject("delta")?.optString("stop_reason") == "max_tokens") {
+                            "incomplete"
+                        } else {
+                            "completed"
+                        },
+                    )
+                    .put("stop_reason", json.optJSONObject("delta")?.optString("stop_reason").orEmpty())
+            }
             "error" -> throw AiProviderProtocolException("Anthropic returned an error event")
         }
     }
@@ -199,6 +216,13 @@ class AiStreamAccumulator(private val provider: AiProvider) {
     private fun acceptChatCompletion(json: JSONObject, onEvent: (AiStreamEvent) -> Unit) {
         val choices = json.optJSONArray("choices")
         val choice = choices?.optJSONObject(0) ?: return
+        val finishReason = choice.optString("finish_reason")
+        if (finishReason.isNotBlank() && finishReason != "null") {
+            finalPayload = JSONObject().put(
+                "status",
+                if (finishReason == "length" || finishReason == "content_filter") "incomplete" else "completed",
+            ).put("finish_reason", finishReason)
+        }
         val delta = choice.optJSONObject("delta") ?: return
         val content = delta.opt("content")
         when (content) {
