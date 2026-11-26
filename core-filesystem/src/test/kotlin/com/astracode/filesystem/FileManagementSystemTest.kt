@@ -79,7 +79,7 @@ class FileManagementSystemTest {
             val loaded = fileSystem.readText("broken.txt")
             assertEquals("a\uFFFD" + "b", loaded.text)
             assertTrue(loaded.wasRepaired)
-            assertEquals(1, loaded.repairedSpans.single().documentUtf16Offset)
+            assertEquals(1L, loaded.repairedSpans.single().documentByteOffset)
             assertEquals(1L, loaded.repairedSpans.single().sourceByteOffset)
 
             val saved = fileSystem.writeText("broken.txt", loaded.text)
