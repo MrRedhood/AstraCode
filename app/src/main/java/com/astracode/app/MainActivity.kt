@@ -1084,6 +1084,7 @@ private fun FileManagementScreen(
     var aiBaselineFiles by remember(storage) { mutableStateOf<Map<String, String>>(emptyMap()) }
     var aiContextFileCount by remember(storage) { mutableStateOf(0) }
     var aiDeleteAcknowledged by remember(storage) { mutableStateOf(false) }
+    var aiExpandedPreviewPaths by remember(storage) { mutableStateOf(emptySet<String>()) }
     var showTerminalPanel by remember(storage) { mutableStateOf(false) }
     var terminalCommand by remember(storage) { mutableStateOf("pwd") }
     var terminalWorkingDirectory by remember(terminalWorkspaceRoot) {
@@ -1231,6 +1232,7 @@ private fun FileManagementScreen(
         aiProposal = null
         aiBaselineFiles = emptyMap()
         aiDeleteAcknowledged = false
+        aiExpandedPreviewPaths = emptySet()
 
         scope.launch {
             val result = runCatchingCancellable {
@@ -1449,6 +1451,7 @@ private fun FileManagementScreen(
                     aiProposal = null
                     aiBaselineFiles = emptyMap()
                     aiDeleteAcknowledged = false
+                    aiExpandedPreviewPaths = emptySet()
                     aiMessage = "Applied " + applied.changes.size +
                         " file change(s). Requested deletions were moved to workspace Trash."
                     notify(aiMessage.orEmpty())
@@ -4815,6 +4818,7 @@ private fun FileManagementScreen(
                             aiPrompt = it
                             aiProposal = null
                             aiDeleteAcknowledged = false
+                            aiExpandedPreviewPaths = emptySet()
                         },
                         modifier = Modifier.fillMaxWidth().testTag("ai-task-input"),
                         label = { Text("What should the AI change?") },
@@ -4847,19 +4851,49 @@ private fun FileManagementScreen(
                                         Text(change.reason, style = MaterialTheme.typography.bodySmall)
                                     }
                                     if (change.operation != AiChangeOperation.DELETE) {
+                                        val expanded = change.path in aiExpandedPreviewPaths
+                                        val previewLimit = if (expanded) 12_000 else 320
                                         Text(
-                                            "New content preview: " + change.content.take(220)
+                                            "New content preview: " + change.content.take(previewLimit)
                                                 .replace("\n", " ↵ ") +
-                                                if (change.content.length > 220) "…" else "",
+                                                if (change.content.length > previewLimit) "…" else "",
                                             color = MutedText,
                                             style = MaterialTheme.typography.bodySmall,
                                         )
+                                        if (change.content.length > 320) {
+                                            TextButton(
+                                                onClick = {
+                                                    aiExpandedPreviewPaths = if (expanded) {
+                                                        aiExpandedPreviewPaths - change.path
+                                                    } else {
+                                                        aiExpandedPreviewPaths + change.path
+                                                    }
+                                                },
+                                            ) {
+                                                Text(if (expanded) "Collapse preview" else "Expand preview")
+                                            }
+                                        }
+                                        if (expanded && change.content.length > previewLimit) {
+                                            Text(
+                                                "Preview limited to 12,000 characters. The complete proposed file is retained in the plan.",
+                                                color = MutedText,
+                                                style = MaterialTheme.typography.labelSmall,
+                                            )
+                                        }
                                     } else {
+                                        val previous = aiBaselineFiles[change.path].orEmpty()
                                         Text(
                                             "This moves the file into workspace Trash, where it can be restored until retention cleanup removes it.",
                                             color = Danger,
                                             style = MaterialTheme.typography.bodySmall,
                                         )
+                                        if (previous.isNotBlank()) {
+                                            Text(
+                                                "Current file preview: " + previous.take(320).replace("\n", " ↵ "),
+                                                color = MutedText,
+                                                style = MaterialTheme.typography.bodySmall,
+                                            )
+                                        }
                                     }
                                 }
                                 Divider()
@@ -4920,6 +4954,7 @@ private fun FileManagementScreen(
                                 aiProposal = null
                                 aiBaselineFiles = emptyMap()
                                 aiDeleteAcknowledged = false
+                                aiExpandedPreviewPaths = emptySet()
                                 aiMessage = "The proposal was discarded. No files were changed."
                             },
                         ) { Text("Discard plan") }
