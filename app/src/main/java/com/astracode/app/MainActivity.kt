@@ -5544,6 +5544,52 @@ private fun FileManagementScreen(
                             style = MaterialTheme.typography.labelSmall,
                         )
                     }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Conversation", style = MaterialTheme.typography.labelSmall, color = MutedText)
+                            Text(
+                                aiConversationThread?.title ?: "New conversation",
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        TextButton(
+                            onClick = { startNewAiConversation() },
+                            enabled = !aiBusy,
+                        ) { Text("New") }
+                        TextButton(
+                            onClick = {
+                                aiConversationSearch = ""
+                                aiShowHistoryDialog = true
+                            },
+                            enabled = !aiBusy,
+                        ) { Text("History") }
+                    }
+                    if (aiConversationMessages.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            aiConversationMessages.takeLast(5).forEach { message ->
+                                val roleLabel = when (message.role) {
+                                    AiConversationRole.USER -> "You"
+                                    AiConversationRole.ASSISTANT -> "AstraCode"
+                                    AiConversationRole.SYSTEM -> "System"
+                                }
+                                Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                    Text(roleLabel, style = MaterialTheme.typography.labelSmall, color = MutedText)
+                                    Text(
+                                        message.content.replace("\n", " ").take(220),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        }
+                    }
                     Text(
                         "Each provider has its own encrypted API key. Your selected source files are sent to the selected API when you request a plan. A routing service such as OpenRouter may forward request content to the model host under its routing and data policies. Usage is billed by the selected provider. Keys are encrypted at rest with Android Keystore, but may be exposed on a compromised device while in use.",
                         color = MutedText,
