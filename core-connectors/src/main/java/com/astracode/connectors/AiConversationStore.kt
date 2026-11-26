@@ -147,14 +147,13 @@ class AiConversationStore(context: Context) : SQLiteOpenHelper(
             "c.workspace_id = ?"
         } else {
             "c.workspace_id = ? AND (" +
-                "c.title LIKE ? ESCAPE '\\\\' OR EXISTS (" +
-                "SELECT 1 FROM messages m WHERE m.thread_id = c.id AND m.content LIKE ? ESCAPE '\\\\'))"
+                "instr(lower(c.title), lower(?)) > 0 OR EXISTS (" +
+                "SELECT 1 FROM messages m WHERE m.thread_id = c.id AND instr(lower(m.content), lower(?)) > 0))"
         }
         val args = if (search.isBlank()) {
             arrayOf(workspaceId)
         } else {
-            val pattern = "%" + escapeLike(search) + "%"
-            arrayOf(workspaceId, pattern, pattern)
+            arrayOf(workspaceId, search, search)
         }
         val sql = """
             SELECT c.id, c.workspace_id, c.title, c.created_at, c.updated_at,
@@ -202,44 +201,51 @@ class AiConversationStore(context: Context) : SQLiteOpenHelper(
         require(content.length <= MAX_MESSAGE_CHARS) { "Conversation message is too large" }
         require(durationMillis == null || durationMillis >= 0)
         require(estimatedInputTokens == null || estimatedInputTokens >= 0)
+        val threadBeforeInsert = getThread(threadId)
+            ?: throw IllegalArgumentException("Conversation was not found")
         val db = writableDatabase
-        val values = ContentValues().apply {
-            put("thread_id", threadId)
-            put("role", role.wireValue)
-            put("content", content)
-            putNullable("provider_id", providerId)
-            putNullable("model_id", modelId)
-            put("created_at", nowEpochMillis)
-            putNullable("duration_ms", durationMillis)
-            putNullable("estimated_input_tokens", estimatedInputTokens)
-        }
-        val id = db.insertOrThrow("messages", null, values)
-
-        val thread = getThread(threadId) ?: throw IllegalArgumentException("Conversation was not found")
-        val title = if (role == AiConversationRole.USER && thread.messageCount == 0) {
-            normalizeTitle(content)
-        } else {
-            thread.title
-        }
-        db.update(
-            "conversations",
-            ContentValues().apply {
-                put("title", title)
-                put("updated_at", nowEpochMillis)
-            },
-            "id = ?",
-            arrayOf(threadId),
-        )
-        db.execSQL(
-            """
-            DELETE FROM messages
-            WHERE thread_id = ? AND id NOT IN (
-                SELECT id FROM messages WHERE thread_id = ?
-                ORDER BY created_at DESC, id DESC LIMIT ?
+        db.beginTransaction()
+        val id: Long
+        try {
+            val values = ContentValues().apply {
+                put("thread_id", threadId)
+                put("role", role.wireValue)
+                put("content", content)
+                putNullable("provider_id", providerId)
+                putNullable("model_id", modelId)
+                put("created_at", nowEpochMillis)
+                putNullable("duration_ms", durationMillis)
+                putNullable("estimated_input_tokens", estimatedInputTokens)
+            }
+            id = db.insertOrThrow("messages", null, values)
+            val title = if (role == AiConversationRole.USER && threadBeforeInsert.messageCount == 0) {
+                normalizeTitle(content)
+            } else {
+                threadBeforeInsert.title
+            }
+            db.update(
+                "conversations",
+                ContentValues().apply {
+                    put("title", title)
+                    put("updated_at", nowEpochMillis)
+                },
+                "id = ?",
+                arrayOf(threadId),
             )
-            """.trimIndent(),
-            arrayOf(threadId, threadId, MAX_MESSAGES_PER_THREAD),
-        )
+            db.execSQL(
+                """
+                DELETE FROM messages
+                WHERE thread_id = ? AND id NOT IN (
+                    SELECT id FROM messages WHERE thread_id = ?
+                    ORDER BY created_at DESC, id DESC LIMIT ?
+                )
+                """.trimIndent(),
+                arrayOf(threadId, threadId, MAX_MESSAGES_PER_THREAD),
+            )
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
         return AiConversationMessage(
             id = id,
             threadId = threadId,
@@ -333,12 +339,9 @@ class AiConversationStore(context: Context) : SQLiteOpenHelper(
     }
 
     private fun normalizeTitle(value: String): String {
-        val title = value.trim().replace(Regex("\\\\s+"), " ").take(MAX_TITLE_CHARS)
+        val title = value.trim().replace(Regex("\\s+"), " ").take(MAX_TITLE_CHARS)
         return title.ifBlank { DEFAULT_TITLE }
     }
-
-    private fun escapeLike(value: String): String =
-        value.replace("\\\\", "\\\\\\\\").replace("%", "\\\\%").replace("_", "\\\\_")
 
     private fun validateWorkspaceId(value: String) {
         require(value.isNotBlank() && value.length <= MAX_WORKSPACE_ID_CHARS) {
