@@ -261,7 +261,8 @@ class WorkspaceAiAssistant(context: Context) {
             ))
             // Assume up to one token per UTF-8 byte plus fixed prompt overhead.
             // A skipped fallback is safer than selecting a model with too little context.
-            val estimatedTokens = contextText.toByteArray(StandardCharsets.UTF_8).size.toLong() + 4_000L
+            val estimatedTokens = contextText.toByteArray(StandardCharsets.UTF_8).size.toLong() +
+                MAX_OUTPUT_TOKENS + 4_000L
             var lastFallbackError: AiProviderRequestException? = null
             for (candidate in fallbackPolicy.candidates(provider)) {
                 val candidateModel = fallbackModels[candidate.id].orEmpty().trim()
@@ -366,7 +367,7 @@ class WorkspaceAiAssistant(context: Context) {
             } + user.toByteArray(StandardCharsets.UTF_8).size.toLong()
             // Conservatively assume one token per UTF-8 byte plus fixed prompt overhead.
             // This intentionally prefers a skipped fallback to a context overflow.
-            val estimatedTokens = contextBytes + 4_000L
+            val estimatedTokens = contextBytes + MAX_OUTPUT_TOKENS + 4_000L
             var fallbackOutput: String? = null
             var lastFallbackError: AiProviderRequestException? = null
             for (candidate in fallbackPolicy.candidates(provider)) {
@@ -532,7 +533,9 @@ class WorkspaceAiAssistant(context: Context) {
                         .put("schema", proposalSchema()),
                 )
             }
-            if (enableTools) body.put("tools", geminiTools(registry))
+            if (enableTools && previousInteractionId == null) {
+                body.put("tools", geminiTools(registry))
+            }
             if (previousInteractionId != null) {
                 body.put("previous_interaction_id", previousInteractionId)
             }
@@ -559,8 +562,11 @@ class WorkspaceAiAssistant(context: Context) {
                         .put("call_id", result.callId)
                         .put(
                             "result",
-                            JSONArray().put(
-                                JSONObject().put("type", "text").put("text", result.content),
+                            JSONObject().put(
+                                "content",
+                                JSONArray().put(
+                                    JSONObject().put("type", "text").put("text", result.content),
+                                ),
                             ),
                         ),
                 )
