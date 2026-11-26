@@ -17,12 +17,29 @@ data class AiAgentProfile(
     val id: String = "workspace-developer",
     val name: String = "Workspace developer",
     val role: String = "Inspect the workspace, implement the requested changes, and return reviewable file proposals.",
+    val providerOverride: AiProvider? = null,
+    val modelOverride: String? = null,
+    val customBaseUrlOverride: String? = null,
+    val allowedToolNames: Set<String> = AiToolRegistry.DEFAULT_TOOL_NAMES,
+    val maxAgentTasks: Int = 4,
     val maxToolRounds: Int = 4,
     val maxParallelAgents: Int = 3,
+    val maxContextBytes: Long = 600L * 1024L,
+    val maxDependencyFileBytes: Int = 96 * 1024,
+    val maxDependencyContextBytes: Long = 600L * 1024L,
 ) {
     init {
+        require(maxAgentTasks in 1..4)
         require(maxToolRounds in 0..8)
         require(maxParallelAgents in 1..3)
+        require(maxContextBytes in 1L..(4L * 1024L * 1024L))
+        require(maxDependencyFileBytes in 1..(1024 * 1024))
+        require(maxDependencyContextBytes in 1L..(4L * 1024L * 1024L))
+        require(allowedToolNames.all { it in AiToolRegistry.DEFAULT_TOOL_NAMES }) {
+            "Agent profiles may only enable declared read-only workspace tools"
+        }
+        require(modelOverride == null || modelOverride.isNotBlank())
+        require(customBaseUrlOverride == null || customBaseUrlOverride.isNotBlank())
     }
 }
 
@@ -30,6 +47,7 @@ enum class AiAgentTaskStatus {
     COMPLETED,
     FAILED,
     BLOCKED,
+    CANCELLED,
     CONFLICTED,
 }
 
@@ -83,6 +101,18 @@ class AiAgentOrchestrator(
         onEvent: (AiStreamEvent) -> Unit = {},
     ): AiAgentRunReport {
         require(objective.isNotBlank()) { "Describe the task for the agent" }
+        val agentProvider = profile.providerOverride ?: provider
+        val agentModel = profile.modelOverride?.trim()?.takeIf { it.isNotEmpty() } ?: model
+        val agentBaseUrl = profile.customBaseUrlOverride ?: customBaseUrl
+        if (agentProvider.customEndpoint) {
+            require(agentBaseUrl.isNotBlank()) { "The selected agent profile needs an HTTPS endpoint" }
+        }
+        val initialContextBytes = files.sumOf {
+            it.content.toByteArray(Charsets.UTF_8).size.toLong()
+        }
+        require(initialContextBytes <= profile.maxContextBytes) {
+            "The agent profile context limit is smaller than the selected workspace context"
+        }
         val audit = java.util.Collections.synchronizedList(mutableListOf<AiAgentAuditEntry>())
         var sequence = 0
         fun record(agentId: String, action: String, detail: String) {
@@ -94,20 +124,38 @@ class AiAgentOrchestrator(
             }
         }
 
-        record(profile.id, "planning", "Creating bounded independent subtasks")
-        onEvent(AiStreamEvent.Status("Agent planner: breaking the task into independent work items"))
-        val plannedTasks = assistant.planAgentTasks(
-            provider = provider,
-            model = model,
-            customBaseUrl = customBaseUrl,
-            objective = objective,
-            files = files,
-            fallbackPolicy = fallbackPolicy,
-            fallbackModels = fallbackModels,
-            fallbackBaseUrls = fallbackBaseUrls,
-            onEvent = onEvent,
+        record(
+            profile.id,
+            "planning",
+            "Provider=" + agentProvider.id + " · model=" + agentModel +
+                " · parallel=" + profile.maxParallelAgents +
+                " · maxTasks=" + profile.maxAgentTasks,
         )
-        val tasks = AiAgentTaskGraph.normalize(plannedTasks, MAX_AGENT_TASKS)
+        onEvent(AiStreamEvent.Status("Agent planner: breaking the task into independent subtasks"))
+        val plannedTasks = try {
+            assistant.planAgentTasks(
+                provider = agentProvider,
+                model = agentModel,
+                customBaseUrl = agentBaseUrl,
+                objective = objective,
+                files = files,
+                fallbackPolicy = fallbackPolicy,
+                fallbackModels = fallbackModels,
+                fallbackBaseUrls = fallbackBaseUrls,
+                onEvent = onEvent,
+            )
+        } catch (cancelled: AiRequestCancelledException) {
+            val summary = "Agent run cancelled during planning. No worker tasks were started."
+            record(profile.id, "cancelled", summary)
+            return AiAgentRunReport(
+                summary = summary,
+                proposal = AiWorkspaceProposal(summary, emptyList()),
+                taskResults = emptyList(),
+                conflictingPaths = emptySet(),
+                auditTrail = synchronized(audit) { audit.sortedBy { it.sequence } },
+            )
+        }
+        val tasks = AiAgentTaskGraph.normalize(plannedTasks, profile.maxAgentTasks)
         record(profile.id, "planned", tasks.joinToString { it.id })
 
         val completed = linkedMapOf<String, AiAgentTaskResult>()
@@ -129,7 +177,8 @@ class AiAgentOrchestrator(
                 break
             }
 
-            ready.chunked(profile.maxParallelAgents).forEach { wave ->
+            for (wave in ready.chunked(profile.maxParallelAgents)) {
+                if (assistant.isCancellationRequested()) break
                 val executor = Executors.newFixedThreadPool(wave.size)
                 try {
                     val futures = executor.invokeAll(wave.map { task ->
@@ -140,7 +189,13 @@ class AiAgentOrchestrator(
                                 }
                             }
                             val taskFiles = runCatching {
-                                applyDependencyProposals(files, task, completed)
+                                applyDependencyProposals(
+                                    originalFiles = files,
+                                    task = task,
+                                    completed = completed,
+                                    maxFileBytes = profile.maxDependencyFileBytes,
+                                    maxContextBytes = profile.maxDependencyContextBytes,
+                                )
                             }.getOrElse { error ->
                                 record(task.id, "failed", error.message ?: "Dependency context could not be built")
                                 return@Callable AiAgentTaskResult(
@@ -171,20 +226,42 @@ class AiAgentOrchestrator(
                             onEvent(AiStreamEvent.Status("Agent " + task.title + " started", task.id))
                             try {
                                 val proposal = assistant.createWorkspaceProposal(
-                                    provider = provider,
-                                    model = model,
-                                    customBaseUrl = customBaseUrl,
+                                    provider = agentProvider,
+                                    model = agentModel,
+                                    customBaseUrl = agentBaseUrl,
                                     task = prompt,
                                     files = taskFiles,
                                     fallbackPolicy = fallbackPolicy,
                                     fallbackModels = fallbackModels,
                                     fallbackBaseUrls = fallbackBaseUrls,
-                                    enableTools = enableReadOnlyTools,
+                                    enableTools = enableReadOnlyTools && profile.allowedToolNames.isNotEmpty(),
+                                    allowedToolNames = profile.allowedToolNames,
                                     maxToolRounds = profile.maxToolRounds,
-                                    onEvent = { event -> onEvent(withAgentId(event, task.id)) },
+                                    onEvent = { event ->
+                                        when (event) {
+                                            is AiStreamEvent.ToolStarted ->
+                                                record(task.id, "tool_started", event.name)
+                                            is AiStreamEvent.ToolFinished ->
+                                                record(
+                                                    task.id,
+                                                    "tool_finished",
+                                                    event.name + if (event.succeeded) " succeeded" else " failed",
+                                                )
+                                            else -> Unit
+                                        }
+                                        onEvent(withAgentId(event, task.id))
+                                    },
                                 )
                                 record(task.id, "completed", proposal.summary)
                                 AiAgentTaskResult(task, AiAgentTaskStatus.COMPLETED, proposal)
+                            } catch (cancelled: AiRequestCancelledException) {
+                                record(task.id, "cancelled", cancelled.message ?: "Request cancelled")
+                                AiAgentTaskResult(
+                                    task,
+                                    AiAgentTaskStatus.CANCELLED,
+                                    null,
+                                    cancelled.message ?: "Request cancelled",
+                                )
                             } catch (cancelled: CancellationException) {
                                 throw cancelled
                             } catch (error: Exception) {
@@ -202,12 +279,23 @@ class AiAgentOrchestrator(
                         } catch (error: java.util.concurrent.ExecutionException) {
                             val cause = error.cause
                             if (cause is CancellationException) throw cause
-                            AiAgentTaskResult(
-                                task,
-                                AiAgentTaskStatus.FAILED,
-                                null,
-                                cause?.message ?: error.message ?: "Agent execution failed",
-                            )
+                            val cancelled = cause as? AiRequestCancelledException
+                            if (cancelled != null) {
+                                record(task.id, "cancelled", cancelled.message ?: "Request cancelled")
+                                AiAgentTaskResult(
+                                    task,
+                                    AiAgentTaskStatus.CANCELLED,
+                                    null,
+                                    cancelled.message ?: "Request cancelled",
+                                )
+                            } else {
+                                AiAgentTaskResult(
+                                    task,
+                                    AiAgentTaskStatus.FAILED,
+                                    null,
+                                    cause?.message ?: error.message ?: "Agent execution failed",
+                                )
+                            }
                         }
                         completed[result.task.id] = result
                     }
@@ -217,6 +305,19 @@ class AiAgentOrchestrator(
                 }
             }
             pending.removeAll(ready.toSet())
+            if (assistant.isCancellationRequested()) break
+        }
+
+        if (assistant.isCancellationRequested()) {
+            tasks.filterNot { it.id in completed }.forEach { task ->
+                completed[task.id] = AiAgentTaskResult(
+                    task,
+                    AiAgentTaskStatus.CANCELLED,
+                    null,
+                    "Cancelled before this task could start.",
+                )
+                record(task.id, "cancelled", "Cancelled before task start")
+            }
         }
 
         val results = tasks.mapNotNull { completed[it.id] }
@@ -230,11 +331,14 @@ class AiAgentOrchestrator(
         val failedCount = finalResults.count {
             it.status == AiAgentTaskStatus.FAILED || it.status == AiAgentTaskStatus.BLOCKED
         }
+        val cancelledCount = finalResults.count { it.status == AiAgentTaskStatus.CANCELLED }
         val summary = buildString {
             append(completedCount)
             append(" agent task(s) completed; ")
             append(failedCount)
             append(" failed or blocked; ")
+            append(cancelledCount)
+            append(" cancelled; ")
             append(finalResults.count { it.status == AiAgentTaskStatus.CONFLICTED })
             append(" task(s) involved in ")
             append(merge.conflictingPaths.size)
@@ -261,6 +365,8 @@ class AiAgentOrchestrator(
         originalFiles: List<WorkspaceFileSnapshot>,
         task: AiAgentTask,
         completed: Map<String, AiAgentTaskResult>,
+        maxFileBytes: Int,
+        maxContextBytes: Long,
     ): List<WorkspaceFileSnapshot> {
         val taskByIdForDependencyOrder = completed.mapValues { it.value.task } + (task.id to task)
         fun dependsTransitively(taskId: String, ancestorId: String): Boolean {
@@ -311,7 +417,7 @@ class AiAgentOrchestrator(
                     AiChangeOperation.DELETE -> current.remove(change.path)
                     AiChangeOperation.CREATE, AiChangeOperation.MODIFY -> {
                         val bytes = change.content.toByteArray(Charsets.UTF_8).size
-                        require(bytes <= MAX_DEPENDENCY_FILE_BYTES) {
+                        require(bytes <= maxFileBytes) {
                             "Dependency output is too large to pass safely to the next agent: " + change.path
                         }
                         current[change.path] = WorkspaceFileSnapshot(change.path, change.content)
@@ -323,7 +429,7 @@ class AiAgentOrchestrator(
         val totalBytes = result.sumOf {
             it.content.toByteArray(Charsets.UTF_8).size.toLong()
         }
-        require(totalBytes <= MAX_DEPENDENCY_CONTEXT_BYTES) {
+        require(totalBytes <= maxContextBytes) {
             "Dependency workspace context exceeds the safe agent context limit"
         }
         return result
@@ -338,7 +444,5 @@ class AiAgentOrchestrator(
 
     private companion object {
         const val MAX_AGENT_TASKS = 4
-        const val MAX_DEPENDENCY_FILE_BYTES = 96 * 1024
-        const val MAX_DEPENDENCY_CONTEXT_BYTES = 600L * 1024L
     }
 }
