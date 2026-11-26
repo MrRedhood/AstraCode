@@ -25,6 +25,7 @@ data class AiStreamResult(
     val text: String,
     val toolCalls: List<AiStreamToolCall>,
     val finalPayload: JSONObject?,
+    val interactionId: String? = null,
 )
 
 /** Incrementally converts provider-specific SSE data events into common output. */
@@ -73,7 +74,7 @@ class AiStreamAccumulator(private val provider: AiProvider) {
                 arguments = args,
             )
         }
-        return AiStreamResult(text.toString(), parsed, finalPayload)
+        return AiStreamResult(text.toString(), parsed, finalPayload, geminiInteractionId.ifBlank { null })
     }
 
     fun interactionId(): String = geminiInteractionId
