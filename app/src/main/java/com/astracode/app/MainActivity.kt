@@ -1150,6 +1150,17 @@ private fun FileManagementScreen(
         mutableStateOf(aiPreferences.getString("agent_provider_override", "").orEmpty())
     }
     var aiAgentProviderMenuExpanded by remember { mutableStateOf(false) }
+    var aiAgentProfileName by remember(aiPreferences) {
+        mutableStateOf(aiPreferences.getString("agent_profile_name", "Workspace developer").orEmpty())
+    }
+    var aiAgentProfileRole by remember(aiPreferences) {
+        mutableStateOf(
+            aiPreferences.getString(
+                "agent_profile_role",
+                "Inspect the workspace, implement the assigned changes, and return reviewable proposals.",
+            ).orEmpty(),
+        )
+    }
     var aiAgentModelOverride by remember(aiPreferences) {
         mutableStateOf(aiPreferences.getString("agent_model_override", "").orEmpty())
     }
@@ -1545,6 +1556,10 @@ private fun FileManagementScreen(
             .takeIf { it.isNotBlank() }
             ?.let { AiProvider.fromId(it) }
         val requestedAgentProfile = AiAgentProfile(
+            name = aiAgentProfileName.trim().ifBlank { "Workspace developer" }.take(80),
+            role = aiAgentProfileRole.trim().ifBlank {
+                "Inspect the workspace, implement the assigned changes, and return reviewable proposals."
+            }.take(2_000),
             providerOverride = requestedAgentProvider,
             modelOverride = aiAgentModelOverride.trim().takeIf { it.isNotBlank() },
             customBaseUrlOverride = requestedAgentProvider
@@ -5856,6 +5871,29 @@ private fun FileManagementScreen(
                                 }
                             }
                             OutlinedTextField(
+                                value = aiAgentProfileName,
+                                onValueChange = {
+                                    aiAgentProfileName = it
+                                    aiPreferences.edit().putString("agent_profile_name", it).apply()
+                                },
+                                modifier = Modifier.fillMaxWidth().testTag("ai-agent-profile-name"),
+                                label = { Text("Agent profile name") },
+                                singleLine = true,
+                                enabled = !aiBusy,
+                            )
+                            OutlinedTextField(
+                                value = aiAgentProfileRole,
+                                onValueChange = {
+                                    aiAgentProfileRole = it
+                                    aiPreferences.edit().putString("agent_profile_role", it).apply()
+                                },
+                                modifier = Modifier.fillMaxWidth().testTag("ai-agent-profile-role"),
+                                label = { Text("Agent role and instructions") },
+                                minLines = 2,
+                                maxLines = 4,
+                                enabled = !aiBusy,
+                            )
+                            OutlinedTextField(
                                 value = aiAgentModelOverride,
                                 onValueChange = {
                                     aiAgentModelOverride = it
@@ -6179,6 +6217,12 @@ private fun FileManagementScreen(
                                 aiModel.isNotBlank() &&
                                 (!aiProvider.customEndpoint || aiCustomBaseUrl.isNotBlank()),
                         ) { Text(if (aiTestingConnection) "Testing…" else "Test connection") }
+                        if (aiTestingConnection) {
+                            TextButton(
+                                onClick = { workspaceAiAssistant.cancelActiveRequests() },
+                                modifier = Modifier.testTag("ai-stop-connection-test"),
+                            ) { Text("Stop test") }
+                        }
                         TextButton(
                             onClick = {
                                 val selectedProvider = aiProvider
@@ -6214,6 +6258,12 @@ private fun FileManagementScreen(
                             enabled = !aiBusy && !aiLoadingModels && !aiTestingConnection && aiHasApiKey &&
                                 (!aiProvider.customEndpoint || aiCustomBaseUrl.isNotBlank()),
                         ) { Text(if (aiLoadingModels) "Loading…" else "Load models") }
+                        if (aiLoadingModels) {
+                            TextButton(
+                                onClick = { workspaceAiAssistant.cancelActiveRequests() },
+                                modifier = Modifier.testTag("ai-stop-model-load"),
+                            ) { Text("Stop loading") }
+                        }
                         Box {
                             TextButton(
                                 onClick = { aiModelMenuExpanded = true },
@@ -6451,7 +6501,11 @@ private fun FileManagementScreen(
                         TextButton(
                             onClick = {
                                 workspaceAiAssistant.cancelActiveRequests()
-                                aiMessage = "Cancellation requested. Completed agent results will remain in the review plan."
+                                aiMessage = if (aiUseAgentWorkflow) {
+                                    "Cancellation requested. Completed agent results will remain in the review plan."
+                                } else {
+                                    "Cancellation requested. Waiting for the active provider request to stop."
+                                }
                             },
                             modifier = Modifier.testTag("ai-cancel-request"),
                         ) { Text("Cancel task") }
