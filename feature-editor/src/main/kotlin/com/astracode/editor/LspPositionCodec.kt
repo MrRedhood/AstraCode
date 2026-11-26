@@ -7,7 +7,7 @@ data class LspPosition(val line: Int, val character: Int)
  * LSP position adapter for a UTF-8-native editor.
  *
  * AstraCode advertises only "utf-8" in general.positionEncodings and requires
- * the server to select it in initialize. No UTF-16 document coordinates are
+ * the server to select it in initialize. All document coordinates are
  * used by this module.
  */
 object LspPositionCodec {
