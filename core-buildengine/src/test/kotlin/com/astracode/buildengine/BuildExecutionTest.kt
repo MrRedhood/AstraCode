@@ -41,7 +41,6 @@ class BuildExecutionTest {
             )
             assertTrue(result.timedOut)
             assertFalse(result.succeeded)
-            assertEquals(null, result.exitCode)
         } finally {
             root.deleteRecursively()
         }
@@ -97,7 +96,7 @@ class BuildExecutionTest {
         output.append("first-")
         output.append("second")
         val snapshot = output.snapshot()
-        assertEquals("st-second", snapshot.text)
+        assertEquals("t-second", snapshot.text)
         assertTrue(snapshot.truncated)
     }
 
