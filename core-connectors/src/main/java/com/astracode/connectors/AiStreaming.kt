@@ -157,7 +157,7 @@ class AiStreamAccumulator(private val provider: AiProvider) {
             "response.completed", "response.incomplete", "response.failed" -> {
                 finalPayload = json.optJSONObject("response")
                 captureOpenAiUsage(finalPayload?.optJSONObject("usage"))
-                if (json.optString("type") == "response.failed")
+                if (json.optString("type") == "response.failed") {
                     val responseError = finalPayload?.optJSONObject("error") ?: JSONObject()
                     val errorEvent = JSONObject()
                         .put("error", responseError)
