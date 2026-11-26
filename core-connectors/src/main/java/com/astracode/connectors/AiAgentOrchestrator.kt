@@ -95,7 +95,15 @@ class AiAgentOrchestrator(
         record(profile.id, "planning", "Creating bounded independent subtasks")
         onEvent(AiStreamEvent.Status("Agent planner: breaking the task into independent work items"))
         val plannedTasks = assistant.planAgentTasks(
-            provider, model, customBaseUrl, objective, files, onEvent,
+            provider = provider,
+            model = model,
+            customBaseUrl = customBaseUrl,
+            objective = objective,
+            files = files,
+            fallbackPolicy = fallbackPolicy,
+            fallbackModels = fallbackModels,
+            fallbackBaseUrls = fallbackBaseUrls,
+            onEvent = onEvent,
         )
         val tasks = normalizeTasks(plannedTasks)
         require(tasks.size in 1..MAX_AGENT_TASKS) { "The agent planner returned an invalid task count" }
