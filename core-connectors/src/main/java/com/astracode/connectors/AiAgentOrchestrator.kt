@@ -2,6 +2,7 @@ package com.astracode.connectors
 
 import java.io.IOException
 import java.util.concurrent.Callable
+import java.util.concurrent.CancellationException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -184,6 +185,8 @@ class AiAgentOrchestrator(
                                 )
                                 record(task.id, "completed", proposal.summary)
                                 AiAgentTaskResult(task, AiAgentTaskStatus.COMPLETED, proposal)
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
                             } catch (error: Exception) {
                                 record(task.id, "failed", error.message ?: error.javaClass.simpleName)
                                 AiAgentTaskResult(
