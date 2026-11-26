@@ -109,7 +109,7 @@ class AiStreamAccumulator(private val provider: AiProvider) {
                         appendToolArguments(tool, arguments)
                     }
                     if (previousName.isBlank() && tool.name.isNotBlank()) {
-                        onEvent(AiStreamEvent.ToolStarted(tool.name))
+                        onEvent(AiStreamEvent.Status("Model requested tool: " + tool.name))
                     }
                 }
             }
@@ -145,7 +145,7 @@ class AiStreamAccumulator(private val provider: AiProvider) {
                     tool.name = step.optString("name", tool.name)
                     // Interactions streams function arguments through arguments_delta events.
                     // Do not also append the initial step snapshot or JSON would be duplicated.
-                    if (tool.name.isNotBlank()) onEvent(AiStreamEvent.ToolStarted(tool.name))
+                    if (tool.name.isNotBlank()) onEvent(AiStreamEvent.Status("Model requested tool: " + tool.name))
                 }
             }
             "step.delta" -> {
@@ -182,7 +182,7 @@ class AiStreamAccumulator(private val provider: AiProvider) {
                     block.optJSONObject("input")?.let {
                         if (it.length() > 0) appendToolArguments(tool, it.toString())
                     }
-                    onEvent(AiStreamEvent.ToolStarted(tool.name))
+                    onEvent(AiStreamEvent.Status("Model requested tool: " + tool.name))
                 }
             }
             "content_block_delta" -> {
@@ -242,7 +242,7 @@ class AiStreamAccumulator(private val provider: AiProvider) {
             val function = call.optJSONObject("function") ?: continue
             if (function.has("name")) {
                 builder.name = function.optString("name")
-                onEvent(AiStreamEvent.ToolStarted(builder.name))
+                onEvent(AiStreamEvent.Status("Model requested tool: " + builder.name))
             }
             if (function.has("arguments")) {
                 appendToolArguments(builder, function.optString("arguments"))
