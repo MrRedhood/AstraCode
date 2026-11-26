@@ -303,7 +303,12 @@ class OpenAiWorkspaceAssistant(context: Context) {
         require(segments.none { it.isBlank() || it == "." || it == ".." }) {
             "The AI returned a path outside the workspace"
         }
-        require(segments.first() !in RESERVED_TOP_LEVEL_PATHS) {
+        require(
+            segments.none { segment ->
+                segment in RESERVED_TOP_LEVEL_PATHS ||
+                    segment.startsWith(".astracode-", ignoreCase = true)
+            },
+        ) {
             "The AI cannot change reserved workspace paths"
         }
     }
@@ -323,6 +328,8 @@ class OpenAiWorkspaceAssistant(context: Context) {
         const val MAX_PROPOSED_TOTAL_CHARACTERS = 4L * 1024L * 1024L
         const val MAX_PATH_CHARACTERS = 512
         const val MAX_REASON_CHARACTERS = 500
-        val RESERVED_TOP_LEVEL_PATHS = setOf(".git", ".astracode", ".astracode_trash")
+        val RESERVED_TOP_LEVEL_PATHS = setOf(
+            ".git", ".astracode", ".astracode_trash", ".astracode-trash", ".astracode-operations",
+        )
     }
 }
