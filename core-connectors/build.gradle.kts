@@ -33,4 +33,5 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     // Android's stub org.json throws in local JVM tests; use the reference implementation.
     testImplementation("org.json:json:20260814")
+    testImplementation("org.robolectric:robolectric:4.18.1")
 }
