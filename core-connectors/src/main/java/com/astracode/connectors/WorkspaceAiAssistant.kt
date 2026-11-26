@@ -269,9 +269,13 @@ class WorkspaceAiAssistant(context: Context) {
         customBaseUrl: String = "",
     ): AiModelCapabilities {
         require(modelId.isNotBlank() && modelId.length <= MAX_MODEL_CHARS)
-        val metadata = runCatching {
+        val metadata = try {
             fetchModelCatalog(provider, customBaseUrl).firstOrNull { it.modelId == modelId }
-        }.getOrNull()
+        } catch (cancelled: AiRequestCancelledException) {
+            throw cancelled
+        } catch (error: Exception) {
+            null
+        }
         val baseline = metadata ?: AiModelCapabilities(
             provider = provider,
             modelId = modelId,
@@ -482,8 +486,6 @@ class WorkspaceAiAssistant(context: Context) {
                     requiresToolCalling = useTools,
                     requiresStreaming = true,
                     minimumContextTokens = estimatedTokens,
-                    requiredInputModalities = setOf("text"),
-                    requiredOutputModalities = setOf("text"),
                 )
                 if (!capability.canSatisfy(requirements)) {
                     onEvent(AiStreamEvent.Status(
