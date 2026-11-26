@@ -28,6 +28,29 @@ class AiStreamingTest {
     }
 
     @Test
+    fun openAiFailedResponsePreservesRetryableServerError() {
+        val accumulator = AiStreamAccumulator(AiProvider.OPENAI)
+        val error = kotlin.test.assertFailsWith<AiProviderRequestException> {
+            accumulator.accept(
+                """{"type":"response.failed","response":{"status":"failed","error":{"code":"server_error","message":"Temporary server issue"}}}""",
+            )
+        }
+        assertTrue(error.retryable)
+        assertEquals("Temporary server issue", error.message)
+    }
+
+    @Test
+    fun openAiFailedResponseDoesNotRetryInvalidRequest() {
+        val accumulator = AiStreamAccumulator(AiProvider.OPENAI)
+        val error = kotlin.test.assertFailsWith<AiProviderRequestException> {
+            accumulator.accept(
+                """{"type":"response.failed","response":{"status":"failed","error":{"code":"invalid_prompt","message":"Invalid prompt"}}}""",
+            )
+        }
+        assertTrue(!error.retryable)
+    }
+
+    @Test
     fun parsesGeminiFunctionCallAndContinuationId() {
         val accumulator = AiStreamAccumulator(AiProvider.GOOGLE_GEMINI)
         accumulator.accept(
