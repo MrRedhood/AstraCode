@@ -80,6 +80,30 @@ class PieceTableTest {
     }
 
     @Test
+    fun automaticCompactionPreservesUndoAndRedoHistory() {
+        val largeInsert = "x".repeat(256 * 1024 + 1)
+        val table = PieceTable("A", historyLimit = 4)
+
+        table.insert(1, largeInsert)
+        table.delete(1, table.byteLength)
+        assertEquals("A", table.toString())
+
+        // Deleting the large append buffer triggers automatic compaction.
+        // Undo/redo must still replay both edits after the storage is rebuilt.
+        assertTrue(table.canUndo)
+        assertTrue(table.undo())
+        assertEquals("A$largeInsert", table.toString())
+        assertTrue(table.undo())
+        assertEquals("A", table.toString())
+        assertTrue(table.canRedo)
+
+        assertTrue(table.redo())
+        assertEquals("A$largeInsert", table.toString())
+        assertTrue(table.redo())
+        assertEquals("A", table.toString())
+    }
+
+    @Test
     fun compactPreservesBytesAndClearsHistory() {
         val table = PieceTable("ह")
         table.insert(3, "😀")
