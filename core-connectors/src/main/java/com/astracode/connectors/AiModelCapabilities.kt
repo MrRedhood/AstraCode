@@ -24,18 +24,36 @@ enum class AiCapabilitySource {
 data class AiModelPricing(
     val inputUsdPerMillionTokens: Double,
     val outputUsdPerMillionTokens: Double,
+    val cachedInputUsdPerMillionTokens: Double? = null,
 ) {
     init {
         require(inputUsdPerMillionTokens.isFinite() && inputUsdPerMillionTokens >= 0.0)
         require(outputUsdPerMillionTokens.isFinite() && outputUsdPerMillionTokens >= 0.0)
+        require(
+            cachedInputUsdPerMillionTokens == null ||
+                (cachedInputUsdPerMillionTokens.isFinite() && cachedInputUsdPerMillionTokens >= 0.0),
+        )
     }
 
-    fun estimateCostUsd(inputTokens: Long, outputTokens: Long): Double {
+    /**
+     * Returns null when cached tokens exist but the provider has not published
+     * a cached-input rate. Applying the ordinary prompt rate would overstate
+     * or understate the real amount depending on the provider.
+     */
+    fun estimateCostUsd(
+        inputTokens: Long,
+        outputTokens: Long,
+        cachedInputTokens: Long = 0L,
+    ): Double? {
         require(inputTokens >= 0 && outputTokens >= 0)
-        return (
-            inputTokens.toDouble() * inputUsdPerMillionTokens +
-                outputTokens.toDouble() * outputUsdPerMillionTokens
-            ) / 1_000_000.0
+        require(cachedInputTokens in 0..inputTokens)
+        if (cachedInputTokens > 0 && cachedInputUsdPerMillionTokens == null) return null
+        val uncachedInputTokens = inputTokens - cachedInputTokens
+        val uncachedCost = uncachedInputTokens.toDouble() * inputUsdPerMillionTokens
+        val cachedCost = cachedInputTokens.toDouble() *
+            (cachedInputUsdPerMillionTokens ?: 0.0)
+        val outputCost = outputTokens.toDouble() * outputUsdPerMillionTokens
+        return (uncachedCost + cachedCost + outputCost) / 1_000_000.0
     }
 }
 
