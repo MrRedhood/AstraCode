@@ -79,6 +79,8 @@ internal data class AiProviderAdapter(
 }
 
 internal object AiProviderAdapters {
+    private const val ANTHROPIC_API_VERSION = "2026-10-21"
+
     private val adapters = mapOf(
         AiProvider.OPENAI to AiProviderAdapter(
             provider = AiProvider.OPENAI,
@@ -122,5 +124,4 @@ internal object AiProviderAdapters {
             "No provider adapter is registered for " + provider.displayName,
         )
 
-    private const val ANTHROPIC_API_VERSION = "2026-10-21"
 }
