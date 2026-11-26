@@ -7,7 +7,7 @@ import kotlin.test.assertTrue
 
 class Utf8RepairDecoderTest {
     @Test
-    fun `valid Unicode is identical across every read window size`() {
+    fun validUnicodeIsIdenticalAcrossEveryReadWindowSize() {
         val expected = "ASCII ¢ € 𐍈 🧪"
         val bytes = expected.toByteArray(Charsets.UTF_8)
         for (windowSize in 1..bytes.size) {
@@ -16,8 +16,7 @@ class Utf8RepairDecoderTest {
     }
 
     @Test
-    fun `malformed sequences follow WHATWG replacement behavior`() {
-        // Expected outputs were cross-checked with the independent WHATWG TextDecoder oracle.
+    fun malformedSequencesFollowWhatwgReplacementBehavior() {
         val cases = listOf(
             byteArrayOf(0x80.toByte()) to "\uFFFD",
             byteArrayOf(0xC0.toByte(), 0xAF.toByte()) to "\uFFFD\uFFFD",
@@ -27,47 +26,61 @@ class Utf8RepairDecoderTest {
             byteArrayOf(0xE2.toByte(), 0x28, 0xA1.toByte()) to "\uFFFD(\uFFFD",
             byteArrayOf(0xE0.toByte(), 0x80.toByte(), 0x80.toByte()) to "\uFFFD\uFFFD\uFFFD",
         )
-
         for ((bytes, expected) in cases) {
             for (windowSize in 1..bytes.size) {
                 val (actual, repairs) = decodeInWindows(bytes, windowSize)
-                assertEquals(expected, actual, "bytes=${bytes.joinToString { "%02X".format(it) }}, window=$windowSize")
+                assertEquals(expected, actual)
                 assertEquals(expected.count { it == '\uFFFD' }, repairs.size)
             }
         }
     }
 
     @Test
-    fun `default mode strips only a leading UTF-8 BOM`() {
+    fun defaultModeStripsOnlyLeadingUtf8Bom() {
         val bytes = byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()) + "text\uFEFF".toByteArray()
         val (text, repairs, hadBom) = decodeInWindows(bytes, 1)
         assertEquals("text\uFEFF", text)
         assertTrue(hadBom)
         assertTrue(repairs.isEmpty())
-
-        val preserved = Utf8RepairDecoder(ignoreBom = true).let { decoder ->
-            decoder.decode(bytes, endOfInput = true)
-        }
+        val preserved = Utf8RepairDecoder(ignoreBom = true).let { it.decode(bytes, endOfInput = true) }
         assertEquals("\uFEFFtext\uFEFF", preserved)
     }
 
     @Test
-    fun `repair provenance uses document UTF16 and source byte offsets`() {
+    fun repairProvenanceUsesDocumentUtf8ByteAndSourceByteOffsets() {
         val bytes = byteArrayOf('a'.code.toByte(), 0xE2.toByte(), 0x82.toByte(), 'b'.code.toByte())
         val (text, repairs) = decodeInWindows(bytes, 1)
         assertEquals("a\uFFFD" + "b", text)
-        assertEquals(listOf(RepairedSpan(documentUtf16Offset = 1, sourceByteOffset = 1, sourceByteLength = 2)), repairs)
+        assertEquals(
+            listOf(RepairedSpan(documentByteOffset = 1, sourceByteOffset = 1, sourceByteLength = 2)),
+            repairs,
+        )
     }
 
     @Test
-    fun `decoder cannot be used after end of input`() {
+    fun repairOffsetAfterMultibytePrefixIsMeasuredInUtf8Bytes() {
+        val bytes = "ह".toByteArray(Charsets.UTF_8) +
+            byteArrayOf(0xE2.toByte(), 0x82.toByte(), 'b'.code.toByte())
+        val (text, repairs) = decodeInWindows(bytes, 1)
+        assertEquals("ह\uFFFD" + "b", text)
+        assertEquals(3L, repairs.single().documentByteOffset)
+        val decoder = Utf8RepairDecoder()
+        decoder.decode(bytes, endOfInput = true)
+        assertEquals(7L, decoder.documentByteLength)
+    }
+
+    @Test
+    fun decoderCannotBeUsedAfterEndOfInput() {
         val decoder = Utf8RepairDecoder()
         decoder.decode(byteArrayOf(0x61), endOfInput = true)
         assertFalse(decoder.hadLeadingBom)
         kotlin.test.assertFailsWith<IllegalStateException> { decoder.decode(byteArrayOf(0x62)) }
     }
 
-    private fun decodeInWindows(bytes: ByteArray, windowSize: Int): Triple<String, List<RepairedSpan>, Boolean> {
+    private fun decodeInWindows(
+        bytes: ByteArray,
+        windowSize: Int,
+    ): Triple<String, List<RepairedSpan>, Boolean> {
         val decoder = Utf8RepairDecoder()
         val output = StringBuilder()
         var offset = 0
