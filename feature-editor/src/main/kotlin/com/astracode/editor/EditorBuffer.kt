@@ -37,6 +37,23 @@ class EditorBuffer(
     fun textIndexForByteOffset(byteOffset: Int): Int =
         Utf8OffsetMapper.textIndexForByteOffset(text(), byteOffset)
 
+    /**
+     * Converts a platform text-widget index into an LSP UTF-8 position.
+     * The widget index is UTF-16 because that is what Kotlin String APIs use;
+     * the returned LSP character coordinate is a UTF-8 byte count.
+     */
+    fun lspPositionForTextIndex(textIndex: Int): LspPosition =
+        LspPositionCodec.positionForByteOffset(
+            bytes(),
+            byteOffsetForTextIndex(textIndex),
+        )
+
+    /** Converts a negotiated UTF-8 LSP position back to a platform text index. */
+    fun textIndexForLspPosition(position: LspPosition): Int =
+        textIndexForByteOffset(
+            LspPositionCodec.byteOffsetForPosition(bytes(), position),
+        )
+
     fun undo(): Boolean = table.undo()
     fun redo(): Boolean = table.redo()
     fun compact() = table.compact()
