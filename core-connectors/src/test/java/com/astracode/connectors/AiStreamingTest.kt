@@ -112,6 +112,35 @@ class AiStreamingTest {
         }
     }
 
+
+    @Test
+    fun gatewayTimeoutEventIsMarkedRetryable() {
+        val accumulator = AiStreamAccumulator(AiProvider.GOOGLE_GEMINI)
+        val error = kotlin.test.assertFailsWith<AiProviderRequestException> {
+            accumulator.accept(
+                """{"event_type":"error","error":{"code":"gateway_timeout","message":"Gateway timeout"}}""",
+            )
+        }
+        assertTrue(error.retryable)
+    }
+
+    @Test
+    fun malformedStreamJsonIsNotAProviderAvailabilityFailure() {
+        val accumulator = AiStreamAccumulator(AiProvider.OPENAI)
+        kotlin.test.assertFailsWith<AiProviderProtocolException> {
+            accumulator.accept("{not-json")
+        }
+    }
+
+    @Test
+    fun oversizedSseLineIsRejectedBeforeJsonParsing() {
+        val line = "data: " + "x".repeat(2 * 1024 * 1024 + 1)
+        val reader = BufferedReader(StringReader(line))
+        kotlin.test.assertFailsWith<AiProviderProtocolException> {
+            AiSseReader.read(reader, AiStreamAccumulator(AiProvider.OPENAI))
+        }
+    }
+
     @Test
     fun sseReaderCombinesMultipleDataLinesAndIgnoresComments() {
         val input = BufferedReader(
