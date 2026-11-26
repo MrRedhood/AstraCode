@@ -5,7 +5,6 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.StandardCharsets
-import java.util.concurrent.CancellationException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -156,23 +155,27 @@ internal class AiProviderTransport {
         if (cancellationRequested.get()) throw AiRequestCancelledException()
         val connection = URL(url).openConnection() as HttpURLConnection
         activeConnections.add(connection)
-        if (cancellationRequested.get()) {
+        try {
+            if (cancellationRequested.get()) throw AiRequestCancelledException()
+            connection.requestMethod = method
+            connection.instanceFollowRedirects = false
+            connection.connectTimeout = CONNECT_TIMEOUT_MS
+            connection.readTimeout = READ_TIMEOUT_MS
+            connection.setRequestProperty("Accept", "application/json")
+            if (hasBody) {
+                connection.doOutput = true
+                connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            }
+            AiProviderAdapters.forProvider(provider)
+                .authenticationHeaders(apiKey)
+                .forEach { (name, value) -> connection.setRequestProperty(name, value) }
+            if (cancellationRequested.get()) throw AiRequestCancelledException()
+            return connection
+        } catch (error: Exception) {
             releaseConnection(connection)
-            throw AiRequestCancelledException()
+            if (cancellationRequested.get()) throw AiRequestCancelledException(cause = error)
+            throw error
         }
-        connection.requestMethod = method
-        connection.instanceFollowRedirects = false
-        connection.connectTimeout = CONNECT_TIMEOUT_MS
-        connection.readTimeout = READ_TIMEOUT_MS
-        connection.setRequestProperty("Accept", "application/json")
-        if (hasBody) {
-            connection.doOutput = true
-            connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
-        }
-        AiProviderAdapters.forProvider(provider)
-            .authenticationHeaders(apiKey)
-            .forEach { (name, value) -> connection.setRequestProperty(name, value) }
-        return connection
     }
 
     private fun releaseConnection(connection: HttpURLConnection) {
