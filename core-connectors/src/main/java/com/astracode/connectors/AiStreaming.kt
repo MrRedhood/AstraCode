@@ -260,19 +260,51 @@ object AiSseReader {
         onEvent: (AiStreamEvent) -> Unit = {},
     ) {
         val dataLines = mutableListOf<String>()
+        var frameCharacters = 0
+        var totalCharacters = 0L
         while (true) {
-            val line = reader.readLine() ?: break
+            val line = readBoundedLine(reader, MAX_SSE_LINE_CHARS) ?: break
+            totalCharacters += line.length.toLong()
+            if (totalCharacters > MAX_SSE_STREAM_CHARS) {
+                throw AiProviderProtocolException("The AI event stream exceeded the size limit")
+            }
             if (line.isEmpty()) {
                 dispatch(dataLines, accumulator, onEvent)
                 dataLines.clear()
+                frameCharacters = 0
                 continue
             }
             if (line.startsWith(":")) continue
             if (line.startsWith("data:")) {
-                dataLines += line.substring(5).trimStart()
+                val data = line.substring(5).trimStart()
+                frameCharacters += data.length + 1
+                if (frameCharacters > MAX_SSE_FRAME_CHARS) {
+                    throw AiProviderProtocolException("An AI event exceeded the size limit")
+                }
+                dataLines += data
             }
         }
         dispatch(dataLines, accumulator, onEvent)
+    }
+
+    /**
+     * BufferedReader.readLine() can allocate an unbounded line before returning.
+     * Read incrementally so a faulty provider cannot force an arbitrarily large
+     * allocation by omitting SSE newlines.
+     */
+    private fun readBoundedLine(reader: BufferedReader, maximumCharacters: Int): String? {
+        val line = StringBuilder()
+        var sawCharacter = false
+        while (true) {
+            val value = reader.read()
+            if (value < 0) return if (sawCharacter) line.toString() else null
+            if (value == '\n'.code) return line.toString().removeSuffix("\\r")
+            sawCharacter = true
+            if (line.length >= maximumCharacters) {
+                throw AiProviderProtocolException("An SSE line exceeded the size limit")
+            }
+            line.append(value.toChar())
+        }
     }
 
     private fun dispatch(
@@ -283,4 +315,8 @@ object AiSseReader {
         if (dataLines.isEmpty()) return
         accumulator.accept(dataLines.joinToString("\n"), onEvent)
     }
+
+    private const val MAX_SSE_LINE_CHARS = 2 * 1024 * 1024
+    private const val MAX_SSE_FRAME_CHARS = 2 * 1024 * 1024
+    private const val MAX_SSE_STREAM_CHARS = 8L * 1024L * 1024L
 }
