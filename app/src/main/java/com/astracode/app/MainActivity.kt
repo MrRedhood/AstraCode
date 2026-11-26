@@ -5152,7 +5152,8 @@ private fun FileManagementScreen(
                                     aiManualToolCalling = checked
                                 },
                                 enabled = !aiBusy && !aiCapabilitySaving &&
-                                    selectedCapabilityBase?.supportsToolCalling != AiCapabilitySupport.SUPPORTED,
+                                    selectedCapabilityBase?.supportsToolCalling != AiCapabilitySupport.SUPPORTED &&
+                                    selectedCapabilityBase?.supportsToolCalling != AiCapabilitySupport.UNSUPPORTED,
                             )
                             Text(
                                 "I verified this model supports function/tool calling",
@@ -5167,7 +5168,8 @@ private fun FileManagementScreen(
                                     aiManualStreaming = checked
                                 },
                                 enabled = !aiBusy && !aiCapabilitySaving &&
-                                    selectedCapabilityBase?.supportsStreaming != AiCapabilitySupport.SUPPORTED,
+                                    selectedCapabilityBase?.supportsStreaming != AiCapabilitySupport.SUPPORTED &&
+                                    selectedCapabilityBase?.supportsStreaming != AiCapabilitySupport.UNSUPPORTED,
                             )
                             Text(
                                 "I verified this model supports streaming responses",
