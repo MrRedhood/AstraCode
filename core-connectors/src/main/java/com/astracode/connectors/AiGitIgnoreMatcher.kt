@@ -25,7 +25,10 @@ class AiGitIgnoreMatcher(ignoreFiles: List<AiGitIgnoreFile>) {
         }
 
     fun isIgnored(path: String, isDirectory: Boolean = false): Boolean {
-        if (path.isBlank() || path.startsWith("/") || path.contains('\\')) return true
+        if (
+            path.isBlank() || path.startsWith("/") || path.contains('\\') ||
+            path.split('/').any { it.isBlank() || it == "." || it == ".." }
+        ) return true
         val ancestors = mutableListOf<Pair<String, Boolean>>()
         var candidate = path.trimEnd('/')
         ancestors += candidate to isDirectory
@@ -99,8 +102,13 @@ class AiGitIgnoreMatcher(ignoreFiles: List<AiGitIgnoreFile>) {
             when (val character = glob[index]) {
                 '*' -> {
                     if (index + 1 < glob.length && glob[index + 1] == '*') {
-                        while (index + 1 < glob.length && glob[index + 1] == '*') index++
-                        output.append(".*")
+                        if (index + 2 < glob.length && glob[index + 2] == '/') {
+                            output.append("(?:.*/)?")
+                            index += 2
+                        } else {
+                            while (index + 1 < glob.length && glob[index + 1] == '*') index++
+                            output.append(".*")
+                        }
                     } else {
                         output.append("[^/]*")
                     }
