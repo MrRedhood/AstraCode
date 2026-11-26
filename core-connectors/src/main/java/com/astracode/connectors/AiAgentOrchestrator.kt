@@ -469,6 +469,7 @@ class AiAgentOrchestrator(
         is AiStreamEvent.Status -> event.copy(agentId = agentId)
         is AiStreamEvent.ToolStarted -> event.copy(agentId = agentId)
         is AiStreamEvent.ToolFinished -> event.copy(agentId = agentId)
+        is AiStreamEvent.Usage -> event.copy(agentId = agentId)
     }
 
 }
