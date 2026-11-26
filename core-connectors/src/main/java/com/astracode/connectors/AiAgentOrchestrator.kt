@@ -138,7 +138,17 @@ class AiAgentOrchestrator(
                                     id + ": " + (dependency.proposal?.summary ?: dependency.error.orEmpty())
                                 }
                             }
-                            val taskFiles = applyDependencyProposals(files, task, completed)
+                            val taskFiles = runCatching {
+                                applyDependencyProposals(files, task, completed)
+                            }.getOrElse { error ->
+                                record(task.id, "failed", error.message ?: "Dependency context could not be built")
+                                return@Callable AiAgentTaskResult(
+                                    task,
+                                    AiAgentTaskStatus.FAILED,
+                                    null,
+                                    error.message ?: "Dependency context could not be built",
+                                )
+                            }
                             val prompt = buildString {
                                 appendLine("Main objective:")
                                 appendLine(objective)
