@@ -1133,6 +1133,7 @@ private fun FileManagementScreen(
     var aiModelCatalog by remember { mutableStateOf(emptyList<AiModelCapabilities>()) }
     var aiModelMenuExpanded by remember { mutableStateOf(false) }
     var aiLoadingModels by remember { mutableStateOf(false) }
+    var aiTestingConnection by remember { mutableStateOf(false) }
     var aiCapabilityRefresh by remember { mutableStateOf(0) }
     var aiFallbackEnabled by remember(aiPreferences) {
         mutableStateOf(aiPreferences.getBoolean("fallback_enabled", false))
@@ -5930,6 +5931,37 @@ private fun FileManagementScreen(
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(
+                            onClick = {
+                                val selectedProvider = aiProvider
+                                val selectedEndpoint = aiCustomBaseUrl
+                                scope.launch {
+                                    aiTestingConnection = true
+                                    val result = runCatchingCancellable {
+                                        withContext(Dispatchers.IO) {
+                                            workspaceAiAssistant.testConnection(
+                                                selectedProvider,
+                                                selectedEndpoint,
+                                            )
+                                        }
+                                    }
+                                    if (aiProvider == selectedProvider) {
+                                        result.onSuccess { connection ->
+                                            aiMessage = connection.message + " · " +
+                                                connection.elapsedMillis + " ms"
+                                            if (connection.succeeded) {
+                                                aiModels = aiModelCatalog.map { it.modelId }
+                                            }
+                                        }.onFailure { error ->
+                                            aiMessage = error.message ?: "Connection test failed."
+                                        }
+                                        aiTestingConnection = false
+                                    }
+                                }
+                            },
+                            enabled = !aiBusy && !aiTestingConnection && aiHasApiKey &&
+                                (!aiProvider.customEndpoint || aiCustomBaseUrl.isNotBlank()),
+                        ) { Text(if (aiTestingConnection) "Testing…" else "Test connection") }
                         TextButton(
                             onClick = {
                                 val selectedProvider = aiProvider
