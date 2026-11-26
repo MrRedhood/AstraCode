@@ -15,4 +15,11 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "AstraCode"
-include(":app", ":core-filesystem", ":feature-editor", ":feature-terminal", ":core-connectors")
+include(
+    ":app",
+    ":core-filesystem",
+    ":feature-editor",
+    ":feature-terminal",
+    ":core-connectors",
+    ":core-buildengine",
+)
