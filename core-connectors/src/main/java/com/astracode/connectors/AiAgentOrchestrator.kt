@@ -106,8 +106,7 @@ class AiAgentOrchestrator(
             fallbackBaseUrls = fallbackBaseUrls,
             onEvent = onEvent,
         )
-        val tasks = normalizeTasks(plannedTasks)
-        require(tasks.size in 1..MAX_AGENT_TASKS) { "The agent planner returned an invalid task count" }
+        val tasks = AiAgentTaskGraph.normalize(plannedTasks, MAX_AGENT_TASKS)
         record(profile.id, "planned", tasks.joinToString { it.id })
 
         val completed = linkedMapOf<String, AiAgentTaskResult>()
@@ -381,31 +380,6 @@ class AiAgentOrchestrator(
             "Dependency workspace context exceeds the safe agent context limit"
         }
         return result
-    }
-
-    private fun normalizeTasks(tasks: List<AiAgentTask>): List<AiAgentTask> {
-        val ids = mutableSetOf<String>()
-        val normalized = tasks.take(MAX_AGENT_TASKS).mapIndexed { index, task ->
-            val id = task.id.trim().take(48).ifBlank { "agent-" + (index + 1) }
-            require(ids.add(id)) { "The agent planner returned duplicate task IDs" }
-            task.copy(
-                id = id,
-                title = task.title.trim().take(120).ifBlank { "Task " + (index + 1) },
-                instructions = task.instructions.trim().take(4_000),
-                dependsOn = task.dependsOn.distinct().also { dependencies ->
-                    require(id !in dependencies) {
-                        "Agent task " + id + " cannot depend on itself"
-                    }
-                },
-            )
-        }
-        val allowedIds = normalized.map { it.id }.toSet()
-        normalized.forEach { task ->
-            require(task.dependsOn.all { it in allowedIds }) {
-                "Agent task " + task.id + " depends on an unknown task"
-            }
-        }
-        return normalized
     }
 
     private fun withAgentId(event: AiStreamEvent, agentId: String): AiStreamEvent = when (event) {
