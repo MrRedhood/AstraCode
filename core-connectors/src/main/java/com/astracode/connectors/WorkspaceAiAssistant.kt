@@ -76,6 +76,14 @@ class WorkspaceAiAssistant(context: Context) {
     private val appContext = context.applicationContext
     private val vaults = AiProvider.entries.associateWith { ApiKeyVault(appContext, it.id) }
     private val transport = AiProviderTransport()
+
+    /** Starts or resets cancellation for one top-level UI operation. */
+    fun beginOperation() = transport.beginOperation()
+
+    /** Stops every in-flight HTTP request belonging to the current operation. */
+    fun cancelActiveRequests() = transport.cancelActiveRequests()
+
+    fun isCancellationRequested(): Boolean = transport.isCancellationRequested()
     private val capabilityPreferences = appContext.getSharedPreferences(
         "astracode_ai_capability_overrides",
         Context.MODE_PRIVATE,
@@ -366,13 +374,14 @@ class WorkspaceAiAssistant(context: Context) {
         fallbackModels: Map<String, String> = emptyMap(),
         fallbackBaseUrls: Map<String, String> = emptyMap(),
         enableTools: Boolean = true,
+        allowedToolNames: Set<String> = AiToolRegistry.DEFAULT_TOOL_NAMES,
         maxToolRounds: Int = DEFAULT_TOOL_ROUNDS,
         onEvent: (AiStreamEvent) -> Unit = {},
     ): AiWorkspaceProposal {
         validateRequest(model, task, files, maxToolRounds)
         if (provider.customEndpoint) validateCustomBaseUrl(customBaseUrl)
         val contextText = buildWorkspaceContext(task, files)
-        val registry = AiToolRegistry(files)
+        val registry = AiToolRegistry(files, allowedToolNames)
         val writeProtectedPaths = files.filter { it.writeProtected }.map { it.path }.toSet()
         val estimatedTokens = contextText.toByteArray(StandardCharsets.UTF_8).size.toLong() / 3L +
             MAX_OUTPUT_TOKENS + 4_000L
