@@ -231,6 +231,9 @@ class WorkspaceAiAssistant(context: Context) {
         customBaseUrl: String,
         objective: String,
         files: List<WorkspaceFileSnapshot>,
+        fallbackPolicy: AiFallbackPolicy = AiFallbackPolicy(),
+        fallbackModels: Map<String, String> = emptyMap(),
+        fallbackBaseUrls: Map<String, String> = emptyMap(),
         onEvent: (AiStreamEvent) -> Unit = {},
     ): List<AiAgentTask> {
         require(objective.isNotBlank()) { "Describe the task for the agent planner" }
@@ -244,16 +247,49 @@ class WorkspaceAiAssistant(context: Context) {
             "Return only JSON with a tasks array. Every task must have id, title, instructions, and dependsOn."
         val user = "Objective:\n" + objective + "\n\nAvailable workspace files:\n" + fileList +
             "\n\nDo not propose shell commands, secrets, or direct file writes. Each agent returns a reviewable proposal."
-        val output = runSimpleStreaming(
-            provider,
-            model,
-            customBaseUrl,
-            readKey(provider),
-            system,
-            user,
-            agentPlanSchema(),
-            onEvent,
-        )
+        val schema = agentPlanSchema()
+        val primaryKey = readKey(provider)
+        val output = try {
+            runSimpleStreaming(
+                provider, model, customBaseUrl, primaryKey,
+                system, user, schema, onEvent,
+            )
+        } catch (primaryError: AiProviderRequestException) {
+            if (!primaryError.retryable || !fallbackPolicy.enabled) throw primaryError
+            val contextBytes = files.sumOf {
+                it.content.toByteArray(StandardCharsets.UTF_8).size.toLong()
+            } + user.toByteArray(StandardCharsets.UTF_8).size.toLong()
+            val estimatedTokens = contextBytes / 3L + 1_000L
+            var fallbackOutput: String? = null
+            for (candidate in fallbackPolicy.candidates(provider)) {
+                val candidateModel = fallbackModels[candidate.id].orEmpty().trim()
+                if (candidateModel.isBlank() || !hasApiKey(candidate)) continue
+                val candidateBaseUrl = fallbackBaseUrls[candidate.id].orEmpty()
+                if (candidate.customEndpoint && candidateBaseUrl.isBlank()) continue
+                val capability = runCatching {
+                    fetchModelCatalog(candidate, candidateBaseUrl)
+                        .firstOrNull { it.modelId == candidateModel }
+                }.getOrNull() ?: continue
+                if (!capability.canSatisfy(
+                        AiCapabilityRequirements(
+                            requiresToolCalling = false,
+                            requiresStreaming = true,
+                            minimumContextTokens = estimatedTokens,
+                        ),
+                    )
+                ) continue
+                onEvent(AiStreamEvent.Status(
+                    "Agent planner is using explicitly allowed fallback: " +
+                        candidate.displayName + " · " + candidateModel,
+                ))
+                fallbackOutput = runSimpleStreaming(
+                    candidate, candidateModel, candidateBaseUrl, readKey(candidate),
+                    system, user, schema, onEvent,
+                )
+                break
+            }
+            fallbackOutput ?: throw primaryError
+        }
         return parseAgentTasks(output)
     }
 
