@@ -1601,9 +1601,11 @@ private fun FileManagementScreen(
         if (newText == currentTab.text) return true
         val otherBufferBytes = editorTabs.asSequence()
             .filterNot { it.path == path }
-            .sumOf(::editorTabBufferUnits)
-        val requestedBytes = otherBufferUnits + newText.length.toLong() + currentTab.savedText.length.toLong()
-        if (requestedUnits > MAX_OPEN_EDITOR_BUFFER_UNITS) {
+            .sumOf(::editorTabBufferBytes)
+        val requestedBytes = otherBufferBytes +
+            newText.toByteArray(Charsets.UTF_8).size.toLong() +
+            currentTab.savedText.toByteArray(Charsets.UTF_8).size.toLong()
+        if (requestedBytes > MAX_OPEN_EDITOR_BUFFER_BYTES) {
             notify("Editor memory limit reached. Save and close another tab before adding more text.")
             return false
         }
@@ -2271,8 +2273,8 @@ private fun FileManagementScreen(
 
         if (editorTabs.size >= MAX_OPEN_EDITOR_TABS) {
             val oldest = editorTabs.first()
-            val remainingBufferBytes = editorTabs.drop(1).sumOf(::editorTabBufferUnits)
-            if (remainingBufferUnits + sizeBytes * 2L > MAX_OPEN_EDITOR_BUFFER_UNITS) {
+            val remainingBufferBytes = editorTabs.drop(1).sumOf(::editorTabBufferBytes)
+            if (remainingBufferBytes + sizeBytes * 2L > MAX_OPEN_EDITOR_BUFFER_BYTES) {
                 notify("The editor memory limit would still be exceeded after closing the oldest tab.")
                 return
             }
@@ -2287,8 +2289,8 @@ private fun FileManagementScreen(
             return
         }
 
-        val currentBufferBytes = editorTabs.sumOf(::editorTabBufferUnits)
-        if (currentBufferUnits + sizeBytes * 2L > MAX_OPEN_EDITOR_BUFFER_UNITS) {
+        val currentBufferBytes = editorTabs.sumOf(::editorTabBufferBytes)
+        if (currentBufferBytes + sizeBytes * 2L > MAX_OPEN_EDITOR_BUFFER_BYTES) {
             notify("The open-file memory limit is reached. Save and close another tab before opening this file.")
             return
         }
@@ -2573,10 +2575,13 @@ private fun FileManagementScreen(
             if (snapshot.sourceByteLength > MAX_EDITOR_FILE_BYTES) {
                 throw java.io.IOException("Files larger than 8 MiB cannot be opened in the editor yet.")
             }
-            val otherBufferUnits = editorTabs.asSequence()
+            val otherBufferBytes = editorTabs.asSequence()
                 .filterNot { it.path == path }
-                .sumOf(::editorTabBufferUnits)
-            if (otherBufferUnits + snapshot.text.length.toLong() * 2L > MAX_OPEN_EDITOR_BUFFER_UNITS) {
+                .sumOf(::editorTabBufferBytes)
+            if (
+                otherBufferBytes + snapshot.text.toByteArray(Charsets.UTF_8).size.toLong() * 2L >
+                MAX_OPEN_EDITOR_BUFFER_BYTES
+            ) {
                 throw java.io.IOException("Opening this file would exceed the editor memory limit. Close another tab first.")
             }
             editorTabs = editorTabs.map { current ->
@@ -6087,9 +6092,12 @@ private fun EditorPanel(
                     TextButton(
                         onClick = {
                             val matches = countMatches(editorFieldValue.text, findQuery)
-                            val projectedLength = editorFieldValue.text.length.toLong() +
-                                matches.toLong() * (replacementText.length.toLong() - findQuery.length.toLong())
-                            if (projectedLength > MAX_OPEN_EDITOR_BUFFER_UNITS) {
+                            val currentBytes = editorFieldValue.text.toByteArray(Charsets.UTF_8).size.toLong()
+                            val replacementBytes = replacementText.toByteArray(Charsets.UTF_8).size.toLong()
+                            val queryBytes = findQuery.toByteArray(Charsets.UTF_8).size.toLong()
+                            val projectedBytes = currentBytes +
+                                matches.toLong() * (replacementBytes - queryBytes)
+                            if (projectedBytes > MAX_OPEN_EDITOR_BUFFER_BYTES) {
                                 editorToolMessage = "Replace all blocked: the result would exceed the editor safety limit."
                             } else {
                                 val (updated, count) = replaceAllMatches(editorFieldValue, findQuery, replacementText)
