@@ -47,10 +47,21 @@ class AiStreamAccumulator(private val provider: AiProvider) {
         val json = try {
             JSONObject(data)
         } catch (error: Exception) {
-            throw IOException("The " + provider.displayName + " stream returned malformed JSON", error)
+            throw AiProviderProtocolException(
+                provider.displayName + " stream returned malformed JSON",
+                error,
+            )
         }
         json.optJSONObject("error")?.let { error ->
-            throw IOException(error.optString("message", "The AI stream failed"))
+            val code = error.optString("code").lowercase()
+            val retryable = code.contains("rate") || code.contains("overloaded") ||
+                code.contains("timeout") || code.contains("server") ||
+                code.contains("temporarily_unavailable")
+            throw AiProviderRequestException(
+                error.optString("message", "The AI stream failed"),
+                error.optInt("status").takeIf { it > 0 },
+                retryable,
+            )
         }
 
         when (provider) {
@@ -66,7 +77,10 @@ class AiStreamAccumulator(private val provider: AiProvider) {
             val args = try {
                 if (builder.arguments.isBlank()) JSONObject() else JSONObject(builder.arguments.toString())
             } catch (error: Exception) {
-                throw IOException("The AI returned malformed arguments for tool " + builder.name, error)
+                throw AiProviderProtocolException(
+                    "The AI returned malformed arguments for tool " + builder.name,
+                    error,
+                )
             }
             AiStreamToolCall(
                 id = builder.id.ifBlank { key },
@@ -135,7 +149,7 @@ class AiStreamAccumulator(private val provider: AiProvider) {
                     "arguments_delta" -> {
                         val key = json.optInt("index", tools.size).toString()
                         val tool = tools.getOrPut(key) { ToolBuilder() }
-                        tool.arguments.append(delta.optString("arguments"))
+                        appendToolArguments(tool, delta.optString("arguments"))
                     }
                 }
             }
@@ -172,7 +186,7 @@ class AiStreamAccumulator(private val provider: AiProvider) {
                     "text_delta" -> appendText(delta.optString("text"), onEvent)
                     "input_json_delta" -> {
                         val tool = tools.getOrPut(index) { ToolBuilder() }
-                        tool.arguments.append(delta.optString("partial_json"))
+                        appendToolArguments(tool, delta.optString("partial_json"))
                     }
                 }
             }
@@ -208,14 +222,31 @@ class AiStreamAccumulator(private val provider: AiProvider) {
                 builder.name = function.optString("name")
                 onEvent(AiStreamEvent.ToolStarted(builder.name))
             }
-            if (function.has("arguments")) builder.arguments.append(function.optString("arguments"))
+            if (function.has("arguments")) {
+                appendToolArguments(builder, function.optString("arguments"))
+            }
         }
     }
 
     private fun appendText(value: String, onEvent: (AiStreamEvent) -> Unit) {
         if (value.isEmpty()) return
+        if (text.length + value.length > MAX_STREAM_TEXT_CHARS) {
+            throw AiProviderProtocolException("The AI stream exceeded the output size limit")
+        }
         text.append(value)
         onEvent(AiStreamEvent.TextDelta(value))
+    }
+
+    private fun appendToolArguments(builder: ToolBuilder, value: String) {
+        if (builder.arguments.length + value.length > MAX_TOOL_ARGUMENT_CHARS) {
+            throw AiProviderProtocolException("The AI tool arguments exceeded the size limit")
+        }
+        builder.arguments.append(value)
+    }
+
+    private companion object {
+        const val MAX_STREAM_TEXT_CHARS = 2 * 1024 * 1024
+        const val MAX_TOOL_ARGUMENT_CHARS = 128 * 1024
     }
 }
 
