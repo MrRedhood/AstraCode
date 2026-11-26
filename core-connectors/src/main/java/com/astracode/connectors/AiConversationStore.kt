@@ -199,6 +199,8 @@ class AiConversationStore(context: Context) : SQLiteOpenHelper(
     ): AiConversationMessage {
         require(content.isNotBlank()) { "Conversation messages cannot be empty" }
         require(content.length <= MAX_MESSAGE_CHARS) { "Conversation message is too large" }
+        val safeContent = AiSecretRedactor.redact(content).content
+        require(safeContent.isNotBlank()) { "Conversation messages cannot be empty after secret redaction" }
         require(durationMillis == null || durationMillis >= 0)
         require(estimatedInputTokens == null || estimatedInputTokens >= 0)
         val threadBeforeInsert = getThread(threadId)
@@ -210,7 +212,7 @@ class AiConversationStore(context: Context) : SQLiteOpenHelper(
             val values = ContentValues().apply {
                 put("thread_id", threadId)
                 put("role", role.wireValue)
-                put("content", content)
+                put("content", safeContent)
                 putNullable("provider_id", providerId)
                 putNullable("model_id", modelId)
                 put("created_at", nowEpochMillis)
@@ -219,7 +221,7 @@ class AiConversationStore(context: Context) : SQLiteOpenHelper(
             }
             id = db.insertOrThrow("messages", null, values)
             val title = if (role == AiConversationRole.USER && threadBeforeInsert.messageCount == 0) {
-                normalizeTitle(content)
+                normalizeTitle(safeContent)
             } else {
                 threadBeforeInsert.title
             }
@@ -250,7 +252,7 @@ class AiConversationStore(context: Context) : SQLiteOpenHelper(
             id = id,
             threadId = threadId,
             role = role,
-            content = content,
+            content = safeContent,
             providerId = providerId,
             modelId = modelId,
             createdAtEpochMillis = nowEpochMillis,
@@ -340,7 +342,8 @@ class AiConversationStore(context: Context) : SQLiteOpenHelper(
     }
 
     private fun normalizeTitle(value: String): String {
-        val title = value.trim().replace(Regex("\\s+"), " ").take(MAX_TITLE_CHARS)
+        val safeTitle = AiSecretRedactor.redact(value).content
+        val title = safeTitle.trim().replace(Regex("\\s+"), " ").take(MAX_TITLE_CHARS)
         return title.ifBlank { DEFAULT_TITLE }
     }
 
