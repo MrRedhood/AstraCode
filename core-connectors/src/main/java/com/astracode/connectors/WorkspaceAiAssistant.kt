@@ -288,6 +288,8 @@ class WorkspaceAiAssistant(context: Context) {
                     requiresToolCalling = useTools,
                     requiresStreaming = true,
                     minimumContextTokens = estimatedTokens,
+                    requiredInputModalities = setOf("text"),
+                    requiredOutputModalities = setOf("text"),
                 )
                 if (capability == null || !capability.canSatisfy(requirements)) {
                     onEvent(AiStreamEvent.Status(
@@ -382,6 +384,8 @@ class WorkspaceAiAssistant(context: Context) {
                             requiresToolCalling = false,
                             requiresStreaming = true,
                             minimumContextTokens = estimatedTokens,
+                            requiredInputModalities = setOf("text"),
+                            requiredOutputModalities = setOf("text"),
                         ),
                     )
                 ) continue
