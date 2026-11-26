@@ -30,13 +30,11 @@ enum class AiProvider(
     val id: String,
     val displayName: String,
     val keyLabel: String,
-    val googleKeyHeader: Boolean = false,
-    val anthropicHeaders: Boolean = false,
     val customEndpoint: Boolean = false,
 ) {
     OPENAI("openai", "OpenAI", "OpenAI API key"),
-    GOOGLE_GEMINI("google", "Google Gemini", "Google AI Studio API key", googleKeyHeader = true),
-    ANTHROPIC("anthropic", "Anthropic Claude", "Anthropic API key", anthropicHeaders = true),
+    GOOGLE_GEMINI("google", "Google Gemini", "Google AI Studio API key"),
+    ANTHROPIC("anthropic", "Anthropic Claude", "Anthropic API key"),
     OPENROUTER("openrouter", "OpenRouter", "OpenRouter API key"),
     OPENAI_COMPATIBLE("custom", "OpenAI-compatible endpoint", "Provider API key", customEndpoint = true);
 
@@ -140,16 +138,7 @@ class WorkspaceAiAssistant(context: Context) {
         forceRefresh: Boolean = false,
     ): List<AiModelCapabilities> {
         val key = readKey(provider)
-        val url = when (provider) {
-            AiProvider.OPENAI -> "https://api.openai.com/v1/models"
-            AiProvider.GOOGLE_GEMINI -> "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000"
-            AiProvider.ANTHROPIC -> "https://api.anthropic.com/v1/models?limit=1000&lifecycle=active"
-            AiProvider.OPENROUTER -> "https://openrouter.ai/api/v1/models"
-            AiProvider.OPENAI_COMPATIBLE -> endpoint(
-                validateCustomBaseUrl(customBaseUrl),
-                "models",
-            )
-        }
+        val url = AiProviderAdapters.forProvider(provider).modelCatalogUrl(customBaseUrl)
         val cacheKey = provider.id + "|" + url
         synchronized(modelCatalogCache) {
             val cached = modelCatalogCache[cacheKey]
@@ -667,11 +656,11 @@ class WorkspaceAiAssistant(context: Context) {
                 key, model, system, userContext, registry, enableTools, maxToolRounds, onEvent,
             )
             AiProvider.OPENROUTER -> chatToolLoop(
-                "https://openrouter.ai/api/v1/chat/completions",
+                AiProviderAdapters.forProvider(provider).streamingUrl(),
                 key, model, system, userContext, registry, enableTools, maxToolRounds, provider, onEvent,
             )
             AiProvider.OPENAI_COMPATIBLE -> chatToolLoop(
-                endpoint(validateCustomBaseUrl(customBaseUrl), "chat/completions"),
+                AiProviderAdapters.forProvider(provider).streamingUrl(customBaseUrl),
                 key, model, system, userContext, registry, enableTools, maxToolRounds, provider, onEvent,
             )
         }
@@ -708,7 +697,7 @@ class WorkspaceAiAssistant(context: Context) {
                     .put("schema", proposalSchema())))
             if (enableTools) body.put("tools", openAiTools(registry))
             val response = transport.stream(
-                "https://api.openai.com/v1/responses", key, AiProvider.OPENAI, body, onEvent,
+                AiProviderAdapters.forProvider(AiProvider.OPENAI).streamingUrl(), key, AiProvider.OPENAI, body, onEvent,
             )
             val outputItems = response.finalPayload?.optJSONArray("output")
             val calls = response.toolCalls.ifEmpty { parseOpenAiToolCalls(outputItems) }
@@ -770,7 +759,7 @@ class WorkspaceAiAssistant(context: Context) {
                 body.put("previous_interaction_id", previousInteractionId)
             }
             val response = transport.stream(
-                "https://generativelanguage.googleapis.com/v1beta/interactions",
+                AiProviderAdapters.forProvider(AiProvider.GOOGLE_GEMINI).streamingUrl(),
                 key, AiProvider.GOOGLE_GEMINI, body, onEvent,
             )
             val calls = response.toolCalls
@@ -810,7 +799,8 @@ class WorkspaceAiAssistant(context: Context) {
                 .put("messages", messages)
             if (enableTools) body.put("tools", anthropicTools(registry))
             val response = transport.stream(
-                "https://api.anthropic.com/v1/messages", key, AiProvider.ANTHROPIC, body, onEvent,
+                AiProviderAdapters.forProvider(AiProvider.ANTHROPIC).streamingUrl(),
+                key, AiProvider.ANTHROPIC, body, onEvent,
             )
             if (response.toolCalls.isEmpty()) return response.text.ifBlank {
                 throw IOException("Anthropic returned no final workspace proposal")
@@ -968,7 +958,7 @@ class WorkspaceAiAssistant(context: Context) {
                 // provider; cross-provider fallback is controlled by AstraCode.
                 body.put("provider", JSONObject().put("allow_fallbacks", false))
                 transport.stream(
-                    "https://openrouter.ai/api/v1/chat/completions", key, provider, body, onEvent,
+                    AiProviderAdapters.forProvider(provider).streamingUrl(), key, provider, body, onEvent,
                 )
             }
             AiProvider.OPENAI_COMPATIBLE -> {
@@ -977,7 +967,7 @@ class WorkspaceAiAssistant(context: Context) {
                         .put(JSONObject().put("role", "system").put("content", system))
                         .put(JSONObject().put("role", "user").put("content", user)))
                 transport.stream(
-                    endpoint(validateCustomBaseUrl(customBaseUrl), "chat/completions"),
+                    AiProviderAdapters.forProvider(provider).streamingUrl(customBaseUrl),
                     key, provider, body, onEvent,
                 )
             }
@@ -1449,31 +1439,8 @@ class WorkspaceAiAssistant(context: Context) {
             .put("additionalProperties", false)
     }
 
-    private fun validateCustomBaseUrl(value: String): String {
-        require(value.isNotBlank() && value.length <= MAX_ENDPOINT_CHARS) {
-            "Enter the OpenAI-compatible API base URL"
-        }
-        val uri = try {
-            URI(value.trim())
-        } catch (error: Exception) {
-            throw IllegalArgumentException("The API base URL is invalid", error)
-        }
-        require(
-            uri.scheme.equals("https", ignoreCase = true) &&
-                !uri.host.isNullOrBlank() &&
-                uri.userInfo == null &&
-                uri.query == null &&
-                uri.fragment == null,
-        ) {
-            "The API base URL must be a valid HTTPS URL without credentials or query parameters"
-        }
-        return value.trim().trimEnd('/')
-    }
-
-    private fun endpoint(base: String, suffix: String): String {
-        val normalized = base.trimEnd('/')
-        return if (normalized.endsWith("/" + suffix)) normalized else normalized + "/" + suffix
-    }
+    private fun validateCustomBaseUrl(value: String): String =
+        AiProviderAdapters.forProvider(AiProvider.OPENAI_COMPATIBLE).validateBaseUrl(value)
 
     private fun readKey(provider: AiProvider): String {
         val key = try {
