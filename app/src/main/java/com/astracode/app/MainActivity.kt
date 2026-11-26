@@ -4887,6 +4887,7 @@ private fun FileManagementScreen(
 
     if (showAiAssistant) {
         val proposal = aiProposal
+        val selectedCapability = aiModelCatalog.firstOrNull { it.modelId == aiModel }
         val containsDelete = proposal?.changes?.any {
             it.operation == AiChangeOperation.DELETE
         } == true
@@ -4943,6 +4944,62 @@ private fun FileManagementScreen(
                         color = MutedText,
                         style = MaterialTheme.typography.bodySmall,
                     )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = aiFallbackEnabled,
+                            onCheckedChange = { enabled ->
+                                aiFallbackEnabled = enabled
+                                aiPreferences.edit().putBoolean("fallback_enabled", enabled).apply()
+                            },
+                            enabled = !aiBusy,
+                        )
+                        Text("Allow automatic fallback to providers I select below")
+                    }
+                    if (aiFallbackEnabled) {
+                        Text(
+                            "A fallback sends the same task and selected source context to another provider. It is disabled unless you select destinations here.",
+                            color = MutedText,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        AiProvider.entries.filterNot { it == aiProvider }.forEach { fallbackProvider ->
+                            val fallbackHasKey = runCatching {
+                                workspaceAiAssistant.hasApiKey(fallbackProvider)
+                            }.getOrDefault(false)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = fallbackProvider.id in aiFallbackProviderIds,
+                                    onCheckedChange = { checked ->
+                                        val next = if (checked) {
+                                            aiFallbackProviderIds + fallbackProvider.id
+                                        } else {
+                                            aiFallbackProviderIds - fallbackProvider.id
+                                        }
+                                        aiFallbackProviderIds = next
+                                        aiPreferences.edit()
+                                            .putStringSet("fallback_providers", next.toSet())
+                                            .apply()
+                                    },
+                                    enabled = !aiBusy && fallbackHasKey,
+                                )
+                                Text(
+                                    fallbackProvider.displayName +
+                                        if (fallbackHasKey) "" else " · API key not saved",
+                                    color = if (fallbackHasKey) PrimaryText else MutedText,
+                                )
+                            }
+                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = aiUseAgentWorkflow,
+                            onCheckedChange = { enabled ->
+                                aiUseAgentWorkflow = enabled
+                                aiPreferences.edit().putBoolean("agent_workflow_enabled", enabled).apply()
+                            },
+                            enabled = !aiBusy,
+                        )
+                        Text("Use agent workflow: split the task and run independent agents")
+                    }
                     if (aiProvider.customEndpoint) {
                         OutlinedTextField(
                             value = aiCustomBaseUrl,
@@ -4950,6 +5007,7 @@ private fun FileManagementScreen(
                                 aiCustomBaseUrl = it
                                 aiPreferences.edit().putString("base_url_" + aiProvider.id, it).apply()
                                 aiModels = emptyList()
+                                aiModelCatalog = emptyList()
                             },
                             modifier = Modifier.fillMaxWidth().testTag("ai-custom-endpoint-input"),
                             label = { Text("OpenAI-compatible HTTPS API base URL") },
@@ -4969,6 +5027,18 @@ private fun FileManagementScreen(
                         placeholder = { Text("Load models or enter a model ID") },
                         singleLine = true,
                         enabled = !aiBusy,
+                    )
+                    selectedCapability?.let { capability ->
+                        Text(
+                            "Model capabilities: " + capability.capabilitySummary() +
+                                " · source: " + capability.source.name.lowercase().replace("_", " "),
+                            color = MutedText,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    } ?: Text(
+                        "Model capability data is not available for this manually entered or unlisted model. Unknown does not mean unsupported.",
+                        color = MutedText,
+                        style = MaterialTheme.typography.bodySmall,
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(
@@ -5168,6 +5238,29 @@ private fun FileManagementScreen(
                                 }
                             }
                         }
+                    }
+                    aiAgentSummary?.let { report ->
+                        Text(
+                            "Agent report: " + report,
+                            color = MutedText,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    if (aiProgressEvents.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text("Live activity", style = MaterialTheme.typography.labelMedium)
+                            aiProgressEvents.forEach { event ->
+                                Text(event, color = MutedText, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                    if (aiStreamingPreview.isNotBlank() && (aiBusy || proposal == null)) {
+                        Text(
+                            "Streaming output: " + aiStreamingPreview.takeLast(4_000),
+                            color = MutedText,
+                            fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                     }
                     aiMessage?.let { message ->
                         Text(
