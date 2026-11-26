@@ -121,13 +121,7 @@ class AiStreamAccumulator(private val provider: AiProvider) {
             "response.completed", "response.incomplete" -> {
                 finalPayload = json.optJSONObject("response")
             }
-            "error" -> {
-                val message = json.optString("message", "OpenAI streaming failed")
-                val code = json.optString("code").lowercase()
-                val retryable = code.contains("rate") || code.contains("overloaded") ||
-                    code.contains("timeout") || code.contains("server")
-                throw AiProviderRequestException(message, null, retryable)
-            }
+            "error" -> throw streamError(json, "OpenAI streaming failed")
         }
     }
 
@@ -166,7 +160,7 @@ class AiStreamAccumulator(private val provider: AiProvider) {
                     geminiInteractionId = finalPayload?.optString("id").orEmpty()
                 }
             }
-            "error" -> throw AiProviderProtocolException("Gemini returned an error event")
+            "error" -> throw streamError(json, "Gemini streaming failed")
         }
     }
 
@@ -209,7 +203,7 @@ class AiStreamAccumulator(private val provider: AiProvider) {
                     )
                     .put("stop_reason", json.optJSONObject("delta")?.optString("stop_reason").orEmpty())
             }
-            "error" -> throw AiProviderProtocolException("Anthropic returned an error event")
+            "error" -> throw streamError(json, "Anthropic streaming failed")
         }
     }
 
@@ -249,6 +243,31 @@ class AiStreamAccumulator(private val provider: AiProvider) {
                 appendToolArguments(builder, function.optString("arguments"))
             }
         }
+    }
+
+    private fun streamError(json: JSONObject, fallbackMessage: String): AiProviderRequestException {
+        val error = json.optJSONObject("error")
+        val message = error?.optString("message")?.takeIf { it.isNotBlank() }
+            ?: json.optString("message").takeIf { it.isNotBlank() }
+            ?: fallbackMessage
+        val code = listOf(
+            error?.optString("type").orEmpty(),
+            error?.optString("code").orEmpty(),
+            json.optString("code"),
+            message,
+        ).joinToString(" ").lowercase()
+        val retryable = listOf(
+            "rate_limit",
+            "rate limit",
+            "overloaded",
+            "timeout",
+            "temporarily unavailable",
+            "temporarily_unavailable",
+            "internal server",
+            "server_error",
+            "service unavailable",
+        ).any { it in code }
+        return AiProviderRequestException(message, null, retryable)
     }
 
     private fun appendText(value: String, onEvent: (AiStreamEvent) -> Unit) {
