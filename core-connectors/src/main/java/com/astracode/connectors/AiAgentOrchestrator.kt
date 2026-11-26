@@ -420,7 +420,12 @@ class AiAgentOrchestrator(
                         require(bytes <= maxFileBytes) {
                             "Dependency output is too large to pass safely to the next agent: " + change.path
                         }
-                        current[change.path] = WorkspaceFileSnapshot(change.path, change.content)
+                        val existing = current[change.path]
+                        current[change.path] = WorkspaceFileSnapshot(
+                            path = change.path,
+                            content = change.content,
+                            writeProtected = existing?.writeProtected ?: false,
+                        )
                     }
                 }
             }
@@ -442,7 +447,4 @@ class AiAgentOrchestrator(
         is AiStreamEvent.ToolFinished -> event.copy(agentId = agentId)
     }
 
-    private companion object {
-        const val MAX_AGENT_TASKS = 4
-    }
 }
