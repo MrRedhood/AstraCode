@@ -88,6 +88,25 @@ internal object AiAgentTaskGraph {
         return result
     }
 
+    /**
+     * Restricts a worker to its declared input files and files changed by
+     * any completed ancestor task. No unrelated workspace file is exposed.
+     */
+    fun selectInputFiles(
+        task: AiAgentTask,
+        allTasks: List<AiAgentTask>,
+        availableFiles: List<WorkspaceFileSnapshot>,
+        completedResults: Map<String, AiAgentTaskResult>,
+    ): List<WorkspaceFileSnapshot> {
+        val dependencyPaths = ancestorIds(task, allTasks).flatMap { dependencyId ->
+            completedResults[dependencyId]?.proposal?.changes.orEmpty().map { it.path }
+        }.toSet()
+        val selectedPaths = task.inputPaths.toSet()
+        return availableFiles.filter { file ->
+            file.path in selectedPaths || file.path in dependencyPaths
+        }
+    }
+
     private const val MAX_AGENT_TASKS = 4
     private const val MAX_TASK_ID_CHARS = 48
     private const val MAX_TASK_TITLE_CHARS = 120
