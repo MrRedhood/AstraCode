@@ -83,6 +83,14 @@ class WorkspaceAiAssistant(context: Context) {
         val cachedAtEpochMillis: Long,
         val models: List<AiModelCapabilities>,
     )
+
+    private data class ResolvedAiModel(
+        val provider: AiProvider,
+        val modelId: String,
+        val baseUrl: String,
+        val apiKey: String,
+        val capabilities: AiModelCapabilities,
+    )
     private val modelCatalogCache = mutableMapOf<String, ModelCatalogCacheEntry>()
 
     fun hasApiKey(provider: AiProvider): Boolean =
@@ -258,6 +266,78 @@ class WorkspaceAiAssistant(context: Context) {
     private fun capabilityPreferencePrefix(provider: AiProvider, modelId: String): String =
         "model_" + provider.id + "_" + modelId.hashCode().toUInt().toString(16)
 
+    private fun findApprovedFallback(
+        primaryProvider: AiProvider,
+        policy: AiFallbackPolicy,
+        fallbackModels: Map<String, String>,
+        fallbackBaseUrls: Map<String, String>,
+        estimatedTokens: Long,
+        requiresToolCalling: Boolean,
+        onEvent: (AiStreamEvent) -> Unit,
+    ): ResolvedAiModel? {
+        if (!policy.enabled) return null
+        val requirements = AiCapabilityRequirements(
+            requiresToolCalling = requiresToolCalling,
+            requiresStreaming = true,
+            minimumContextTokens = estimatedTokens,
+            requiredInputModalities = setOf("text"),
+            requiredOutputModalities = setOf("text"),
+        )
+        for (candidate in policy.candidates(primaryProvider)) {
+            val candidateModel = fallbackModels[candidate.id].orEmpty().trim()
+            if (candidateModel.isBlank()) {
+                onEvent(AiStreamEvent.Status(
+                    "Skipping " + candidate.displayName + ": no fallback model is configured.",
+                ))
+                continue
+            }
+            val candidateKey = runCatching { readKey(candidate) }.getOrNull()
+            if (candidateKey == null) {
+                onEvent(AiStreamEvent.Status(
+                    "Skipping " + candidate.displayName + ": its API key is unavailable.",
+                ))
+                continue
+            }
+            val candidateBaseUrl = fallbackBaseUrls[candidate.id].orEmpty()
+            if (candidate.customEndpoint && candidateBaseUrl.isBlank()) {
+                onEvent(AiStreamEvent.Status(
+                    "Skipping custom fallback: its HTTPS endpoint is not configured.",
+                ))
+                continue
+            }
+            val capability = getModelCapabilities(candidate, candidateModel, candidateBaseUrl)
+            if (!capability.canSatisfy(requirements)) {
+                onEvent(AiStreamEvent.Status(
+                    "Skipping " + candidate.displayName + " / " + candidateModel +
+                        ": verified context, tool, or streaming capabilities are insufficient.",
+                ))
+                continue
+            }
+            return ResolvedAiModel(
+                provider = candidate,
+                modelId = candidateModel,
+                baseUrl = candidateBaseUrl,
+                apiKey = candidateKey,
+                capabilities = capability,
+            )
+        }
+        return null
+    }
+
+    private fun isUnsupportedToolCapabilityError(error: AiProviderRequestException): Boolean {
+        if (error.statusCode != 400) return false
+        val message = error.message.orEmpty().lowercase()
+        val mentionsTooling = "tool" in message || "function" in message
+        val rejectsCapability = listOf(
+            "unsupported",
+            "not supported",
+            "does not support",
+            "not available",
+            "not allowed",
+        ).any { it in message }
+        return mentionsTooling && rejectsCapability
+    }
+
     @Throws(IOException::class)
     fun createWorkspaceProposal(
         provider: AiProvider,
@@ -275,81 +355,112 @@ class WorkspaceAiAssistant(context: Context) {
         validateRequest(model, task, files, maxToolRounds)
         if (provider.customEndpoint) validateCustomBaseUrl(customBaseUrl)
         val contextText = buildWorkspaceContext(task, files)
-        val key = readKey(provider)
         val registry = AiToolRegistry(files)
         val writeProtectedPaths = files.filter { it.writeProtected }.map { it.path }.toSet()
+        val estimatedTokens = contextText.toByteArray(StandardCharsets.UTF_8).size.toLong() / 3L +
+            MAX_OUTPUT_TOKENS + 4_000L
         val primaryCapabilities = getModelCapabilities(provider, model, customBaseUrl)
-        if (primaryCapabilities.supportsStreaming == AiCapabilitySupport.UNSUPPORTED) {
-            throw IOException(
-                model + " does not expose a streaming endpoint through " +
-                    provider.displayName + ". Choose a model with streaming support.",
-            )
+        var selectedProvider = provider
+        var selectedModel = model
+        var selectedBaseUrl = customBaseUrl
+        var selectedKey = readKey(provider)
+        var selectedCapabilities = primaryCapabilities
+
+        val primaryCapabilityProblem = when {
+            primaryCapabilities.supportsStreaming == AiCapabilitySupport.UNSUPPORTED ->
+                model + " does not support streaming through " + provider.displayName + "."
+            primaryCapabilities.contextWindowTokens != null &&
+                estimatedTokens > primaryCapabilities.contextWindowTokens ->
+                model + " has a context window smaller than this request requires."
+            enableTools &&
+                primaryCapabilities.supportsToolCalling == AiCapabilitySupport.UNSUPPORTED ->
+                model + " does not support the read-only tools enabled for this request."
+            else -> null
         }
-        val estimatedPrimaryTokens =
-            contextText.toByteArray(StandardCharsets.UTF_8).size.toLong() / 3L +
-                MAX_OUTPUT_TOKENS + 4_000L
-        val primaryContextWindow = primaryCapabilities.contextWindowTokens
-        if (primaryContextWindow != null && estimatedPrimaryTokens > primaryContextWindow) {
-            throw IOException(
-                "This request may need about " + estimatedPrimaryTokens +
-                    " tokens, but " + model + " lists a context window of " +
-                    primaryContextWindow + ". Reduce the selected context or choose a larger-context model.",
+
+        if (primaryCapabilityProblem != null) {
+            onEvent(AiStreamEvent.Status(
+                "The selected model does not satisfy this request. Checking only approved fallback providers.",
+            ))
+            val fallback = findApprovedFallback(
+                primaryProvider = provider,
+                policy = fallbackPolicy,
+                fallbackModels = fallbackModels,
+                fallbackBaseUrls = fallbackBaseUrls,
+                estimatedTokens = estimatedTokens,
+                requiresToolCalling = enableTools,
+                onEvent = onEvent,
+            ) ?: throw IOException(
+                primaryCapabilityProblem + " No explicitly approved fallback model has all required capabilities.",
             )
+            selectedProvider = fallback.provider
+            selectedModel = fallback.modelId
+            selectedBaseUrl = fallback.baseUrl
+            selectedKey = fallback.apiKey
+            selectedCapabilities = fallback.capabilities
+            onEvent(AiStreamEvent.Status(
+                "Using explicitly approved capability fallback: " +
+                    selectedProvider.displayName + " · " + selectedModel,
+            ))
         }
 
         var useTools = enableTools
-        if (useTools) {
-            when (primaryCapabilities.supportsToolCalling) {
-                AiCapabilitySupport.UNSUPPORTED -> {
-                    useTools = false
-                    onEvent(AiStreamEvent.Status(
-                        "This model does not list tool-calling support. Continuing without tools.",
-                    ))
-                }
-                AiCapabilitySupport.UNKNOWN -> onEvent(AiStreamEvent.Status(
-                    "Tool calling is not confirmed by model metadata. AstraCode will attempt it; the provider may reject it.",
-                ))
-                AiCapabilitySupport.SUPPORTED -> Unit
-            }
+        if (useTools && selectedCapabilities.supportsToolCalling == AiCapabilitySupport.UNKNOWN) {
+            onEvent(AiStreamEvent.Status(
+                "Tool calling is not confirmed for " + selectedModel +
+                    ". AstraCode will try the provider API and will not assume support.",
+            ))
         }
 
-        onEvent(AiStreamEvent.Status("Connecting to " + provider.displayName + " using streaming mode"))
+        onEvent(AiStreamEvent.Status(
+            "Connecting to " + selectedProvider.displayName + " using streaming mode",
+        ))
         try {
             val output = runProviderToolLoop(
-                provider, model, customBaseUrl, key, contextText, registry,
-                useTools, maxToolRounds, onEvent,
+                selectedProvider,
+                selectedModel,
+                selectedBaseUrl,
+                selectedKey,
+                contextText,
+                registry,
+                useTools,
+                maxToolRounds,
+                onEvent,
             )
             return parseProposal(output, writeProtectedPaths)
         } catch (primaryError: AiProviderRequestException) {
-            if (!primaryError.retryable || !fallbackPolicy.enabled) throw primaryError
+            val mayTryFallback = primaryError.retryable || isUnsupportedToolCapabilityError(primaryError)
+            if (!mayTryFallback || !fallbackPolicy.enabled) throw primaryError
             onEvent(AiStreamEvent.Status(
-                provider.displayName + " is temporarily unavailable. Checking explicitly allowed fallbacks.",
+                selectedProvider.displayName +
+                    " could not complete the request. Checking other explicitly approved fallbacks.",
             ))
-            // Estimate code/text at about three UTF-8 bytes per token, with
-            // explicit output and safety overhead. This remains conservative
-            // without rejecting ordinary source-code workspaces unnecessarily.
-            val estimatedTokens = contextText.toByteArray(StandardCharsets.UTF_8).size.toLong() / 3L +
-                MAX_OUTPUT_TOKENS + 4_000L
             var lastFallbackError: AiProviderRequestException? = null
             for (candidate in fallbackPolicy.candidates(provider)) {
-                val candidateModel = fallbackModels[candidate.id].orEmpty().trim()
-                if (candidateModel.isBlank()) {
-                    onEvent(AiStreamEvent.Status("Skipping " + candidate.displayName + ": no fallback model is configured."))
+                if (candidate == selectedProvider && fallbackModels[candidate.id].orEmpty().trim() == selectedModel) {
                     continue
                 }
-                val fallbackKeyResult = runCatching { readKey(candidate) }
-                if (fallbackKeyResult.isFailure) {
+                val candidateModel = fallbackModels[candidate.id].orEmpty().trim()
+                if (candidateModel.isBlank()) {
                     onEvent(AiStreamEvent.Status(
-                        "Skipping " + candidate.displayName + ": its API key is unavailable or cannot be decrypted.",
+                        "Skipping " + candidate.displayName + ": no fallback model is configured.",
+                    ))
+                    continue
+                }
+                val candidateKey = runCatching { readKey(candidate) }.getOrNull()
+                if (candidateKey == null) {
+                    onEvent(AiStreamEvent.Status(
+                        "Skipping " + candidate.displayName + ": its API key is unavailable.",
                     ))
                     continue
                 }
                 val candidateBaseUrl = fallbackBaseUrls[candidate.id].orEmpty()
                 if (candidate.customEndpoint && candidateBaseUrl.isBlank()) {
-                    onEvent(AiStreamEvent.Status("Skipping custom fallback: its HTTPS endpoint is not configured."))
+                    onEvent(AiStreamEvent.Status(
+                        "Skipping custom fallback: its HTTPS endpoint is not configured.",
+                    ))
                     continue
                 }
-
                 val capability = getModelCapabilities(candidate, candidateModel, candidateBaseUrl)
                 val requirements = AiCapabilityRequirements(
                     requiresToolCalling = useTools,
@@ -358,24 +469,23 @@ class WorkspaceAiAssistant(context: Context) {
                     requiredInputModalities = setOf("text"),
                     requiredOutputModalities = setOf("text"),
                 )
-                if (capability == null || !capability.canSatisfy(requirements)) {
+                if (!capability.canSatisfy(requirements)) {
                     onEvent(AiStreamEvent.Status(
-                        "Skipping " + candidate.displayName +
-                            ": its selected model does not have verified capabilities for this task.",
+                        "Skipping " + candidate.displayName + " / " + candidateModel +
+                            ": verified context, tool, or streaming capabilities are insufficient.",
                     ))
                     continue
                 }
 
                 onEvent(AiStreamEvent.Status(
-                    "Using explicitly allowed fallback: " + candidate.displayName + " · " + candidateModel,
+                    "Using explicitly approved fallback: " + candidate.displayName + " · " + candidateModel,
                 ))
-                val fallbackKey = fallbackKeyResult.getOrThrow()
                 try {
                     val fallbackOutput = runProviderToolLoop(
                         candidate,
                         candidateModel,
                         candidateBaseUrl,
-                        fallbackKey,
+                        candidateKey,
                         contextText,
                         registry,
                         useTools,
@@ -388,7 +498,9 @@ class WorkspaceAiAssistant(context: Context) {
                     onEvent(AiStreamEvent.Status(
                         candidate.displayName + " fallback failed: " + fallbackError.message,
                     ))
-                    // Continue only to other destinations the user explicitly approved.
+                    if (!fallbackError.retryable && !isUnsupportedToolCapabilityError(fallbackError)) {
+                        throw fallbackError
+                    }
                 }
             }
             throw lastFallbackError ?: primaryError
