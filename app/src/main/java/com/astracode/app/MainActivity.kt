@@ -61,6 +61,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -123,7 +125,8 @@ import com.astracode.editor.EditorBuffer
 import com.astracode.terminal.TerminalCommandRunner
 import com.astracode.connectors.AiChangeOperation
 import com.astracode.connectors.AiWorkspaceProposal
-import com.astracode.connectors.OpenAiWorkspaceAssistant
+import com.astracode.connectors.AiProvider
+import com.astracode.connectors.WorkspaceAiAssistant
 import com.astracode.connectors.WorkspaceFileSnapshot
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.astracode.app.storage.SafWorkspaceStorage
@@ -1049,7 +1052,10 @@ private fun FileManagementScreen(
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    val openAiAssistant = remember(context) { OpenAiWorkspaceAssistant(context) }
+    val workspaceAiAssistant = remember(context) { WorkspaceAiAssistant(context) }
+    val aiPreferences = remember(context) {
+        context.getSharedPreferences("astracode_ai_preferences", Context.MODE_PRIVATE)
+    }
     val terminalWorkspaceRoot = remember(storage, context, activeWorkspaceId) {
         val existingRoot = (storage as? FileManagementSystem)?.rootDirectory?.toFile()
         val root = existingRoot ?: File(
@@ -1073,10 +1079,24 @@ private fun FileManagementScreen(
     var editorTabs by remember(storage) { mutableStateOf(emptyList<EditorTab>()) }
     val editorBuffers = remember(storage) { mutableMapOf<String, EditorBuffer>() }
     var showAiAssistant by remember(storage) { mutableStateOf(false) }
-    var aiApiKeyInput by remember { mutableStateOf("") }
-    var aiHasApiKey by remember(openAiAssistant) {
-        mutableStateOf(runCatching { openAiAssistant.hasApiKey() }.getOrDefault(false))
+    var aiProvider by remember(aiPreferences) {
+        mutableStateOf(AiProvider.fromId(aiPreferences.getString("provider", "openai")))
     }
+    var aiProviderMenuExpanded by remember { mutableStateOf(false) }
+    var aiApiKeyInput by remember { mutableStateOf("") }
+    var aiKeyRefresh by remember { mutableStateOf(0) }
+    val aiHasApiKey = remember(workspaceAiAssistant, aiProvider, aiKeyRefresh) {
+        runCatching { workspaceAiAssistant.hasApiKey(aiProvider) }.getOrDefault(false)
+    }
+    var aiModel by remember(aiProvider) {
+        mutableStateOf(aiPreferences.getString("model_" + aiProvider.id, "").orEmpty())
+    }
+    var aiCustomBaseUrl by remember(aiProvider) {
+        mutableStateOf(aiPreferences.getString("base_url_" + aiProvider.id, "").orEmpty())
+    }
+    var aiModels by remember { mutableStateOf(emptyList<String>()) }
+    var aiModelMenuExpanded by remember { mutableStateOf(false) }
+    var aiLoadingModels by remember { mutableStateOf(false) }
     var aiPrompt by remember(storage) { mutableStateOf("") }
     var aiBusy by remember(storage) { mutableStateOf(false) }
     var aiMessage by remember(storage) { mutableStateOf<String?>(null) }
@@ -1219,7 +1239,18 @@ private fun FileManagementScreen(
             return
         }
         if (!aiHasApiKey) {
-            aiMessage = "Add your OpenAI API key first."
+            aiMessage = "Add a " + aiProvider.displayName + " API key first."
+            return
+        }
+        val requestedProvider = aiProvider
+        val requestedModel = aiModel.trim()
+        val requestedBaseUrl = aiCustomBaseUrl.trim()
+        if (requestedModel.isBlank()) {
+            aiMessage = "Choose a model or load the provider's model list first."
+            return
+        }
+        if (requestedProvider.customEndpoint && requestedBaseUrl.isBlank()) {
+            aiMessage = "Enter the OpenAI-compatible HTTPS API base URL."
             return
         }
 
@@ -1287,7 +1318,13 @@ private fun FileManagementScreen(
                         totalCharacters += contextText.length
                     }
 
-                    val proposal = openAiAssistant.createWorkspaceProposal(task, snapshots)
+                    val proposal = workspaceAiAssistant.createWorkspaceProposal(
+                        requestedProvider,
+                        requestedModel,
+                        requestedBaseUrl,
+                        task,
+                        snapshots,
+                    )
                     Triple(baselines, snapshots.size, proposal)
                 }
             }
@@ -2786,8 +2823,16 @@ private fun FileManagementScreen(
         projectTypeLabel = openedFile?.let { fileBadgeForPath(it).label } ?: "WORKSPACE",
         buffers = drawerBuffers,
         unsavedCount = dirtyWorkspaceBufferCount,
-        aiModelLabel = if (aiHasApiKey) "OpenAI · GPT-6.2 Astra" else "Not connected",
-        aiFixLabel = if (aiHasApiKey) "Ready to propose workspace file changes" else "Add an OpenAI API key to connect",
+        aiModelLabel = if (aiHasApiKey) {
+            aiProvider.displayName + " · " + aiModel.ifBlank { "Choose model" }
+        } else {
+            "Not connected"
+        },
+        aiFixLabel = if (aiHasApiKey) {
+            "Ready to propose workspace file changes"
+        } else {
+            "Add a " + aiProvider.displayName + " API key to connect"
+        },
         aiFixCode = "",
         lspName = "Language services",
         lspStatus = "Not connected",
@@ -4756,21 +4801,132 @@ private fun FileManagementScreen(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(
+                            onClick = { aiProviderMenuExpanded = true },
+                            enabled = !aiBusy,
+                        ) { Text("Provider: " + aiProvider.displayName + " ▾") }
+                        DropdownMenu(
+                            expanded = aiProviderMenuExpanded,
+                            onDismissRequest = { aiProviderMenuExpanded = false },
+                        ) {
+                            AiProvider.entries.forEach { provider ->
+                                DropdownMenuItem(
+                                    text = { Text(provider.displayName) },
+                                    onClick = {
+                                        aiProvider = provider
+                                        aiPreferences.edit().putString("provider", provider.id).apply()
+                                        aiProviderMenuExpanded = false
+                                        aiApiKeyInput = ""
+                                        aiModels = emptyList()
+                                        aiModelMenuExpanded = false
+                                        aiProposal = null
+                                        aiMessage = null
+                                        aiKeyRefresh++
+                                    },
+                                )
+                            }
+                        }
+                        Text(
+                            if (aiHasApiKey) "Connected" else "Not connected",
+                            color = if (aiHasApiKey) Mint else MutedText,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
                     Text(
-                        "OpenAI Responses API · fixed provider endpoint · API key only",
-                        color = MutedText,
-                        style = MaterialTheme.typography.labelSmall,
-                    )
-                    Text(
-                        "Your personal key is encrypted at rest with Android Keystore. A compromised or rooted device may still expose it while in use. Selected source files are sent to OpenAI when you request a plan. API usage is billed separately by OpenAI; set a spend limit in your API project.",
+                        "Each provider has its own encrypted API key. Your selected source files are sent only to the provider shown above when you request a plan. Provider usage is billed by that provider. Keys are encrypted at rest with Android Keystore, but may be exposed on a compromised device while in use.",
                         color = MutedText,
                         style = MaterialTheme.typography.bodySmall,
                     )
+                    if (aiProvider.customEndpoint) {
+                        OutlinedTextField(
+                            value = aiCustomBaseUrl,
+                            onValueChange = {
+                                aiCustomBaseUrl = it
+                                aiPreferences.edit().putString("base_url_" + aiProvider.id, it).apply()
+                                aiModels = emptyList()
+                            },
+                            modifier = Modifier.fillMaxWidth().testTag("ai-custom-endpoint-input"),
+                            label = { Text("OpenAI-compatible HTTPS API base URL") },
+                            placeholder = { Text("https://api.example.com/v1") },
+                            singleLine = true,
+                            enabled = !aiBusy,
+                        )
+                    }
+                    OutlinedTextField(
+                        value = aiModel,
+                        onValueChange = {
+                            aiModel = it
+                            aiPreferences.edit().putString("model_" + aiProvider.id, it).apply()
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("ai-model-input"),
+                        label = { Text("Model ID") },
+                        placeholder = { Text("Load models or enter a model ID") },
+                        singleLine = true,
+                        enabled = !aiBusy,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(
+                            onClick = {
+                                val selectedProvider = aiProvider
+                                val selectedEndpoint = aiCustomBaseUrl
+                                scope.launch {
+                                    aiLoadingModels = true
+                                    val result = runCatchingCancellable {
+                                        withContext(Dispatchers.IO) {
+                                            workspaceAiAssistant.fetchModels(selectedProvider, selectedEndpoint)
+                                        }
+                                    }
+                                    if (aiProvider == selectedProvider) {
+                                        result.onSuccess { models ->
+                                            aiModels = models
+                                            aiModelMenuExpanded = models.isNotEmpty()
+                                            aiMessage = if (models.isEmpty()) {
+                                                "No models were listed. You can still enter a model ID manually."
+                                            } else {
+                                                "Loaded " + models.size + " model(s). Choose one below."
+                                            }
+                                        }.onFailure { error ->
+                                            aiMessage = error.message ?: "Could not load models."
+                                        }
+                                        aiLoadingModels = false
+                                    }
+                                }
+                            },
+                            enabled = !aiBusy && !aiLoadingModels && aiHasApiKey &&
+                                (!aiProvider.customEndpoint || aiCustomBaseUrl.isNotBlank()),
+                        ) { Text(if (aiLoadingModels) "Loading…" else "Load models") }
+                        Box {
+                            TextButton(
+                                onClick = { aiModelMenuExpanded = true },
+                                enabled = !aiBusy && aiModels.isNotEmpty(),
+                            ) { Text("Choose model ▾") }
+                            DropdownMenu(
+                                expanded = aiModelMenuExpanded,
+                                onDismissRequest = { aiModelMenuExpanded = false },
+                            ) {
+                                aiModels.forEach { modelId ->
+                                    DropdownMenuItem(
+                                        text = { Text(modelId) },
+                                        onClick = {
+                                            aiModel = modelId
+                                            aiPreferences.edit()
+                                                .putString("model_" + aiProvider.id, modelId).apply()
+                                            aiModelMenuExpanded = false
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
                     OutlinedTextField(
                         value = aiApiKeyInput,
                         onValueChange = { aiApiKeyInput = it },
                         modifier = Modifier.fillMaxWidth().testTag("ai-api-key-input"),
-                        label = { Text(if (aiHasApiKey) "Replace API key (optional)" else "OpenAI API key") },
+                        label = { Text(if (aiHasApiKey) "Replace API key (optional)" else aiProvider.keyLabel) },
                         visualTransformation = PasswordVisualTransformation(),
                         singleLine = true,
                         enabled = !aiBusy,
@@ -4778,11 +4934,11 @@ private fun FileManagementScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(
                             onClick = {
-                                runCatching { openAiAssistant.saveApiKey(aiApiKeyInput) }
+                                runCatching { workspaceAiAssistant.saveApiKey(aiProvider, aiApiKeyInput) }
                                     .onSuccess {
-                                        aiHasApiKey = true
+                                        aiKeyRefresh++
                                         aiApiKeyInput = ""
-                                        aiMessage = "Encrypted API key saved."
+                                        aiMessage = "Encrypted API key saved for " + aiProvider.displayName + "."
                                     }
                                     .onFailure { error ->
                                         aiMessage = error.message ?: "The API key could not be saved."
@@ -4792,12 +4948,13 @@ private fun FileManagementScreen(
                         ) { Text("Save key") }
                         TextButton(
                             onClick = {
-                                runCatching { openAiAssistant.removeApiKey() }
+                                runCatching { workspaceAiAssistant.removeApiKey(aiProvider) }
                                     .onSuccess {
-                                        aiHasApiKey = false
+                                        aiKeyRefresh++
                                         aiApiKeyInput = ""
+                                        aiModels = emptyList()
                                         aiProposal = null
-                                        aiMessage = "Saved API key removed."
+                                        aiMessage = "Saved " + aiProvider.displayName + " API key removed."
                                     }
                                     .onFailure { error ->
                                         aiMessage = error.message ?: "The API key could not be removed."
@@ -4805,12 +4962,6 @@ private fun FileManagementScreen(
                             },
                             enabled = !aiBusy && aiHasApiKey,
                         ) { Text("Remove key") }
-                        Text(
-                            if (aiHasApiKey) "Key saved" else "No key saved",
-                            color = if (aiHasApiKey) Mint else MutedText,
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.align(Alignment.CenterVertically),
-                        )
                     }
                     OutlinedTextField(
                         value = aiPrompt,
@@ -4941,7 +5092,8 @@ private fun FileManagementScreen(
                 } else {
                     TextButton(
                         onClick = { requestAiWorkspacePlan() },
-                        enabled = !aiBusy && aiHasApiKey && aiPrompt.isNotBlank(),
+                        enabled = !aiBusy && aiHasApiKey && aiModel.isNotBlank() && aiPrompt.isNotBlank() &&
+                            (!aiProvider.customEndpoint || aiCustomBaseUrl.isNotBlank()),
                         modifier = Modifier.testTag("ai-generate-proposal"),
                     ) { Text(if (aiBusy) "Working…" else "Generate plan") }
                 }
