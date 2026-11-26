@@ -27,3 +27,10 @@ kotlin {
         jvmTarget.set(JvmTarget.JVM_17)
     }
 }
+
+dependencies {
+    testImplementation(kotlin("test"))
+    testImplementation("junit:junit:4.13.2")
+    // Android's stub org.json throws in local JVM tests; use the reference implementation.
+    testImplementation("org.json:json:20260814")
+}
