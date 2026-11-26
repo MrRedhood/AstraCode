@@ -1205,6 +1205,12 @@ private fun FileManagementScreen(
         scope.launch { snackbarHostState.showSnackbar(message) }
     }
 
+    fun clearEditorAutosaveSchedule(path: String) {
+        firstDirtyAt = firstDirtyAt - path
+        lastEditedAt = lastEditedAt - path
+        autosaveRetryAt = autosaveRetryAt - path
+    }
+
     fun requestAiWorkspacePlan() {
         val task = aiPrompt.trim()
         if (task.isBlank()) {
@@ -1233,22 +1239,46 @@ private fun FileManagementScreen(
                     val snapshots = mutableListOf<WorkspaceFileSnapshot>()
                     var totalCharacters = 0L
 
-                    val candidates = requestedStorage.scanTree(maxDepth = 8)
-                        .asSequence()
-                        .filter { entry ->
-                            entry.type == FileEntryType.FILE &&
-                                entry.readable &&
-                                entry.sizeBytes <= 96L * 1024L &&
-                                isAiWorkspaceTextFile(entry.path)
+                    val candidates = mutableListOf<FileEntry>()
+                    val pendingFolders = mutableListOf("" to 0)
+                    var folderIndex = 0
+                    var visitedItems = 0
+                    while (
+                        folderIndex < pendingFolders.size &&
+                        candidates.size < 60 &&
+                        visitedItems < 2_000
+                    ) {
+                        val (directory, depth) = pendingFolders[folderIndex++]
+                        val children = requestedStorage.listDirectory(directory)
+                            .sortedBy { it.name.lowercase() }
+                        for (entry in children) {
+                            visitedItems++
+                            if (visitedItems > 2_000) break
+                            when (entry.type) {
+                                FileEntryType.DIRECTORY -> {
+                                    if (depth < 8) pendingFolders += entry.path to depth + 1
+                                }
+                                FileEntryType.FILE -> {
+                                    if (
+                                        entry.readable &&
+                                        entry.sizeBytes <= 96L * 1024L &&
+                                        isAiWorkspaceTextFile(entry.path)
+                                    ) candidates += entry
+                                }
+                                else -> Unit
+                            }
+                            if (candidates.size >= 60) break
                         }
-                        .sortedBy { it.path }
-                        .take(60)
-                        .toList()
+                    }
 
                     for (entry in candidates) {
                         val diskText = requestedStorage.readText(entry.path).text
                         if (diskText.length > 96 * 1024 || containsLikelyEmbeddedSecret(diskText)) continue
                         val contextText = unsavedEditorText[entry.path] ?: diskText
+                        if (
+                            contextText.length > 96 * 1024 ||
+                            containsLikelyEmbeddedSecret(contextText)
+                        ) continue
                         if (totalCharacters + contextText.length > 600L * 1024L) break
                         baselines[entry.path] = diskText
                         snapshots += WorkspaceFileSnapshot(entry.path, contextText)
@@ -1516,12 +1546,6 @@ private fun FileManagementScreen(
         val updated = (listOf(path) + recentEditorPaths.filterNot { it == path }).take(10)
         recentEditorPaths = updated
         editorPreferences.edit().putString("recent_files_" + activeWorkspaceId, JSONArray(updated).toString()).apply()
-    }
-
-    fun clearEditorAutosaveSchedule(path: String) {
-        firstDirtyAt = firstDirtyAt - path
-        lastEditedAt = lastEditedAt - path
-        autosaveRetryAt = autosaveRetryAt - path
     }
 
     fun updateCurrentEditorText(pathAtEdit: String, newText: String): Boolean {
@@ -4735,7 +4759,7 @@ private fun FileManagementScreen(
                         style = MaterialTheme.typography.labelSmall,
                     )
                     Text(
-                        "The app encrypts your personal key with Android Keystore. Project source files selected below are sent to OpenAI when you ask for a plan. Never add a shared developer key to this app.",
+                        "Your personal key is encrypted at rest with Android Keystore. A compromised or rooted device may still expose it while in use. Selected source files are sent to OpenAI when you request a plan; never embed a shared developer key.",
                         color = MutedText,
                         style = MaterialTheme.typography.bodySmall,
                     )
