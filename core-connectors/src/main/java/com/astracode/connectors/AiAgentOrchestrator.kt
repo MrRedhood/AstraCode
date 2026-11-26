@@ -276,8 +276,13 @@ class AiAgentOrchestrator(
                     }
                 }
             }
-        val completedCount = results.count { it.status == AiAgentTaskStatus.COMPLETED }
-        val failedCount = results.count {
+        val finalResults = results.map { result ->
+            if (result.proposal?.changes?.any { it.path in conflicts } == true) {
+                result.copy(status = AiAgentTaskStatus.CONFLICTED)
+            } else result
+        }
+        val completedCount = finalResults.count { it.status == AiAgentTaskStatus.COMPLETED }
+        val failedCount = finalResults.count {
             it.status == AiAgentTaskStatus.FAILED || it.status == AiAgentTaskStatus.BLOCKED
         }
         val summary = buildString {
@@ -285,17 +290,13 @@ class AiAgentOrchestrator(
             append(" agent task(s) completed; ")
             append(failedCount)
             append(" failed or blocked; ")
+            append(finalResults.count { it.status == AiAgentTaskStatus.CONFLICTED })
+            append(" task(s) involved in ")
             append(conflicts.size)
             append(" conflicting file path(s) withheld from the proposal.")
         }
         conflicts.forEach { path -> record(profile.id, "conflict", "Withheld overlapping change: " + path) }
         record(profile.id, "finished", summary)
-
-        val finalResults = results.map { result ->
-            if (result.proposal?.changes?.any { it.path in conflicts } == true) {
-                result.copy(status = AiAgentTaskStatus.CONFLICTED)
-            } else result
-        }
         return AiAgentRunReport(
             summary = summary,
             proposal = AiWorkspaceProposal(summary, mergedChanges),
