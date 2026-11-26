@@ -56,6 +56,13 @@ data class AiWorkspaceProposal(
     val changes: List<AiWorkspaceFileChange>,
 )
 
+data class AiProviderConnectionTestResult(
+    val provider: AiProvider,
+    val modelId: String,
+    val elapsedMillis: Long,
+    val responsePreview: String,
+)
+
 data class AiProviderConnectionResult(
     val provider: AiProvider,
     val succeeded: Boolean,
@@ -508,6 +515,55 @@ class WorkspaceAiAssistant(context: Context) {
     }
 
     /**
+     * Tests the selected model with one short streamed request.
+     *
+     * This validates the actual generation endpoint, not just the model-list
+     * endpoint. The provider may charge a small amount for the test tokens.
+     */
+    @Throws(IOException::class)
+    fun testConnection(
+        provider: AiProvider,
+        model: String,
+        customBaseUrl: String = "",
+        onEvent: (AiStreamEvent) -> Unit = {},
+    ): AiProviderConnectionTestResult {
+        require(model.isNotBlank() && model.length <= MAX_MODEL_CHARS) {
+            "Choose a model ID before testing the connection"
+        }
+        if (provider.customEndpoint) validateCustomBaseUrl(customBaseUrl)
+        val startedAt = System.currentTimeMillis()
+        onEvent(AiStreamEvent.Status(
+            "Testing " + provider.displayName + " with a short streamed request",
+        ))
+        val response = runSimpleStreaming(
+            provider = provider,
+            model = model,
+            customBaseUrl = customBaseUrl,
+            key = readKey(provider),
+            system = "You are testing an API connection. Reply with exactly OK and nothing else.",
+            user = "Reply with exactly OK.",
+            schema = null,
+            onEvent = onEvent,
+            maxOutputTokens = CONNECTION_TEST_MAX_OUTPUT_TOKENS,
+        ).trim()
+        if (response.isBlank()) {
+            throw AiProviderProtocolException(
+                provider.displayName + " completed the test without returning any text",
+            )
+        }
+        val elapsed = (System.currentTimeMillis() - startedAt).coerceAtLeast(0L)
+        onEvent(AiStreamEvent.Status(
+            provider.displayName + " streamed a response successfully in " + elapsed + " ms",
+        ))
+        return AiProviderConnectionTestResult(
+            provider = provider,
+            modelId = model,
+            elapsedMillis = elapsed,
+            responsePreview = response.take(100),
+        )
+    }
+
+    /**
      * Produces a small, dependency-aware plan. The caller is responsible for
      * enforcing concurrency and preventing conflicting file proposals.
      */
@@ -895,6 +951,7 @@ class WorkspaceAiAssistant(context: Context) {
         user: String,
         schema: JSONObject?,
         onEvent: (AiStreamEvent) -> Unit,
+        maxOutputTokens: Int = maxOutputTokens,
     ): String {
         val response = when (provider) {
             AiProvider.OPENAI -> {
@@ -907,7 +964,7 @@ class WorkspaceAiAssistant(context: Context) {
                             "content", JSONArray().put(JSONObject().put("type", "input_text").put("text", user)),
                         ),
                     ))
-                    .put("max_output_tokens", MAX_OUTPUT_TOKENS)
+                    .put("max_output_tokens", maxOutputTokens)
                 if (schema != null) body.put("text", JSONObject().put("format", JSONObject()
                     .put("type", "json_schema").put("name", "astracode_agent_plan")
                     .put("strict", true).put("schema", schema)))
@@ -924,13 +981,13 @@ class WorkspaceAiAssistant(context: Context) {
                 )
             }
             AiProvider.ANTHROPIC -> {
-                val body = JSONObject().put("model", model).put("max_tokens", MAX_OUTPUT_TOKENS)
+                val body = JSONObject().put("model", model).put("max_tokens", maxOutputTokens)
                     .put("system", system)
                     .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", user)))
                 transport.stream("https://api.anthropic.com/v1/messages", key, provider, body, onEvent)
             }
             AiProvider.OPENROUTER -> {
-                val body = JSONObject().put("model", model).put("max_tokens", MAX_OUTPUT_TOKENS)
+                val body = JSONObject().put("model", model).put("max_tokens", maxOutputTokens)
                     .put("messages", JSONArray()
                         .put(JSONObject().put("role", "system").put("content", system))
                         .put(JSONObject().put("role", "user").put("content", user)))
@@ -942,10 +999,12 @@ class WorkspaceAiAssistant(context: Context) {
                 )
             }
             AiProvider.OPENAI_COMPATIBLE -> {
-                val body = JSONObject().put("model", model).put("max_tokens", MAX_OUTPUT_TOKENS)
+                val body = JSONObject().put("model", model).put("max_tokens", maxOutputTokens)
                     .put("messages", JSONArray()
                         .put(JSONObject().put("role", "system").put("content", system))
                         .put(JSONObject().put("role", "user").put("content", user)))
+                // Keep upstream provider choice under AstraCode's fallback policy.
+                body.put("provider", JSONObject().put("allow_fallbacks", false))
                 transport.stream(
                     endpoint(validateCustomBaseUrl(customBaseUrl), "chat/completions"),
                     key, provider, body, onEvent,
@@ -1494,6 +1553,7 @@ class WorkspaceAiAssistant(context: Context) {
         const val MAX_PATH_CHARS = 512
         const val MAX_REASON_CHARS = 500
         const val MAX_OUTPUT_TOKENS = 12_000
+        const val CONNECTION_TEST_MAX_OUTPUT_TOKENS = 16
         const val MAX_MODELS = 500
         const val MODEL_CATALOG_CACHE_TTL_MS = 15L * 60L * 1_000L
         const val MAX_MANUAL_CONTEXT_TOKENS = 10_000_000_000L
