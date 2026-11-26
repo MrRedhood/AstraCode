@@ -229,18 +229,24 @@ class WorkspaceAiAssistant(context: Context) {
         val contextText = buildWorkspaceContext(task, files)
         val key = readKey(provider)
         val registry = AiToolRegistry(files)
+        val primaryCapabilities = getModelCapabilities(provider, model, customBaseUrl)
+        if (primaryCapabilities.supportsStreaming == AiCapabilitySupport.UNSUPPORTED) {
+            throw IOException(
+                model + " does not expose a streaming endpoint through " +
+                    provider.displayName + ". Choose a model with streaming support.",
+            )
+        }
 
         var useTools = enableTools
         if (useTools) {
-            val known = getModelCapabilities(provider, model, customBaseUrl)
-            when (known?.supportsToolCalling) {
+            when (primaryCapabilities.supportsToolCalling) {
                 AiCapabilitySupport.UNSUPPORTED -> {
                     useTools = false
                     onEvent(AiStreamEvent.Status(
                         "This model does not list tool-calling support. Continuing without tools.",
                     ))
                 }
-                AiCapabilitySupport.UNKNOWN, null -> onEvent(AiStreamEvent.Status(
+                AiCapabilitySupport.UNKNOWN -> onEvent(AiStreamEvent.Status(
                     "Tool calling is not confirmed by model metadata. AstraCode will attempt it; the provider may reject it.",
                 ))
                 AiCapabilitySupport.SUPPORTED -> Unit
@@ -348,6 +354,13 @@ class WorkspaceAiAssistant(context: Context) {
         require(objective.length <= MAX_TASK_CHARS) { "The request is too long" }
         require(files.size <= MAX_FILES) { "Too many files were included in the agent context" }
         if (provider.customEndpoint) validateCustomBaseUrl(customBaseUrl)
+        val plannerCapabilities = getModelCapabilities(provider, model, customBaseUrl)
+        if (plannerCapabilities.supportsStreaming == AiCapabilitySupport.UNSUPPORTED) {
+            throw IOException(
+                model + " does not expose a streaming endpoint through " +
+                    provider.displayName + ". Choose a model with streaming support.",
+            )
+        }
         val fileList = files.joinToString("\n") { "- " + it.path }
         val system = "You are AstraCode's task planner. Break a software development objective into " +
             "one to four small, independently reviewable tasks. Use one task when work is tightly coupled. " +
