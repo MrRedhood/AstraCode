@@ -5,6 +5,11 @@ data class AiRedactionResult(
     val wasRedacted: Boolean,
     val redactionCount: Int,
 )
+\ndata class AiWorkspaceSnapshotRedaction(
+    val content: String,
+    val writeProtected: Boolean,
+    val redactionCount: Int,
+)
 
 /**
  * Redacts common provider tokens and private-key material from context.
@@ -25,6 +30,23 @@ object AiSecretRedactor {
             """(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----""",
         ),
     )
+
+    /**
+     * Redacts the draft that will be sent, but protects the file if either
+     * the draft or the actual disk version contains detected secret material.
+     */
+    fun redactWorkspaceSnapshot(
+        diskContent: String,
+        draftContent: String = diskContent,
+    ): AiWorkspaceSnapshotRedaction {
+        val disk = redact(diskContent)
+        val draft = redact(draftContent)
+        return AiWorkspaceSnapshotRedaction(
+            content = draft.content,
+            writeProtected = disk.wasRedacted || draft.wasRedacted,
+            redactionCount = maxOf(disk.redactionCount, draft.redactionCount),
+        )
+    }
 
     fun redact(text: String): AiRedactionResult {
         var result = text
