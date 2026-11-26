@@ -422,9 +422,8 @@ class WorkspaceAiAssistant(context: Context) {
                         .put("schema", proposalSchema()),
                 )
             }
-            if (previousInteractionId == null) {
-                if (enableTools) body.put("tools", geminiTools(registry))
-            } else {
+            if (enableTools) body.put("tools", geminiTools(registry))
+            if (previousInteractionId != null) {
                 body.put("previous_interaction_id", previousInteractionId)
             }
             val response = transport.stream(
@@ -450,11 +449,8 @@ class WorkspaceAiAssistant(context: Context) {
                         .put("call_id", result.callId)
                         .put(
                             "result",
-                            JSONObject().put(
-                                "content",
-                                JSONArray().put(
-                                    JSONObject().put("type", "text").put("text", result.content),
-                                ),
+                            JSONArray().put(
+                                JSONObject().put("type", "text").put("text", result.content),
                             ),
                         ),
                 )
