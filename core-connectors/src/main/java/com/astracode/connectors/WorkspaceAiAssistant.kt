@@ -1121,6 +1121,21 @@ class WorkspaceAiAssistant(context: Context) {
             val architecture = item.optJSONObject("architecture")
             val topProvider = item.optJSONObject("top_provider")
             val params = jsonStringSet(item.optJSONArray("supported_parameters"))
+            val pricingData = item.optJSONObject("pricing")
+            val promptPrice = pricingData?.optDouble("prompt", Double.NaN)
+            val completionPrice = pricingData?.optDouble("completion", Double.NaN)
+            val pricing = if (
+                promptPrice != null && completionPrice != null &&
+                promptPrice.isFinite() && completionPrice.isFinite() &&
+                promptPrice >= 0.0 && completionPrice >= 0.0
+            ) {
+                AiModelPricing(
+                    inputUsdPerMillionTokens = promptPrice * 1_000_000.0,
+                    outputUsdPerMillionTokens = completionPrice * 1_000_000.0,
+                )
+            } else {
+                null
+            }
             val inputs = jsonStringSet(architecture?.optJSONArray("input_modalities"))
             val outputs = jsonStringSet(architecture?.optJSONArray("output_modalities"))
             val toolSupport = when {
@@ -1146,6 +1161,7 @@ class WorkspaceAiAssistant(context: Context) {
                 } else {
                     AiCapabilitySource.PROVIDER_API_CONTRACT
                 },
+                pricing = pricing,
             )
         }
 
