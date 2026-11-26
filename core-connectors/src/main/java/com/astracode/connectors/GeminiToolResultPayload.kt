@@ -20,10 +20,13 @@ internal object GeminiToolResultPayload {
                     .put("call_id", result.callId)
                     .put(
                         "result",
-                        JSONArray().put(
-                            JSONObject()
-                                .put("type", "text")
-                                .put("text", result.content),
+                        JSONObject().put(
+                            "content",
+                            JSONArray().put(
+                                JSONObject()
+                                    .put("type", "text")
+                                    .put("text", result.content),
+                            ),
                         ),
                     )
                     .put("is_error", !result.succeeded),
