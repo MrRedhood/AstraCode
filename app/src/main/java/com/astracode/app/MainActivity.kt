@@ -128,6 +128,8 @@ import com.astracode.connectors.AiChangeOperation
 import com.astracode.connectors.AiWorkspaceProposal
 import com.astracode.connectors.AiProvider
 import com.astracode.connectors.AiModelCapabilities
+import com.astracode.connectors.AiCapabilitySource
+import com.astracode.connectors.AiCapabilitySupport
 import com.astracode.connectors.AiFallbackPolicy
 import com.astracode.connectors.AiAgentOrchestrator
 import com.astracode.connectors.AiStreamEvent
@@ -1112,6 +1114,7 @@ private fun FileManagementScreen(
     var aiModelCatalog by remember { mutableStateOf(emptyList<AiModelCapabilities>()) }
     var aiModelMenuExpanded by remember { mutableStateOf(false) }
     var aiLoadingModels by remember { mutableStateOf(false) }
+    var aiCapabilityRefresh by remember { mutableStateOf(0) }
     var aiFallbackEnabled by remember(aiPreferences) {
         mutableStateOf(aiPreferences.getBoolean("fallback_enabled", false))
     }
@@ -4900,7 +4903,40 @@ private fun FileManagementScreen(
 
     if (showAiAssistant) {
         val proposal = aiProposal
-        val selectedCapability = aiModelCatalog.firstOrNull { it.modelId == aiModel }
+        val selectedCapabilityBase = aiModel.takeIf { it.isNotBlank() }?.let { modelId ->
+            aiModelCatalog.firstOrNull { it.modelId == modelId } ?: AiModelCapabilities(
+                provider = aiProvider,
+                modelId = modelId,
+                displayName = modelId,
+            )
+        }
+        val selectedCapability = selectedCapabilityBase?.let {
+            workspaceAiAssistant.applyUserCapabilityOverrides(it)
+        }
+        var aiManualContextTokens by remember(aiProvider, aiModel, aiCapabilityRefresh) {
+            mutableStateOf(selectedCapability?.contextWindowTokens?.toString().orEmpty())
+        }
+        var aiManualToolCalling by remember(aiProvider, aiModel, aiCapabilityRefresh) {
+            mutableStateOf(selectedCapability?.supportsToolCalling == AiCapabilitySupport.SUPPORTED)
+        }
+        var aiManualStreaming by remember(aiProvider, aiModel, aiCapabilityRefresh) {
+            mutableStateOf(selectedCapability?.supportsStreaming == AiCapabilitySupport.SUPPORTED)
+        }
+        fun persistModelCapabilityOverrides() {
+            if (aiModel.isBlank()) return
+            runCatching {
+                workspaceAiAssistant.saveUserCapabilityOverrides(
+                    provider = aiProvider,
+                    modelId = aiModel,
+                    contextWindowTokens = aiManualContextTokens.trim().toLongOrNull(),
+                    toolCallingConfirmed = aiManualToolCalling,
+                    streamingConfirmed = aiManualStreaming,
+                )
+            }.onFailure { error ->
+                aiMessage = error.message ?: "Model capability confirmations could not be saved."
+            }
+            aiCapabilityRefresh++
+        }
         val containsDelete = proposal?.changes?.any {
             it.operation == AiChangeOperation.DELETE
         } == true
@@ -4970,7 +5006,7 @@ private fun FileManagementScreen(
                     }
                     if (aiFallbackEnabled) {
                         Text(
-                            "A fallback sends the same task and selected source context to another provider. It is disabled unless you select destinations here.",
+                            "A fallback sends the same task and selected source context to another provider. It is disabled unless you select destinations here. To use an undocumented model as a fallback, select that provider first, verify its model capabilities, then return here.",
                             color = MutedText,
                             style = MaterialTheme.typography.bodySmall,
                         )
@@ -5053,6 +5089,64 @@ private fun FileManagementScreen(
                         color = MutedText,
                         style = MaterialTheme.typography.bodySmall,
                     )
+                    if (aiModel.isNotBlank()) {
+                        Text(
+                            "Manual verification (only confirm values you checked in the provider's model documentation)",
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                        OutlinedTextField(
+                            value = aiManualContextTokens,
+                            onValueChange = { value ->
+                                if (value.length <= 10 && value.all { it.isDigit() }) {
+                                    aiManualContextTokens = value
+                                    persistModelCapabilityOverrides()
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().testTag("ai-model-context-input"),
+                            label = { Text("Verified context window in tokens") },
+                            placeholder = { Text("Example: 200000") },
+                            singleLine = true,
+                            enabled = !aiBusy,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = aiManualToolCalling,
+                                onCheckedChange = { checked ->
+                                    aiManualToolCalling = checked
+                                    persistModelCapabilityOverrides()
+                                },
+                                enabled = !aiBusy &&
+                                    selectedCapabilityBase?.supportsToolCalling != AiCapabilitySupport.SUPPORTED,
+                            )
+                            Text(
+                                "I verified this model supports function/tool calling",
+                                color = MutedText,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = aiManualStreaming,
+                                onCheckedChange = { checked ->
+                                    aiManualStreaming = checked
+                                    persistModelCapabilityOverrides()
+                                },
+                                enabled = !aiBusy &&
+                                    selectedCapabilityBase?.supportsStreaming != AiCapabilitySupport.SUPPORTED,
+                            )
+                            Text(
+                                "I verified this model supports streaming responses",
+                                color = MutedText,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        Text(
+                            "These confirmations are saved for this provider/model and are used when assessing explicit fallback destinations. They do not change the provider's actual API support.",
+                            color = MutedText,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
                     if (aiModelCatalog.isNotEmpty()) {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text("Model capability matrix", style = MaterialTheme.typography.labelMedium)
