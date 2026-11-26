@@ -129,6 +129,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.astracode.app.storage.SafWorkspaceStorage
 import com.astracode.app.storage.WorkspaceArchive
 import com.astracode.app.storage.WorkspaceSafety
+import com.astracode.app.storage.WorkspaceTrashRecord
 import com.astracode.app.storage.WorkspaceSyncLink
 import com.astracode.app.ui.drawer.*
 import com.astracode.app.storage.loadWorkspaceSyncLinks
@@ -1246,7 +1247,7 @@ private fun FileManagementScreen(
 
                     for (entry in candidates) {
                         val diskText = requestedStorage.readText(entry.path).text
-                        if (diskText.length > 96 * 1024) continue
+                        if (diskText.length > 96 * 1024 || containsLikelyEmbeddedSecret(diskText)) continue
                         val contextText = unsavedEditorText[entry.path] ?: diskText
                         if (totalCharacters + contextText.length > 600L * 1024L) break
                         baselines[entry.path] = diskText
@@ -1298,6 +1299,7 @@ private fun FileManagementScreen(
                 withContext(Dispatchers.IO) {
                     val before = linkedMapOf<String, String?>()
                     val createdDirectories = mutableListOf<String>()
+                    val movedToTrash = mutableListOf<WorkspaceTrashRecord>()
 
                     // Validate every target before the first write.
                     for (change in proposal.changes) {
@@ -1355,13 +1357,14 @@ private fun FileManagementScreen(
                                     requestedStorage.writeText(change.path, change.content)
                                 }
                                 AiChangeOperation.DELETE -> {
-                                    // Deliberately permanent. The UI requires a separate deletion acknowledgement.
-                                    requestedStorage.delete(change.path, recursive = false)
+                                    movedToTrash += WorkspaceSafety.moveToTrash(requestedStorage, change.path)
                                 }
                             }
                         }
                     } catch (failure: Throwable) {
+                        val movedPaths = movedToTrash.map { it.originalPath }.toSet()
                         for ((path, oldText) in before.entries.toList().asReversed()) {
+                            if (path in movedPaths) continue
                             runCatching {
                                 if (oldText == null) {
                                     if (requestedStorage.exists(path)) {
@@ -1371,6 +1374,9 @@ private fun FileManagementScreen(
                                     requestedStorage.writeText(path, oldText)
                                 }
                             }
+                        }
+                        movedToTrash.asReversed().forEach { record ->
+                            runCatching { WorkspaceSafety.restoreFromTrash(requestedStorage, record.id) }
                         }
                         createdDirectories.asReversed().forEach { directory ->
                             runCatching { requestedStorage.delete(directory, recursive = false) }
@@ -1414,7 +1420,7 @@ private fun FileManagementScreen(
                     aiBaselineFiles = emptyMap()
                     aiDeleteAcknowledged = false
                     aiMessage = "Applied " + applied.changes.size +
-                        " file change(s). Deleted files were permanently removed."
+                        " file change(s). Requested deletions were moved to workspace Trash."
                     notify(aiMessage.orEmpty())
                 }.onFailure { error ->
                     aiMessage = error.message ?: "The AI changes could not be applied."
@@ -4650,7 +4656,7 @@ private fun FileManagementScreen(
                     )
                     Text(
                         if (storage is FileManagementSystem) {
-                            "Commands run inside the selected private workspace."
+                            "Commands start in the selected private workspace. The Android app's normal file permissions still apply."
                         } else {
                             "This SAF workspace cannot be mounted into the app shell yet. Commands run in a separate private terminal folder."
                         },
@@ -4658,7 +4664,7 @@ private fun FileManagementScreen(
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Text(
-                        "This is not a full Ubuntu/Debian Linux environment. Only commands and utilities installed on Android are available. Each command starts a new shell; cd is remembered here.",
+                        "This is not a full Ubuntu/Debian Linux environment. Only Android-installed commands are available. Every command starts a new shell, and cd is remembered here. The shell has the Android app's normal permissions; the workspace is its starting folder, not an operating-system sandbox.",
                         color = MutedText,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -4794,7 +4800,7 @@ private fun FileManagementScreen(
                         enabled = !aiBusy,
                     )
                     Text(
-                        "The assistant reads at most 60 supported text files (up to 600 KiB total), skips common secret-file names, and includes unsaved editor drafts. Current context: " +
+                        "The assistant reads at most 60 supported text files (up to 600 KiB total), skips common secret-file names and files containing common token/private-key patterns, and includes unsaved editor drafts. Current context: " +
                             aiContextFileCount + " file(s).",
                         color = MutedText,
                         style = MaterialTheme.typography.bodySmall,
@@ -4826,7 +4832,7 @@ private fun FileManagementScreen(
                                         )
                                     } else {
                                         Text(
-                                            "Permanent deletion. This does not use the workspace Trash.",
+                                            "This moves the file into workspace Trash, where it can be restored until retention cleanup removes it.",
                                             color = Danger,
                                             style = MaterialTheme.typography.bodySmall,
                                         )
@@ -4841,7 +4847,7 @@ private fun FileManagementScreen(
                                 ) {
                                     Text(
                                         if (aiDeleteAcknowledged) "Permanent deletions acknowledged"
-                                        else "I understand: permanently delete listed files",
+                                        else "I understand: move listed files to Trash",
                                     )
                                 }
                             }
@@ -6214,7 +6220,8 @@ private suspend fun <T> runCatchingCancellable(block: suspend () -> T): Result<T
 private fun isAiWorkspaceTextFile(path: String): Boolean {
     val segments = path.split('/')
     if (segments.any { segment ->
-        segment in setOf(".git", ".gradle", "build", "node_modules", ".astracode", ".astracode_trash") ||
+        segment in setOf(".git", ".gradle", "build", "node_modules", ".astracode") ||
+            segment.startsWith(".astracode-", ignoreCase = true) ||
             segment.equals(".env", ignoreCase = true) ||
             segment.contains("secret", ignoreCase = true) ||
             segment.contains("credential", ignoreCase = true)
@@ -6236,6 +6243,17 @@ private fun isAiWorkspaceTextFile(path: String): Boolean {
         "html", "css", "scss", "c", "cc", "cpp", "h", "hpp", "rs",
         "go", "toml", "ini", "sql", "dart", "swift", "rb", "php", "yml", "yaml",
     )
+}
+
+private fun containsLikelyEmbeddedSecret(text: String): Boolean {
+    val patterns = listOf(
+        Regex("""(?i)\bsk-[A-Za-z0-9_-]{20,}\b"""),
+        Regex("""(?i)\b(?:ghp|github_pat|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{20,}\b"""),
+        Regex("""(?im)^\s*(?:OPENAI_API_KEY|ANTHROPIC_API_KEY|GITHUB_TOKEN|API_KEY|ACCESS_TOKEN|REFRESH_TOKEN|CLIENT_SECRET|PASSWORD)\s*[:=]\s*["']?[^\s"']{10,}"""),
+        Regex("""-----BEGIN [A-Z ]*PRIVATE KEY-----"""),
+        Regex("""(?i)\bBearer\s+[A-Za-z0-9._~-]{20,}"""),
+    )
+    return patterns.any { it.containsMatchIn(text) }
 }
 
 private fun isSimpleName(value: String): Boolean =
