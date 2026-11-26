@@ -5953,7 +5953,11 @@ private fun FileManagementScreen(
                                                 )
                                             }
                                         }
-                                        if (aiProvider == selectedProvider && aiModel.trim() == selectedModel) {
+                                        if (
+                                            aiProvider == selectedProvider &&
+                                            aiModel.trim() == selectedModel &&
+                                            aiCustomBaseUrl == selectedEndpoint
+                                        ) {
                                             result.onSuccess { connection ->
                                                 aiMessage = connection.message + " · " +
                                                     connection.elapsedMillis + " ms"
@@ -5966,7 +5970,7 @@ private fun FileManagementScreen(
                                     }
                                 }
                             },
-                            enabled = !aiBusy && !aiTestingConnection && aiHasApiKey &&
+                            enabled = !aiBusy && !aiTestingConnection && !aiLoadingModels && aiHasApiKey &&
                                 aiModel.isNotBlank() &&
                                 (!aiProvider.customEndpoint || aiCustomBaseUrl.isNotBlank()),
                         ) { Text(if (aiTestingConnection) "Testing…" else "Test connection") }
@@ -6001,7 +6005,7 @@ private fun FileManagementScreen(
                                     }
                                 }
                             },
-                            enabled = !aiBusy && !aiLoadingModels && aiHasApiKey &&
+                            enabled = !aiBusy && !aiLoadingModels && !aiTestingConnection && aiHasApiKey &&
                                 (!aiProvider.customEndpoint || aiCustomBaseUrl.isNotBlank()),
                         ) { Text(if (aiLoadingModels) "Loading…" else "Load models") }
                         Box {
