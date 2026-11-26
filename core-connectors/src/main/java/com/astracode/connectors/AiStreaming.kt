@@ -118,8 +118,14 @@ class AiStreamAccumulator(private val provider: AiProvider) {
                 val tool = tools.getOrPut(key) { ToolBuilder(id = json.optString("item_id")) }
                 appendToolArguments(tool, json.optString("delta"))
             }
-            "response.completed", "response.incomplete" -> {
+            "response.completed", "response.incomplete", "response.failed" -> {
                 finalPayload = json.optJSONObject("response")
+                if (json.optString("type") == "response.failed") {
+                    val responseError = finalPayload?.optJSONObject("error") ?: JSONObject()
+                    val errorEvent = JSONObject()
+                        .put("error", responseError)
+                    throw streamError(errorEvent, "OpenAI response failed")
+                }
             }
             "error" -> throw streamError(json, "OpenAI streaming failed")
         }
