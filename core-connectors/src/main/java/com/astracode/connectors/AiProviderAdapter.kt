@@ -58,7 +58,7 @@ internal data class AiProviderAdapter(
                 throw IllegalArgumentException("The custom API base URL is invalid", error)
             }
             require(
-                uri.scheme.equals("https", ignoreCase = true) &&
+                uri.scheme?.equals("https", ignoreCase = true) == true &&
                     !uri.host.isNullOrBlank() &&
                     uri.userInfo == null &&
                     uri.query == null &&
