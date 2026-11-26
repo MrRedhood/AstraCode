@@ -45,6 +45,50 @@ class AiModelCapabilitiesTest {
     }
 
     @Test
+    fun explicitUserConfirmationCanPromoteUnknownCapability() {
+        val model = AiModelCapabilities(
+            provider = AiProvider.OPENAI,
+            modelId = "manually-verified-model",
+            displayName = "Manually verified model",
+        )
+        val confirmed = model.withUserConfirmedCapabilities(
+            verifiedContextWindowTokens = 128_000,
+            toolCallingConfirmed = true,
+            streamingConfirmed = true,
+        )
+        assertEquals(AiCapabilitySupport.SUPPORTED, confirmed.supportsToolCalling)
+        assertEquals(AiCapabilitySupport.SUPPORTED, confirmed.supportsStreaming)
+        assertEquals(128_000L, confirmed.contextWindowTokens)
+        assertEquals(AiCapabilitySource.USER_CONFIRMED, confirmed.source)
+    }
+
+    @Test
+    fun noManualConfirmationLeavesUnknownCapabilitiesUnknown() {
+        val model = AiModelCapabilities(
+            provider = AiProvider.GOOGLE_GEMINI,
+            modelId = "unverified",
+            displayName = "Unverified",
+        )
+        val unchanged = model.withUserConfirmedCapabilities(null, false, false)
+        assertEquals(AiCapabilitySupport.UNKNOWN, unchanged.supportsToolCalling)
+        assertEquals(AiCapabilitySupport.UNKNOWN, unchanged.supportsStreaming)
+        assertEquals(AiCapabilitySource.UNKNOWN, unchanged.source)
+    }
+
+    @Test
+    fun manualContextCanBeAddedWithoutAssumingToolSupport() {
+        val model = AiModelCapabilities(
+            provider = AiProvider.OPENAI,
+            modelId = "model-context-only",
+            displayName = "Context-only assertion",
+        ).withUserConfirmedCapabilities(64_000, false, false)
+        assertEquals(64_000L, model.contextWindowTokens)
+        assertEquals(AiCapabilitySupport.UNKNOWN, model.supportsToolCalling)
+        assertEquals(AiCapabilitySupport.UNKNOWN, model.supportsStreaming)
+        assertEquals(AiCapabilitySource.USER_CONFIRMED, model.source)
+    }
+
+    @Test
     fun missingContextAndModalitiesDoNotPassRequirements() {
         val model = AiModelCapabilities(
             provider = AiProvider.ANTHROPIC,
