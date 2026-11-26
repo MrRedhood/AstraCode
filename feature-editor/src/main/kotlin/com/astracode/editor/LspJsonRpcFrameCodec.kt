@@ -13,20 +13,16 @@ import java.nio.charset.StandardCharsets
  * read, as happens with pipes and sockets.
  */
 object LspJsonRpcFrameCodec {
-    private val HEADER_TERMINATOR = byteArrayOf(13, 10, 13, 10)
-
     fun encode(jsonPayload: String): ByteArray {
         require(jsonPayload.isNotBlank()) { "LSP JSON-RPC payload must not be blank" }
         val payload = jsonPayload.toByteArray(StandardCharsets.UTF_8)
-        val header = "Content-Length: \${payload.size}\r\n\r\n"
+        val header = "Content-Length: ${payload.size}\r\n\r\n"
             .toByteArray(StandardCharsets.US_ASCII)
         return ByteArray(header.size + payload.size).also { frame ->
             header.copyInto(frame, 0)
             payload.copyInto(frame, header.size)
         }
     }
-
-    internal fun headerTerminator(): ByteArray = HEADER_TERMINATOR.copyOf()
 
     internal fun decodeUtf8(payload: ByteArray): String {
         return try {
