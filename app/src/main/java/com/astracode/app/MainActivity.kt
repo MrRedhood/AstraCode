@@ -132,6 +132,8 @@ import com.astracode.connectors.AiCapabilitySource
 import com.astracode.connectors.AiCapabilitySupport
 import com.astracode.connectors.AiFallbackPolicy
 import com.astracode.connectors.AiAgentOrchestrator
+import com.astracode.connectors.AiAgentProfile
+import com.astracode.connectors.AiToolRegistry
 import com.astracode.connectors.AiStreamEvent
 import com.astracode.connectors.AiConversationStore
 import com.astracode.connectors.AiConversationThread
@@ -1144,6 +1146,34 @@ private fun FileManagementScreen(
     var aiUseAgentWorkflow by remember(aiPreferences) {
         mutableStateOf(aiPreferences.getBoolean("agent_workflow_enabled", false))
     }
+    var aiAgentProviderOverrideId by remember(aiPreferences) {
+        mutableStateOf(aiPreferences.getString("agent_provider_override", "").orEmpty())
+    }
+    var aiAgentProviderMenuExpanded by remember { mutableStateOf(false) }
+    var aiAgentModelOverride by remember(aiPreferences) {
+        mutableStateOf(aiPreferences.getString("agent_model_override", "").orEmpty())
+    }
+    var aiAgentMaxParallelText by remember(aiPreferences) {
+        mutableStateOf(aiPreferences.getString("agent_max_parallel", "3").orEmpty())
+    }
+    var aiAgentMaxTasksText by remember(aiPreferences) {
+        mutableStateOf(aiPreferences.getString("agent_max_tasks", "4").orEmpty())
+    }
+    var aiAgentMaxRoundsText by remember(aiPreferences) {
+        mutableStateOf(aiPreferences.getString("agent_max_tool_rounds", "4").orEmpty())
+    }
+    var aiAgentContextKiBText by remember(aiPreferences) {
+        mutableStateOf(aiPreferences.getString("agent_context_kib", "600").orEmpty())
+    }
+    var aiAgentAllowListFiles by remember(aiPreferences) {
+        mutableStateOf(aiPreferences.getBoolean("agent_tool_list_files", true))
+    }
+    var aiAgentAllowReadFile by remember(aiPreferences) {
+        mutableStateOf(aiPreferences.getBoolean("agent_tool_read_file", true))
+    }
+    var aiAgentAllowSearch by remember(aiPreferences) {
+        mutableStateOf(aiPreferences.getBoolean("agent_tool_search", true))
+    }
     var aiReadOnlyToolsEnabled by remember(aiPreferences) {
         mutableStateOf(aiPreferences.getBoolean("read_only_tools_enabled", true))
     }
@@ -1511,6 +1541,28 @@ private fun FileManagementScreen(
         }
         val requestedAgentWorkflow = aiUseAgentWorkflow
         val requestedReadOnlyToolsEnabled = aiReadOnlyToolsEnabled
+        val requestedAgentProvider = aiAgentProviderOverrideId
+            .takeIf { it.isNotBlank() }
+            ?.let { AiProvider.fromId(it) }
+        val requestedAgentProfile = AiAgentProfile(
+            providerOverride = requestedAgentProvider,
+            modelOverride = aiAgentModelOverride.trim().takeIf { it.isNotBlank() },
+            customBaseUrlOverride = requestedAgentProvider
+                ?.takeIf { it.customEndpoint }
+                ?.let { aiPreferences.getString("base_url_" + it.id, "").orEmpty() },
+            allowedToolNames = buildSet {
+                if (aiAgentAllowListFiles) add("list_workspace_files")
+                if (aiAgentAllowReadFile) add("read_workspace_file")
+                if (aiAgentAllowSearch) add("search_workspace_files")
+            },
+            maxAgentTasks = (aiAgentMaxTasksText.toIntOrNull() ?: 4).coerceIn(1, 4),
+            maxToolRounds = (aiAgentMaxRoundsText.toIntOrNull() ?: 4).coerceIn(0, 8),
+            maxParallelAgents = (aiAgentMaxParallelText.toIntOrNull() ?: 3).coerceIn(1, 3),
+            maxContextBytes = (aiAgentContextKiBText.toLongOrNull() ?: 600L)
+                .coerceIn(1L, 4_096L) * 1024L,
+            maxDependencyContextBytes = (aiAgentContextKiBText.toLongOrNull() ?: 600L)
+                .coerceIn(1L, 4_096L) * 1024L,
+        )
         val requestedIncludeBuildContext = aiIncludeBuildContext
         val requestedIncludeTerminalContext = aiIncludeTerminalContext
         val requestedBuildContext = if (requestedIncludeBuildContext) {
@@ -1718,6 +1770,7 @@ private fun FileManagementScreen(
                     val requestResult = try {
                         if (requestedAgentWorkflow) {
                             val report = AiAgentOrchestrator(workspaceAiAssistant).execute(
+                            profile = requestedAgentProfile,
                             provider = requestedProvider,
                             model = requestedModel,
                             customBaseUrl = requestedBaseUrl,
@@ -5762,6 +5815,155 @@ private fun FileManagementScreen(
                             enabled = !aiBusy,
                         )
                         Text("Use agent workflow: split the task and run independent agents")
+                    }
+                    if (aiUseAgentWorkflow) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Agent profile", style = MaterialTheme.typography.labelMedium)
+                            TextButton(
+                                onClick = { aiAgentProviderMenuExpanded = true },
+                                enabled = !aiBusy,
+                            ) {
+                                val label = aiAgentProviderOverrideId
+                                    .takeIf { it.isNotBlank() }
+                                    ?.let { AiProvider.fromId(it).displayName }
+                                    ?: ("Use main provider · " + aiProvider.displayName)
+                                Text("Provider: " + label + " ▾")
+                            }
+                            DropdownMenu(
+                                expanded = aiAgentProviderMenuExpanded,
+                                onDismissRequest = { aiAgentProviderMenuExpanded = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Use main provider") },
+                                    onClick = {
+                                        aiAgentProviderOverrideId = ""
+                                        aiPreferences.edit().putString("agent_provider_override", "").apply()
+                                        aiAgentProviderMenuExpanded = false
+                                    },
+                                )
+                                AiProvider.entries.forEach { agentProvider ->
+                                    DropdownMenuItem(
+                                        text = { Text(agentProvider.displayName) },
+                                        onClick = {
+                                            aiAgentProviderOverrideId = agentProvider.id
+                                            aiPreferences.edit()
+                                                .putString("agent_provider_override", agentProvider.id)
+                                                .apply()
+                                            aiAgentProviderMenuExpanded = false
+                                        },
+                                    )
+                                }
+                            }
+                            OutlinedTextField(
+                                value = aiAgentModelOverride,
+                                onValueChange = {
+                                    aiAgentModelOverride = it
+                                    aiPreferences.edit().putString("agent_model_override", it).apply()
+                                },
+                                modifier = Modifier.fillMaxWidth().testTag("ai-agent-model-override"),
+                                label = { Text("Agent model override (optional)") },
+                                placeholder = { Text("Leave blank to use the main model") },
+                                singleLine = true,
+                                enabled = !aiBusy,
+                            )
+                            Text("Allowed agent tools", style = MaterialTheme.typography.labelMedium)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = aiAgentAllowListFiles,
+                                    onCheckedChange = {
+                                        aiAgentAllowListFiles = it
+                                        aiPreferences.edit().putBoolean("agent_tool_list_files", it).apply()
+                                    },
+                                    enabled = !aiBusy,
+                                )
+                                Text("List selected files")
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = aiAgentAllowReadFile,
+                                    onCheckedChange = {
+                                        aiAgentAllowReadFile = it
+                                        aiPreferences.edit().putBoolean("agent_tool_read_file", it).apply()
+                                    },
+                                    enabled = !aiBusy,
+                                )
+                                Text("Read selected files")
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = aiAgentAllowSearch,
+                                    onCheckedChange = {
+                                        aiAgentAllowSearch = it
+                                        aiPreferences.edit().putBoolean("agent_tool_search", it).apply()
+                                    },
+                                    enabled = !aiBusy,
+                                )
+                                Text("Search selected files")
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedTextField(
+                                    value = aiAgentMaxParallelText,
+                                    onValueChange = {
+                                        if (it.length <= 1 && it.all(Char::isDigit)) {
+                                            aiAgentMaxParallelText = it
+                                            aiPreferences.edit().putString("agent_max_parallel", it).apply()
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f).testTag("ai-agent-parallel-limit"),
+                                    label = { Text("Parallel (1–3)") },
+                                    singleLine = true,
+                                    enabled = !aiBusy,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                )
+                                OutlinedTextField(
+                                    value = aiAgentMaxTasksText,
+                                    onValueChange = {
+                                        if (it.length <= 1 && it.all(Char::isDigit)) {
+                                            aiAgentMaxTasksText = it
+                                            aiPreferences.edit().putString("agent_max_tasks", it).apply()
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f).testTag("ai-agent-task-limit"),
+                                    label = { Text("Tasks (1–4)") },
+                                    singleLine = true,
+                                    enabled = !aiBusy,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                )
+                                OutlinedTextField(
+                                    value = aiAgentMaxRoundsText,
+                                    onValueChange = {
+                                        if (it.length <= 1 && it.all(Char::isDigit)) {
+                                            aiAgentMaxRoundsText = it
+                                            aiPreferences.edit().putString("agent_max_tool_rounds", it).apply()
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f).testTag("ai-agent-tool-round-limit"),
+                                    label = { Text("Tool rounds (0–8)") },
+                                    singleLine = true,
+                                    enabled = !aiBusy,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                )
+                            }
+                            OutlinedTextField(
+                                value = aiAgentContextKiBText,
+                                onValueChange = {
+                                    if (it.length <= 4 && it.all(Char::isDigit)) {
+                                        aiAgentContextKiBText = it
+                                        aiPreferences.edit().putString("agent_context_kib", it).apply()
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().testTag("ai-agent-context-limit"),
+                                label = { Text("Maximum agent context (KiB, 1–4096)") },
+                                singleLine = true,
+                                enabled = !aiBusy,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            )
+                            Text(
+                                "Agent profiles can use a different configured provider/model. Their tools are read-only and limited to these selected workspace files. Parallelism and context limits protect battery, memory, and API usage.",
+                                color = MutedText,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(
