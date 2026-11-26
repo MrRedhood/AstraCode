@@ -11,7 +11,7 @@ import kotlin.test.assertTrue
 class BuildDiagnosticsTest {
     @Test
     fun mapsKotlinAndJavaCompilerErrorsToWorkspaceRelativePaths() {
-        val root = createTempDir(prefix = "astracode-diagnostics-")
+        val root = java.nio.file.Files.createTempDirectory("astracode-diagnostics-").toFile()
         try {
             val sourceDirectory = File(root, "src/main")
             assertTrue(sourceDirectory.mkdirs())
@@ -44,7 +44,7 @@ class BuildDiagnosticsTest {
 
     @Test
     fun ignoresMalformedAndExternalCompilerLines() {
-        val root = createTempDir(prefix = "astracode-diagnostics-")
+        val root = java.nio.file.Files.createTempDirectory("astracode-diagnostics-").toFile()
         try {
             val parsed = BuildDiagnosticParser().parse(
                 "e: /outside/Other.kt: (2, 1): bad\n" +
@@ -60,7 +60,7 @@ class BuildDiagnosticsTest {
 
     @Test
     fun validatesApkArchiveStructureAndComputesSha256() {
-        val root = createTempDir(prefix = "astracode-artifacts-")
+        val root = java.nio.file.Files.createTempDirectory("astracode-artifacts-").toFile()
         try {
             val apk = File(root, "app-debug.apk")
             writeZip(apk, mapOf("AndroidManifest.xml" to "manifest".toByteArray()))
@@ -76,7 +76,7 @@ class BuildDiagnosticsTest {
 
     @Test
     fun rejectsAnApkWithoutAndroidManifest() {
-        val root = createTempDir(prefix = "astracode-artifacts-")
+        val root = java.nio.file.Files.createTempDirectory("astracode-artifacts-").toFile()
         try {
             val apk = File(root, "broken.apk")
             writeZip(apk, mapOf("classes.dex" to byteArrayOf(1, 2, 3)))

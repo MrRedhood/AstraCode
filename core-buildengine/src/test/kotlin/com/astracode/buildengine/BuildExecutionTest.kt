@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
 class BuildExecutionTest {
     @Test
     fun capturesStdoutAndStderrAndPreservesExitCode() {
-        val root = createTempDir(prefix = "astracode-build-")
+        val root = java.nio.file.Files.createTempDirectory("astracode-build-").toFile()
         try {
             assumeShellAvailable()
             val result = BuildProcessRunner().run(
@@ -29,7 +29,7 @@ class BuildExecutionTest {
 
     @Test
     fun timesOutLongRunningBuildCommand() {
-        val root = createTempDir(prefix = "astracode-build-")
+        val root = java.nio.file.Files.createTempDirectory("astracode-build-").toFile()
         try {
             assumeShellAvailable()
             val result = BuildProcessRunner().run(
@@ -48,7 +48,7 @@ class BuildExecutionTest {
 
     @Test
     fun rejectsWorkingDirectoryOutsideWorkspace() {
-        val root = createTempDir(prefix = "astracode-build-")
+        val root = java.nio.file.Files.createTempDirectory("astracode-build-").toFile()
         try {
             val result = BuildProcessRunner().run(
                 BuildExecutionProfile(
@@ -68,14 +68,14 @@ class BuildExecutionTest {
 
     @Test
     fun redactsEnvironmentSecretsFromStoredAndStreamedOutput() {
-        val root = createTempDir(prefix = "astracode-build-")
+        val root = java.nio.file.Files.createTempDirectory("astracode-build-").toFile()
         try {
             assumeShellAvailable()
             val streamed = StringBuilder()
             val result = BuildProcessRunner().run(
                 profile(
                     root,
-                    listOf("/bin/sh", "-c", "printf '%s' \"$API_TOKEN\""),
+                    listOf("/bin/sh", "-c", "printf '%s' \"\$API_TOKEN\""),
                     environment = mapOf("API_TOKEN" to "secret-value-123"),
                 ),
             ) { event ->

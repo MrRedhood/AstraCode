@@ -10,7 +10,7 @@ import kotlin.test.assertTrue
 class BuildRuntimeRegistryTest {
     @Test
     fun discoversAnExecutableJdkForMatchingArm64Architecture() {
-        val root = createTempDir(prefix = "astracode-jdks-")
+        val root = java.nio.file.Files.createTempDirectory("astracode-jdks-").toFile()
         try {
             val jdk = createJdk(root, "jdk-21-arm64", "aarch64")
             val runtime = BuildRuntimeRegistry(root, BuildRuntimeArchitecture.ARM64)
@@ -29,7 +29,7 @@ class BuildRuntimeRegistryTest {
 
     @Test
     fun doesNotSelectAnIncompatibleJdkArchitecture() {
-        val root = createTempDir(prefix = "astracode-jdks-")
+        val root = java.nio.file.Files.createTempDirectory("astracode-jdks-").toFile()
         try {
             createJdk(root, "jdk-x64", "x86_64")
             val runtime = BuildRuntimeRegistry(root, BuildRuntimeArchitecture.ARM64)
@@ -46,7 +46,7 @@ class BuildRuntimeRegistryTest {
 
     @Test
     fun ignoresIncompleteJdkDirectories() {
-        val root = createTempDir(prefix = "astracode-jdks-")
+        val root = java.nio.file.Files.createTempDirectory("astracode-jdks-").toFile()
         try {
             val bin = File(root, "partial/bin")
             assertTrue(bin.mkdirs())
