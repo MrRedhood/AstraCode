@@ -59,8 +59,6 @@ internal class AiProviderTransport {
             return parseJson(body, provider)
         } catch (cancelled: AiRequestCancelledException) {
             throw cancelled
-        } catch (cancelled: AiRequestCancelledException) {
-            throw cancelled
         } catch (error: AiProviderRequestException) {
             throw error
         } catch (error: AiProviderProtocolException) {
