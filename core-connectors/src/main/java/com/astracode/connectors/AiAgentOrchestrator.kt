@@ -77,6 +77,7 @@ class AiAgentOrchestrator(
         profile: AiAgentProfile = AiAgentProfile(),
         fallbackPolicy: AiFallbackPolicy = AiFallbackPolicy(),
         fallbackModels: Map<String, String> = emptyMap(),
+        fallbackBaseUrls: Map<String, String> = emptyMap(),
         onEvent: (AiStreamEvent) -> Unit = {},
     ): AiAgentRunReport {
         require(objective.isNotBlank()) { "Describe the task for the agent" }
@@ -156,6 +157,7 @@ class AiAgentOrchestrator(
                                     files = files,
                                     fallbackPolicy = fallbackPolicy,
                                     fallbackModels = fallbackModels,
+                                    fallbackBaseUrls = fallbackBaseUrls,
                                     enableTools = true,
                                     maxToolRounds = profile.maxToolRounds,
                                     onEvent = { event -> onEvent(withAgentId(event, task.id)) },
