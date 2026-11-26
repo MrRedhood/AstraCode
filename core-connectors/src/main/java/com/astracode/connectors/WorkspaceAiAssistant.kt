@@ -63,6 +63,11 @@ class WorkspaceAiAssistant(context: Context) {
     private val appContext = context.applicationContext
     private val vaults = AiProvider.entries.associateWith { ApiKeyVault(appContext, it.id) }
     private val transport = AiProviderTransport()
+    private val capabilityPreferences = appContext.getSharedPreferences(
+        "astracode_ai_capability_overrides",
+        Context.MODE_PRIVATE,
+    )
+    private val modelCatalogCache = mutableMapOf<String, List<AiModelCapabilities>>()
 
     fun hasApiKey(provider: AiProvider): Boolean =
         !vaults.getValue(provider).read().isNullOrBlank()
@@ -97,6 +102,10 @@ class WorkspaceAiAssistant(context: Context) {
                 "models",
             )
         }
+        val cacheKey = provider.id + "|" + url
+        synchronized(modelCatalogCache) {
+            modelCatalogCache[cacheKey]?.let { return it }
+        }
         val response = transport.getJson(url, key, provider)
         val items = response.optJSONArray("data")
             ?: response.optJSONArray("models")
@@ -110,8 +119,83 @@ class WorkspaceAiAssistant(context: Context) {
             catalog += parseModelCapability(provider, modelId.removePrefix("models/"), item)
             if (catalog.size >= MAX_MODELS) break
         }
-        return catalog.distinctBy { it.modelId }.sortedBy { it.modelId }
+        val normalized = catalog.distinctBy { it.modelId }.sortedBy { it.modelId }
+        synchronized(modelCatalogCache) {
+            modelCatalogCache[cacheKey] = normalized
+        }
+        return normalized
     }
+
+    /**
+     * Save capabilities the user has independently checked with a provider's
+     * documentation. Unknown metadata never becomes supported without this
+     * explicit confirmation.
+     */
+    fun saveUserCapabilityOverrides(
+        provider: AiProvider,
+        modelId: String,
+        contextWindowTokens: Long?,
+        toolCallingConfirmed: Boolean,
+        streamingConfirmed: Boolean,
+    ) {
+        require(modelId.isNotBlank() && modelId.length <= MAX_MODEL_CHARS)
+        require(contextWindowTokens == null || contextWindowTokens in 1..MAX_MANUAL_CONTEXT_TOKENS)
+        val prefix = capabilityPreferencePrefix(provider, modelId)
+        val editor = capabilityPreferences.edit()
+            .putString(prefix + "_model", modelId)
+            .putBoolean(prefix + "_tools", toolCallingConfirmed)
+            .putBoolean(prefix + "_streaming", streamingConfirmed)
+        if (contextWindowTokens == null) editor.remove(prefix + "_context")
+        else editor.putLong(prefix + "_context", contextWindowTokens)
+        check(editor.commit()) { "Could not save model capability confirmations" }
+    }
+
+    fun applyUserCapabilityOverrides(capability: AiModelCapabilities): AiModelCapabilities {
+        val prefix = capabilityPreferencePrefix(capability.provider, capability.modelId)
+        if (capabilityPreferences.getString(prefix + "_model", null) != capability.modelId) {
+            return capability
+        }
+        val contextOverride = capabilityPreferences.getLong(prefix + "_context", 0L)
+            .takeIf { it > 0L }
+        val toolsConfirmed = capabilityPreferences.getBoolean(prefix + "_tools", false)
+        val streamingConfirmed = capabilityPreferences.getBoolean(prefix + "_streaming", false)
+        val hasOverrides = contextOverride != null || toolsConfirmed || streamingConfirmed
+        if (!hasOverrides) return capability
+        return capability.copy(
+            contextWindowTokens = contextOverride ?: capability.contextWindowTokens,
+            supportsToolCalling = if (toolsConfirmed) {
+                AiCapabilitySupport.SUPPORTED
+            } else {
+                capability.supportsToolCalling
+            },
+            supportsStreaming = if (streamingConfirmed) {
+                AiCapabilitySupport.SUPPORTED
+            } else {
+                capability.supportsStreaming
+            },
+            source = AiCapabilitySource.USER_CONFIRMED,
+        )
+    }
+
+    fun getModelCapabilities(
+        provider: AiProvider,
+        modelId: String,
+        customBaseUrl: String = "",
+    ): AiModelCapabilities {
+        require(modelId.isNotBlank() && modelId.length <= MAX_MODEL_CHARS)
+        val metadata = runCatching {
+            fetchModelCatalog(provider, customBaseUrl).firstOrNull { it.modelId == modelId }
+        }.getOrNull()
+        val baseline = metadata ?: AiModelCapabilities(
+            provider = provider,
+            modelId = modelId,
+            displayName = modelId,
+        )
+        return applyUserCapabilityOverrides(baseline)
+    }
+
+    private fun capabilityPreferencePrefix(provider: AiProvider, modelId: String): String =
+        "model_" + provider.id + "_" + modelId.hashCode().toUInt().toString(16)
 
     @Throws(IOException::class)
     fun createWorkspaceProposal(
@@ -135,10 +219,7 @@ class WorkspaceAiAssistant(context: Context) {
 
         var useTools = enableTools
         if (useTools) {
-            val known = runCatching {
-                fetchModelCatalog(provider, customBaseUrl)
-                    .firstOrNull { it.modelId == model }
-            }.getOrNull()
+            val known = getModelCapabilities(provider, model, customBaseUrl)
             when (known?.supportsToolCalling) {
                 AiCapabilitySupport.UNSUPPORTED -> {
                     useTools = false
@@ -185,10 +266,7 @@ class WorkspaceAiAssistant(context: Context) {
                     continue
                 }
 
-                val capability = runCatching {
-                    fetchModelCatalog(candidate, candidateBaseUrl)
-                        .firstOrNull { it.modelId == candidateModel }
-                }.getOrNull()
+                val capability = getModelCapabilities(candidate, candidateModel, candidateBaseUrl)
                 val requirements = AiCapabilityRequirements(
                     requiresToolCalling = useTools,
                     requiresStreaming = true,
@@ -272,10 +350,7 @@ class WorkspaceAiAssistant(context: Context) {
                 val candidateKey = runCatching { readKey(candidate) }.getOrNull() ?: continue
                 val candidateBaseUrl = fallbackBaseUrls[candidate.id].orEmpty()
                 if (candidate.customEndpoint && candidateBaseUrl.isBlank()) continue
-                val capability = runCatching {
-                    fetchModelCatalog(candidate, candidateBaseUrl)
-                        .firstOrNull { it.modelId == candidateModel }
-                }.getOrNull() ?: continue
+                val capability = getModelCapabilities(candidate, candidateModel, candidateBaseUrl)
                 if (!capability.canSatisfy(
                         AiCapabilityRequirements(
                             requiresToolCalling = false,
@@ -1183,6 +1258,7 @@ class WorkspaceAiAssistant(context: Context) {
         const val MAX_REASON_CHARS = 500
         const val MAX_OUTPUT_TOKENS = 12_000
         const val MAX_MODELS = 500
+        const val MAX_MANUAL_CONTEXT_TOKENS = 10_000_000_000L
         const val MAX_TOOL_CALLS_PER_ROUND = 6
         const val DEFAULT_TOOL_ROUNDS = 4
         const val MAX_AGENT_TASKS = 4
