@@ -4846,7 +4846,7 @@ private fun FileManagementScreen(
                         )
                     }
                     Text(
-                        "Each provider has its own encrypted API key. Your selected source files are sent only to the provider shown above when you request a plan. Provider usage is billed by that provider. Keys are encrypted at rest with Android Keystore, but may be exposed on a compromised device while in use.",
+                        "Each provider has its own encrypted API key. Your selected source files are sent to the selected API when you request a plan. A routing service such as OpenRouter may forward request content to the model host under its routing and data policies. Usage is billed by the selected provider. Keys are encrypted at rest with Android Keystore, but may be exposed on a compromised device while in use.",
                         color = MutedText,
                         style = MaterialTheme.typography.bodySmall,
                     )
