@@ -6,8 +6,8 @@ import org.json.JSONObject
 /**
  * Builds the Interactions API REST function_result payload.
  *
- * The REST streaming continuation shape is a result object containing a
- * content array of text blocks. Keep this conversion isolated and testable.
+ * The REST streaming continuation shape is a result array containing text
+ * blocks. Keep this conversion isolated and testable.
  */
 internal object GeminiToolResultPayload {
     fun from(results: List<AiToolResult>): JSONArray {
