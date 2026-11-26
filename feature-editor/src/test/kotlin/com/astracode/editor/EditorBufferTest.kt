@@ -22,6 +22,18 @@ class EditorBufferTest {
     }
 
     @Test
+    fun mapsTextWidgetIndicesToAndFromUtf8LspPositions() {
+        val buffer = EditorBuffer("Aह😀\nB")
+        assertEquals(LspPosition(0, 8), buffer.lspPositionForTextIndex(4))
+        assertEquals(LspPosition(1, 0), buffer.lspPositionForTextIndex(5))
+        assertEquals(4, buffer.textIndexForLspPosition(LspPosition(0, 8)))
+        assertEquals(5, buffer.textIndexForLspPosition(LspPosition(1, 0)))
+        assertFailsWith<IllegalArgumentException> {
+            buffer.textIndexForLspPosition(LspPosition(0, 2))
+        }
+    }
+
+    @Test
     fun mapsTextWidgetIndicesAtTheUiBoundary() {
         val buffer = EditorBuffer("Aह😀B")
         assertEquals(1, buffer.byteOffsetForTextIndex(1))
