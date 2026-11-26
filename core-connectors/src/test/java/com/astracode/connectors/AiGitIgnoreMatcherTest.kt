@@ -65,6 +65,16 @@ class AiGitIgnoreMatcherTest {
     }
 
     @Test
+    fun supportsDoubleStarPatternsAtAnyDirectoryDepth() {
+        val matcher = AiGitIgnoreMatcher(
+            listOf(AiGitIgnoreFile("", "**/generated/**/*.kt")),
+        )
+        assertTrue(matcher.isIgnored("generated/Build.kt"))
+        assertTrue(matcher.isIgnored("app/generated/ui/Screen.kt"))
+        assertFalse(matcher.isIgnored("app/src/ui/Screen.kt"))
+    }
+
+    @Test
     fun ignoresInvalidAbsoluteOrBackslashPaths() {
         val matcher = AiGitIgnoreMatcher(emptyList())
         assertTrue(matcher.isIgnored("../outside.kt"))
