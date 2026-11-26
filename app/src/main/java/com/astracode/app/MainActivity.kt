@@ -229,6 +229,7 @@ private data class AiWorkspaceRequestResult(
     val contextFileCount: Int,
     val proposal: AiWorkspaceProposal,
     val agentSummary: String? = null,
+    val agentAuditTrail: List<String> = emptyList(),
 )
 
 private fun editorTabBufferBytes(tab: EditorTab): Long =
@@ -1123,6 +1124,7 @@ private fun FileManagementScreen(
     var aiStreamingPreview by remember { mutableStateOf("") }
     var aiProgressEvents by remember { mutableStateOf(emptyList<String>()) }
     var aiAgentSummary by remember { mutableStateOf<String?>(null) }
+    var aiAgentAuditTrail by remember { mutableStateOf(emptyList<String>()) }
     var aiPrompt by remember(storage) { mutableStateOf("") }
     var aiBusy by remember(storage) { mutableStateOf(false) }
     var aiMessage by remember(storage) { mutableStateOf<String?>(null) }
@@ -1304,6 +1306,7 @@ private fun FileManagementScreen(
         aiStreamingPreview = ""
         aiProgressEvents = emptyList()
         aiAgentSummary = null
+        aiAgentAuditTrail = emptyList()
 
         fun onAiStreamEvent(event: AiStreamEvent) {
             scope.launch(Dispatchers.Main.immediate) {
@@ -1312,15 +1315,18 @@ private fun FileManagementScreen(
                         aiStreamingPreview = (aiStreamingPreview + event.text).takeLast(8_000)
                     }
                     is AiStreamEvent.Status -> {
-                        aiProgressEvents = (aiProgressEvents + event.message).takeLast(8)
+                        val source = event.agentId?.let { "Agent " + it + ": " }.orEmpty()
+                        aiProgressEvents = (aiProgressEvents + (source + event.message)).takeLast(8)
                     }
                     is AiStreamEvent.ToolStarted -> {
-                        aiProgressEvents = (aiProgressEvents + ("Using read-only tool: " + event.name)).takeLast(8)
+                        val source = event.agentId?.let { "Agent " + it + " · " }.orEmpty()
+                        aiProgressEvents = (aiProgressEvents + (source + "Using read-only tool: " + event.name)).takeLast(8)
                     }
                     is AiStreamEvent.ToolFinished -> {
                         aiProgressEvents = (
                             aiProgressEvents + (
-                                event.name + if (event.succeeded) " completed" else " returned an error"
+                                (event.agentId?.let { "Agent " + it + " · " }.orEmpty()) +
+                                    event.name + if (event.succeeded) " completed" else " returned an error"
                             )
                         ).takeLast(8)
                     }
@@ -1401,6 +1407,9 @@ private fun FileManagementScreen(
                             report.proposal,
                             report.summary + if (report.conflictingPaths.isEmpty()) "" else
                                 " Conflicting paths withheld: " + report.conflictingPaths.sorted().joinToString(", "),
+                            report.auditTrail.map { entry ->
+                                entry.agentId + " · " + entry.action + " · " + entry.detail
+                            },
                         )
                     } else {
                         val proposal = workspaceAiAssistant.createWorkspaceProposal(
@@ -1427,6 +1436,7 @@ private fun FileManagementScreen(
                     aiContextFileCount = request.contextFileCount
                     aiProposal = request.proposal
                     aiAgentSummary = request.agentSummary
+                    aiAgentAuditTrail = request.agentAuditTrail
                     aiMessage = if (request.proposal.changes.isEmpty()) {
                         "The AI returned an explanation but no file changes."
                     } else {
@@ -5030,7 +5040,7 @@ private fun FileManagementScreen(
                     )
                     selectedCapability?.let { capability ->
                         Text(
-                            "Model capabilities: " + capability.capabilitySummary() +
+                            "Selected model: " + capability.capabilitySummary() +
                                 " · source: " + capability.source.name.lowercase().replace("_", " "),
                             color = MutedText,
                             style = MaterialTheme.typography.bodySmall,
@@ -5040,6 +5050,32 @@ private fun FileManagementScreen(
                         color = MutedText,
                         style = MaterialTheme.typography.bodySmall,
                     )
+                    if (aiModelCatalog.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Model capability matrix", style = MaterialTheme.typography.labelMedium)
+                            aiModelCatalog.take(12).forEach { capability ->
+                                Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                    Text(
+                                        capability.displayName + " · " + capability.modelId,
+                                        style = MaterialTheme.typography.labelSmall,
+                                    )
+                                    Text(
+                                        capability.capabilitySummary(),
+                                        color = MutedText,
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                }
+                                Divider()
+                            }
+                            if (aiModelCatalog.size > 12) {
+                                Text(
+                                    "Showing 12 of " + aiModelCatalog.size + " models. Use the model selector to choose others.",
+                                    color = MutedText,
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                            }
+                        }
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(
                             onClick = {
@@ -5245,6 +5281,14 @@ private fun FileManagementScreen(
                             color = MutedText,
                             style = MaterialTheme.typography.bodySmall,
                         )
+                    }
+                    if (aiAgentAuditTrail.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text("Agent audit trail", style = MaterialTheme.typography.labelMedium)
+                            aiAgentAuditTrail.takeLast(20).forEach { entry ->
+                                Text(entry, color = MutedText, style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
                     }
                     if (aiProgressEvents.isNotEmpty()) {
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
