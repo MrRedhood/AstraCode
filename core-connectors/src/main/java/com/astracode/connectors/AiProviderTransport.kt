@@ -5,6 +5,9 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.CancellationException
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 
 class AiProviderRequestException(
     message: String,
@@ -18,8 +21,31 @@ class AiProviderProtocolException(
     cause: Throwable? = null,
 ) : IOException(message, cause)
 
+class AiRequestCancelledException(
+    message: String = "The AI request was cancelled.",
+    cause: Throwable? = null,
+) : IOException(message, cause)
+
 /** Small HTTP transport shared by all provider adapters. */
 internal class AiProviderTransport {
+    private val cancellationRequested = AtomicBoolean(false)
+    private val activeConnections = ConcurrentHashMap.newKeySet<HttpURLConnection>()
+
+    /** Starts a new top-level user operation. */
+    fun beginOperation() {
+        cancellationRequested.set(false)
+    }
+
+    /** Immediately disconnects all active provider requests for this operation. */
+    fun cancelActiveRequests() {
+        cancellationRequested.set(true)
+        activeConnections.toList().forEach { connection ->
+            runCatching { connection.disconnect() }
+        }
+    }
+
+    fun isCancellationRequested(): Boolean = cancellationRequested.get()
+
     fun getJson(
         url: String,
         apiKey: String,
@@ -31,6 +57,10 @@ internal class AiProviderTransport {
             val body = readResponse(connection, status)
             if (status !in 200..299) throw requestError(provider, status, body)
             return parseJson(body, provider)
+        } catch (cancelled: AiRequestCancelledException) {
+            throw cancelled
+        } catch (cancelled: AiRequestCancelledException) {
+            throw cancelled
         } catch (error: AiProviderRequestException) {
             throw error
         } catch (error: AiProviderProtocolException) {
@@ -41,6 +71,7 @@ internal class AiProviderTransport {
                 error,
             )
         } catch (error: Exception) {
+            if (cancellationRequested.get()) throw AiRequestCancelledException(cause = error)
             throw AiProviderRequestException(
                 provider.displayName + " network request failed",
                 null,
@@ -48,7 +79,7 @@ internal class AiProviderTransport {
                 error,
             )
         } finally {
-            connection.disconnect()
+            releaseConnection(connection)
         }
     }
 
@@ -105,6 +136,7 @@ internal class AiProviderTransport {
                 error,
             )
         } catch (error: IOException) {
+            if (cancellationRequested.get()) throw AiRequestCancelledException(cause = error)
             throw AiProviderRequestException(
                 provider.displayName + " streaming request failed: " + (error.message ?: "network error"),
                 null,
@@ -112,7 +144,7 @@ internal class AiProviderTransport {
                 error,
             )
         } finally {
-            connection.disconnect()
+            releaseConnection(connection)
         }
     }
 
@@ -123,7 +155,13 @@ internal class AiProviderTransport {
         provider: AiProvider,
         hasBody: Boolean,
     ): HttpURLConnection {
+        if (cancellationRequested.get()) throw AiRequestCancelledException()
         val connection = URL(url).openConnection() as HttpURLConnection
+        activeConnections.add(connection)
+        if (cancellationRequested.get()) {
+            releaseConnection(connection)
+            throw AiRequestCancelledException()
+        }
         connection.requestMethod = method
         connection.instanceFollowRedirects = false
         connection.connectTimeout = CONNECT_TIMEOUT_MS
@@ -142,6 +180,11 @@ internal class AiProviderTransport {
             else -> connection.setRequestProperty("Authorization", "Bearer " + apiKey)
         }
         return connection
+    }
+
+    private fun releaseConnection(connection: HttpURLConnection) {
+        activeConnections.remove(connection)
+        runCatching { connection.disconnect() }
     }
 
     private fun readResponse(connection: HttpURLConnection, status: Int): String {
