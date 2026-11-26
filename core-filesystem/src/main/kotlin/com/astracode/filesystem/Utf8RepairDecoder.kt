@@ -1,16 +1,11 @@
 package com.astracode.filesystem
 
 /**
- * A streaming UTF-8 decoder following the WHATWG UTF-8 decoder state machine.
- *
- * Input may be supplied in arbitrarily sized windows. The decoder keeps partial
- * sequences between calls and emits U+FFFD for malformed input. By default, a
- * single leading UTF-8 BOM is consumed, matching TextDecoder("utf-8").
- * Instances are single-use and must be finished with endOfInput = true.
+ * Streaming UTF-8 decoder following the WHATWG UTF-8 decoder state machine.
+ * It keeps partial sequences across windows and replaces malformed input with
+ * U+FFFD. A leading UTF-8 BOM is consumed by default.
  */
-class Utf8RepairDecoder(
-    private val ignoreBom: Boolean = false,
-) {
+class Utf8RepairDecoder(private val ignoreBom: Boolean = false) {
     private var codePoint = 0
     private var bytesNeeded = 0
     private var bytesSeen = 0
@@ -18,7 +13,7 @@ class Utf8RepairDecoder(
     private var upperBoundary = 0xBF
     private var sequenceStartByteOffset = 0L
     private var totalBytesRead = 0L
-    private var totalUtf16Units = 0
+    private var totalDocumentByteLength = 0L
     private var hasProducedOutput = false
     private var finished = false
 
@@ -27,7 +22,7 @@ class Utf8RepairDecoder(
         private set
 
     val bytesRead: Long get() = totalBytesRead
-    val utf16Length: Int get() = totalUtf16Units
+    val documentByteLength: Long get() = totalDocumentByteLength
     val repairedSpans: List<RepairedSpan> get() = repairs.toList()
 
     /** Decode one byte window and return only the text produced by that call. */
@@ -39,7 +34,7 @@ class Utf8RepairDecoder(
     ): String {
         check(!finished) { "Decoder has already reached end of input" }
         require(offset >= 0 && length >= 0 && offset <= input.size - length) {
-            "Invalid input window: offset=$offset, length=$length, size=${input.size}"
+            "Invalid input window: offset=" + offset + ", length=" + length + ", size=" + input.size
         }
 
         val output = StringBuilder(length)
@@ -121,18 +116,25 @@ class Utf8RepairDecoder(
             }
         }
         output.appendCodePoint(value)
-        totalUtf16Units += if (value > 0xFFFF) 2 else 1
+        totalDocumentByteLength += utf8Length(value)
     }
 
     private fun emitReplacement(sourceOffset: Long, sourceLength: Int, output: StringBuilder) {
         repairs += RepairedSpan(
-            documentUtf16Offset = totalUtf16Units,
+            documentByteOffset = totalDocumentByteLength,
             sourceByteOffset = sourceOffset,
             sourceByteLength = sourceLength,
         )
         hasProducedOutput = true
         output.append('\uFFFD')
-        totalUtf16Units++
+        totalDocumentByteLength += REPLACEMENT_UTF8_LENGTH
+    }
+
+    private fun utf8Length(value: Int): Int = when {
+        value <= 0x7F -> 1
+        value <= 0x7FF -> 2
+        value <= 0xFFFF -> 3
+        else -> 4
     }
 
     private fun resetSequence() {
@@ -143,11 +145,15 @@ class Utf8RepairDecoder(
         upperBoundary = 0xBF
         sequenceStartByteOffset = 0L
     }
+
+    private companion object {
+        const val REPLACEMENT_UTF8_LENGTH = 3L
+    }
 }
 
-/** Provenance for one U+FFFD inserted while repairing a malformed byte sequence. */
+/** Byte provenance for one U+FFFD inserted while repairing malformed UTF-8. */
 data class RepairedSpan(
-    val documentUtf16Offset: Int,
+    val documentByteOffset: Long,
     val sourceByteOffset: Long,
     val sourceByteLength: Int,
 )
