@@ -135,6 +135,7 @@ import com.astracode.connectors.AiAgentOrchestrator
 import com.astracode.connectors.AiAgentProfile
 import com.astracode.connectors.AiToolRegistry
 import com.astracode.connectors.AiStreamEvent
+import com.astracode.connectors.AiTokenUsage
 import com.astracode.connectors.AiConversationStore
 import com.astracode.connectors.AiConversationThread
 import com.astracode.connectors.AiConversationMessage
@@ -1210,6 +1211,7 @@ private fun FileManagementScreen(
     var aiRenameValue by remember { mutableStateOf("") }
     var aiDeleteTarget by remember { mutableStateOf<AiConversationThread?>(null) }
     var aiStreamingPreview by remember { mutableStateOf("") }
+    var aiTokenUsage by remember { mutableStateOf<AiTokenUsage?>(null) }
     var aiProgressEvents by remember { mutableStateOf(emptyList<String>()) }
     var aiAgentSummary by remember { mutableStateOf<String?>(null) }
     var aiAgentAuditTrail by remember { mutableStateOf(emptyList<String>()) }
@@ -1618,6 +1620,7 @@ private fun FileManagementScreen(
         aiDeleteAcknowledged = false
         aiExpandedPreviewPaths = emptySet()
         aiStreamingPreview = ""
+        aiTokenUsage = null
         aiProgressEvents = emptyList()
         aiAgentSummary = null
         aiAgentAuditTrail = emptyList()
@@ -1646,6 +1649,9 @@ private fun FileManagementScreen(
                                     event.name + if (event.succeeded) " completed" else " returned an error"
                             )
                         ).takeLast(8)
+                    }
+                    is AiStreamEvent.Usage -> {
+                        aiTokenUsage = aiTokenUsage?.plus(event.usage) ?: event.usage
                     }
                 }
             }
@@ -6427,6 +6433,22 @@ private fun FileManagementScreen(
                                 }
                             }
                         }
+                    }
+                    aiTokenUsage?.let { usage ->
+                        val input = usage.inputTokens?.toString() ?: "unknown"
+                        val output = usage.outputTokens?.toString() ?: "unknown"
+                        val total = usage.totalTokens?.toString() ?: "unknown"
+                        val cached = usage.cachedInputTokens?.toString() ?: "unknown"
+                        val cost = usage.estimatedCostUsd?.let {
+                            "USD " + "%.8f".format(java.util.Locale.US, it) + " estimated"
+                        } ?: "price unavailable"
+                        Text(
+                            "Provider usage (all streamed rounds): input " + input +
+                                " · output " + output + " · total " + total +
+                                " · cached input " + cached + " · " + cost,
+                            color = MutedText,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                     }
                     aiAgentSummary?.let { report ->
                         Text(
