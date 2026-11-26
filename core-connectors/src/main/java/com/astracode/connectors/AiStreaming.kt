@@ -298,7 +298,7 @@ object AiSseReader {
         while (true) {
             val value = reader.read()
             if (value < 0) return if (sawCharacter) line.toString() else null
-            if (value == '\n'.code) return line.toString().removeSuffix("\\r")
+            if (value == '\n'.code) return line.toString().removeSuffix("\r")
             sawCharacter = true
             if (line.length >= maximumCharacters) {
                 throw AiProviderProtocolException("An SSE line exceeded the size limit")
