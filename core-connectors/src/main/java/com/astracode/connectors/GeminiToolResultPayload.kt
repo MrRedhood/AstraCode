@@ -6,8 +6,8 @@ import org.json.JSONObject
 /**
  * Builds the Interactions API REST function_result payload.
  *
- * The current REST quickstart models result as a list of text content blocks.
- * Keep this conversion separate so it can be tested without making live calls.
+ * The REST streaming continuation shape is a result object containing a
+ * content array of text blocks. Keep this conversion isolated and testable.
  */
 internal object GeminiToolResultPayload {
     fun from(results: List<AiToolResult>): JSONArray {
