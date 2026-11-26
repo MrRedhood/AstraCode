@@ -13,6 +13,10 @@ sealed interface AiStreamEvent {
         val succeeded: Boolean,
         val agentId: String? = null,
     ) : AiStreamEvent
+    data class Usage(
+        val usage: AiTokenUsage,
+        val agentId: String? = null,
+    ) : AiStreamEvent
 }
 
 data class AiStreamToolCall(
@@ -21,11 +25,25 @@ data class AiStreamToolCall(
     val arguments: JSONObject,
 )
 
+data class AiTokenUsage(
+    val inputTokens: Long? = null,
+    val outputTokens: Long? = null,
+    val totalTokens: Long? = null,
+    val cachedInputTokens: Long? = null,
+    val estimatedCostUsd: Double? = null,
+) {
+    fun withPricing(pricing: AiModelPricing?): AiTokenUsage {
+        if (pricing == null || inputTokens == null || outputTokens == null) return this
+        return copy(estimatedCostUsd = pricing.estimateCostUsd(inputTokens, outputTokens))
+    }
+}
+
 data class AiStreamResult(
     val text: String,
     val toolCalls: List<AiStreamToolCall>,
     val finalPayload: JSONObject?,
     val interactionId: String? = null,
+    val usage: AiTokenUsage? = null,
 )
 
 /** Incrementally converts provider-specific SSE data events into common output. */
@@ -41,6 +59,10 @@ class AiStreamAccumulator(private val provider: AiProvider) {
     private var finalPayload: JSONObject? = null
     private var currentAnthropicIndex = "0"
     private var geminiInteractionId = ""
+    private var inputTokens: Long? = null
+    private var outputTokens: Long? = null
+    private var totalTokens: Long? = null
+    private var cachedInputTokens: Long? = null
 
     fun accept(data: String, onEvent: (AiStreamEvent) -> Unit = {}) {
         if (data.isBlank() || data == "[DONE]") return
@@ -88,7 +110,21 @@ class AiStreamAccumulator(private val provider: AiProvider) {
                 arguments = args,
             )
         }
-        return AiStreamResult(text.toString(), parsed, finalPayload, geminiInteractionId.ifBlank { null })
+        val usage = if (
+            inputTokens == null && outputTokens == null && totalTokens == null && cachedInputTokens == null
+        ) null else AiTokenUsage(
+            inputTokens = inputTokens,
+            outputTokens = outputTokens,
+            totalTokens = totalTokens,
+            cachedInputTokens = cachedInputTokens,
+        )
+        return AiStreamResult(
+            text.toString(),
+            parsed,
+            finalPayload,
+            geminiInteractionId.ifBlank { null },
+            usage,
+        )
     }
 
     fun interactionId(): String = geminiInteractionId
@@ -120,7 +156,8 @@ class AiStreamAccumulator(private val provider: AiProvider) {
             }
             "response.completed", "response.incomplete", "response.failed" -> {
                 finalPayload = json.optJSONObject("response")
-                if (json.optString("type") == "response.failed") {
+                captureOpenAiUsage(finalPayload?.optJSONObject("usage"))
+                if (json.optString("type") == "response.failed")
                     val responseError = finalPayload?.optJSONObject("error") ?: JSONObject()
                     val errorEvent = JSONObject()
                         .put("error", responseError)
@@ -161,6 +198,7 @@ class AiStreamAccumulator(private val provider: AiProvider) {
             }
             "interaction.completed" -> {
                 finalPayload = json.optJSONObject("interaction")
+                captureGeminiUsage(finalPayload?.optJSONObject("usage"))
                 if (geminiInteractionId.isBlank()) {
                     geminiInteractionId = finalPayload?.optString("id").orEmpty()
                 }
@@ -171,6 +209,10 @@ class AiStreamAccumulator(private val provider: AiProvider) {
 
     private fun acceptAnthropic(json: JSONObject, onEvent: (AiStreamEvent) -> Unit) {
         when (json.optString("type")) {
+            "message_start" -> captureAnthropicUsage(
+                json.optJSONObject("message")?.optJSONObject("usage"),
+                outputUsageMayBeMissing = true,
+            )
             "content_block_start" -> {
                 val index = json.optInt("index", 0).toString()
                 currentAnthropicIndex = index
@@ -197,6 +239,7 @@ class AiStreamAccumulator(private val provider: AiProvider) {
                 }
             }
             "message_delta" -> {
+                captureAnthropicUsage(json.optJSONObject("usage"), outputUsageMayBeMissing = false)
                 finalPayload = JSONObject()
                     .put(
                         "status",
@@ -213,6 +256,7 @@ class AiStreamAccumulator(private val provider: AiProvider) {
     }
 
     private fun acceptChatCompletion(json: JSONObject, onEvent: (AiStreamEvent) -> Unit) {
+        captureChatCompletionUsage(json.optJSONObject("usage"))
         val choices = json.optJSONArray("choices")
         val choice = choices?.optJSONObject(0) ?: return
         val finishReason = choice.optString("finish_reason")
@@ -247,6 +291,59 @@ class AiStreamAccumulator(private val provider: AiProvider) {
             if (function.has("arguments")) {
                 appendToolArguments(builder, function.optString("arguments"))
             }
+        }
+    }
+
+    private fun captureOpenAiUsage(usage: JSONObject?) {
+        if (usage == null) return
+        inputTokens = usage.optTokenCount("input_tokens") ?: inputTokens
+        outputTokens = usage.optTokenCount("output_tokens") ?: outputTokens
+        totalTokens = usage.optTokenCount("total_tokens") ?: totalTokens
+        cachedInputTokens = usage.optJSONObject("input_tokens_details")
+            ?.optTokenCount("cached_tokens") ?: cachedInputTokens
+    }
+
+    private fun captureGeminiUsage(usage: JSONObject?) {
+        if (usage == null) return
+        inputTokens = usage.optTokenCount("total_input_tokens") ?: inputTokens
+        outputTokens = usage.optTokenCount("total_output_tokens") ?: outputTokens
+        totalTokens = usage.optTokenCount("total_tokens") ?: totalTokens
+        cachedInputTokens = usage.optTokenCount("total_cached_tokens") ?: cachedInputTokens
+    }
+
+    private fun captureAnthropicUsage(
+        usage: JSONObject?,
+        outputUsageMayBeMissing: Boolean,
+    ) {
+        if (usage == null) return
+        inputTokens = usage.optTokenCount("input_tokens") ?: inputTokens
+        outputTokens = usage.optTokenCount("output_tokens") ?: outputTokens
+        totalTokens = if (inputTokens != null || outputTokens != null) {
+            (inputTokens ?: 0L) + (outputTokens ?: 0L)
+        } else totalTokens
+        cachedInputTokens = (
+            usage.optTokenCount("cache_read_input_tokens") ?: 0L
+            ) + (usage.optTokenCount("cache_creation_input_tokens") ?: 0L)
+        if (outputUsageMayBeMissing && outputTokens == null) {
+            outputTokens = null
+        }
+    }
+
+    private fun captureChatCompletionUsage(usage: JSONObject?) {
+        if (usage == null) return
+        inputTokens = usage.optTokenCount("prompt_tokens") ?: inputTokens
+        outputTokens = usage.optTokenCount("completion_tokens") ?: outputTokens
+        totalTokens = usage.optTokenCount("total_tokens") ?: totalTokens
+        cachedInputTokens = usage.optJSONObject("prompt_tokens_details")
+            ?.optTokenCount("cached_tokens") ?: cachedInputTokens
+    }
+
+    private fun JSONObject.optTokenCount(key: String): Long? {
+        val raw = opt(key)
+        return when (raw) {
+            is Number -> raw.toLong().takeIf { it >= 0 }
+            is String -> raw.toLongOrNull()?.takeIf { it >= 0 }
+            else -> null
         }
     }
 
