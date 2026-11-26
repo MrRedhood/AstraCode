@@ -17,6 +17,28 @@ enum class AiCapabilitySource {
     UNKNOWN,
 }
 
+/**
+ * Dynamic model prices are sourced from provider metadata where available.
+ * Prices are expressed per one million billable tokens.
+ */
+data class AiModelPricing(
+    val inputUsdPerMillionTokens: Double,
+    val outputUsdPerMillionTokens: Double,
+) {
+    init {
+        require(inputUsdPerMillionTokens.isFinite() && inputUsdPerMillionTokens >= 0.0)
+        require(outputUsdPerMillionTokens.isFinite() && outputUsdPerMillionTokens >= 0.0)
+    }
+
+    fun estimateCostUsd(inputTokens: Long, outputTokens: Long): Double {
+        require(inputTokens >= 0 && outputTokens >= 0)
+        return (
+            inputTokens.toDouble() * inputUsdPerMillionTokens +
+                outputTokens.toDouble() * outputUsdPerMillionTokens
+            ) / 1_000_000.0
+    }
+}
+
 data class AiModelCapabilities(
     val provider: AiProvider,
     val modelId: String,
@@ -30,6 +52,7 @@ data class AiModelCapabilities(
     val supportsStreaming: AiCapabilitySupport = AiCapabilitySupport.UNKNOWN,
     val supportedParameters: Set<String> = emptySet(),
     val source: AiCapabilitySource = AiCapabilitySource.UNKNOWN,
+    val pricing: AiModelPricing? = null,
 ) {
     fun canSatisfy(requirements: AiCapabilityRequirements): Boolean {
         if (requirements.requiresToolCalling &&
