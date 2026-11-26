@@ -75,15 +75,22 @@ internal class AiProviderTransport {
             val input = connection.inputStream.bufferedReader(StandardCharsets.UTF_8)
             input.use { reader -> AiSseReader.read(reader, accumulator, onEvent) }
             return accumulator.result().let { result ->
-                if (result.text.isBlank() && result.toolCalls.isEmpty()) {
-                    val responseError = result.finalPayload?.optString("status")
-                    if (responseError != null && responseError != "completed") {
-                        throw AiProviderRequestException(
-                            provider.displayName + " returned status " + responseError,
-                            null,
-                            false,
-                        )
-                    }
+                val terminalStatus = result.finalPayload?.optString("status")
+                if (terminalStatus in setOf("failed", "cancelled", "incomplete")) {
+                    throw AiProviderRequestException(
+                        provider.displayName + " returned status " + terminalStatus,
+                        null,
+                        false,
+                    )
+                }
+                if (result.finalPayload == null) {
+                    throw AiProviderProtocolException(
+                        provider.displayName + " stream ended without a completion event",
+                    )
+                }
+                if (result.text.isBlank() && result.toolCalls.isEmpty() &&
+                    terminalStatus != "requires_action"
+                ) {
                     throw AiProviderProtocolException(provider.displayName + " returned no text or tool calls")
                 }
                 result
@@ -161,10 +168,16 @@ internal class AiProviderTransport {
             throw AiProviderProtocolException(provider.displayName + " returned invalid JSON", error)
         }
         result.optJSONObject("error")?.let { error ->
-            val code = error.optString("code").lowercase()
-            val retryable = code.contains("rate") || code.contains("overloaded") ||
-                code.contains("timeout") || code.contains("server") ||
-                code.contains("temporarily_unavailable")
+            val details = listOf(
+                error.optString("type"),
+                error.optString("code"),
+                error.optString("message"),
+            ).joinToString(" ").lowercase()
+            val retryable = listOf(
+                "rate_limit", "rate limit", "overloaded", "timeout",
+                "temporarily_unavailable", "temporarily unavailable",
+                "internal server", "server_error", "service unavailable",
+            ).any { it in details }
             throw AiProviderRequestException(
                 error.optString("message", provider.displayName + " request failed"),
                 null,
