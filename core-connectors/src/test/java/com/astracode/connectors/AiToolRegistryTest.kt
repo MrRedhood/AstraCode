@@ -2,6 +2,7 @@ package com.astracode.connectors
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import org.json.JSONObject
@@ -65,6 +66,30 @@ class AiToolRegistryTest {
         val manyJson = JSONObject(moreThanForty.content)
         assertEquals(40, manyJson.getJSONArray("matches").length())
         assertTrue(manyJson.getBoolean("truncated"))
+    }
+
+    @Test
+    fun profileCanExposeOnlyAnExplicitToolSubset() {
+        val restricted = AiToolRegistry(
+            listOf(WorkspaceFileSnapshot("src/Main.kt", "class Main")),
+            setOf("list_workspace_files"),
+        )
+        assertEquals(listOf("list_workspace_files"), restricted.definitions.map { it.name })
+        assertTrue(
+            restricted.execute(AiToolCall("list", "list_workspace_files", JSONObject())).succeeded,
+        )
+        assertFalse(
+            restricted.execute(
+                AiToolCall("read", "read_workspace_file", JSONObject().put("path", "src/Main.kt")),
+            ).succeeded,
+        )
+    }
+
+    @Test
+    fun profileCannotDeclareAnUnknownTool() {
+        assertFailsWith<IllegalArgumentException> {
+            AiToolRegistry(emptyList(), setOf("run_shell"))
+        }
     }
 
     @Test
