@@ -119,6 +119,13 @@ import com.astracode.filesystem.FileManagementSystem
 import com.astracode.filesystem.WorkspaceStorage
 import com.astracode.filesystem.WorkspaceStorageType
 import com.astracode.filesystem.Utf8RepairDecoder
+import com.astracode.editor.EditorBuffer
+import com.astracode.terminal.TerminalCommandRunner
+import com.astracode.connectors.AiChangeOperation
+import com.astracode.connectors.AiWorkspaceProposal
+import com.astracode.connectors.OpenAiWorkspaceAssistant
+import com.astracode.connectors.WorkspaceFileSnapshot
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.astracode.app.storage.SafWorkspaceStorage
 import com.astracode.app.storage.WorkspaceArchive
 import com.astracode.app.storage.WorkspaceSafety
@@ -1041,6 +1048,19 @@ private fun FileManagementScreen(
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val openAiAssistant = remember(context) { OpenAiWorkspaceAssistant(context) }
+    val terminalWorkspaceRoot = remember(storage, context, activeWorkspaceId) {
+        val existingRoot = (storage as? FileManagementSystem)?.rootDirectory?.toFile()
+        val root = existingRoot ?: File(
+            context.filesDir,
+            "terminal-workspaces/" + activeWorkspaceId.hashCode().toUInt().toString(16),
+        )
+        root.mkdirs()
+        root.canonicalFile
+    }
+    val terminalRunner = remember(terminalWorkspaceRoot) {
+        runCatching { TerminalCommandRunner(terminalWorkspaceRoot) }
+    }
     val editorPreferences = remember(context) {
         context.getSharedPreferences("astracode_editor_preferences", Context.MODE_PRIVATE)
     }
@@ -1050,6 +1070,26 @@ private fun FileManagementScreen(
     var currentDirectory by remember(storage) { mutableStateOf("") }
     var openedFile by remember(storage) { mutableStateOf<String?>(null) }
     var editorTabs by remember(storage) { mutableStateOf(emptyList<EditorTab>()) }
+    val editorBuffers = remember(storage) { mutableMapOf<String, EditorBuffer>() }
+    var showAiAssistant by remember(storage) { mutableStateOf(false) }
+    var aiApiKeyInput by remember { mutableStateOf("") }
+    var aiHasApiKey by remember(openAiAssistant) {
+        mutableStateOf(runCatching { openAiAssistant.hasApiKey() }.getOrDefault(false))
+    }
+    var aiPrompt by remember(storage) { mutableStateOf("") }
+    var aiBusy by remember(storage) { mutableStateOf(false) }
+    var aiMessage by remember(storage) { mutableStateOf<String?>(null) }
+    var aiProposal by remember(storage) { mutableStateOf<AiWorkspaceProposal?>(null) }
+    var aiBaselineFiles by remember(storage) { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var aiContextFileCount by remember(storage) { mutableStateOf(0) }
+    var aiDeleteAcknowledged by remember(storage) { mutableStateOf(false) }
+    var showTerminalPanel by remember(storage) { mutableStateOf(false) }
+    var terminalCommand by remember(storage) { mutableStateOf("pwd") }
+    var terminalWorkingDirectory by remember(terminalWorkspaceRoot) {
+        mutableStateOf(terminalWorkspaceRoot.absolutePath)
+    }
+    var terminalOutput by remember(storage) { mutableStateOf("") }
+    var terminalBusy by remember(storage) { mutableStateOf(false) }
     var firstDirtyAt by remember(storage) { mutableStateOf(emptyMap<String, Long>()) }
     var lastEditedAt by remember(storage) { mutableStateOf(emptyMap<String, Long>()) }
     var autosaveRetryAt by remember(storage) { mutableStateOf(emptyMap<String, Long>()) }
@@ -1164,6 +1204,307 @@ private fun FileManagementScreen(
         scope.launch { snackbarHostState.showSnackbar(message) }
     }
 
+    fun requestAiWorkspacePlan() {
+        val task = aiPrompt.trim()
+        if (task.isBlank()) {
+            aiMessage = "Describe the change you want the AI to make."
+            return
+        }
+        if (!aiHasApiKey) {
+            aiMessage = "Add your OpenAI API key first."
+            return
+        }
+
+        val requestedStorage = storage
+        val unsavedEditorText = editorTabs
+            .filterNot { it.isLoading }
+            .associate { it.path to it.text }
+        aiBusy = true
+        aiMessage = "Reading a bounded set of workspace source files and requesting a plan…"
+        aiProposal = null
+        aiBaselineFiles = emptyMap()
+        aiDeleteAcknowledged = false
+
+        scope.launch {
+            val result = runCatchingCancellable {
+                withContext(Dispatchers.IO) {
+                    val baselines = linkedMapOf<String, String>()
+                    val snapshots = mutableListOf<WorkspaceFileSnapshot>()
+                    var totalCharacters = 0L
+
+                    val candidates = requestedStorage.scanTree(maxDepth = 8)
+                        .asSequence()
+                        .filter { entry ->
+                            entry.type == FileEntryType.FILE &&
+                                entry.readable &&
+                                entry.sizeBytes <= 96L * 1024L &&
+                                isAiWorkspaceTextFile(entry.path)
+                        }
+                        .sortedBy { it.path }
+                        .take(60)
+                        .toList()
+
+                    for (entry in candidates) {
+                        val diskText = requestedStorage.readText(entry.path).text
+                        if (diskText.length > 96 * 1024) continue
+                        val contextText = unsavedEditorText[entry.path] ?: diskText
+                        if (totalCharacters + contextText.length > 600L * 1024L) break
+                        baselines[entry.path] = diskText
+                        snapshots += WorkspaceFileSnapshot(entry.path, contextText)
+                        totalCharacters += contextText.length
+                    }
+
+                    val proposal = openAiAssistant.createWorkspaceProposal(task, snapshots)
+                    Triple(baselines, snapshots.size, proposal)
+                }
+            }
+
+            if (storage === requestedStorage) {
+                result.onSuccess { (baselines, count, proposal) ->
+                    aiBaselineFiles = baselines
+                    aiContextFileCount = count
+                    aiProposal = proposal
+                    aiMessage = if (proposal.changes.isEmpty()) {
+                        "The AI returned an explanation but no file changes."
+                    } else {
+                        "Review every proposed change before applying it."
+                    }
+                }.onFailure { error ->
+                    aiMessage = error.message ?: "The AI request failed."
+                }
+                aiBusy = false
+            }
+        }
+    }
+
+    fun applyAiWorkspacePlan() {
+        val proposal = aiProposal ?: return
+        if (aiBusy) return
+        if (
+            proposal.changes.any { it.operation == AiChangeOperation.DELETE } &&
+            !aiDeleteAcknowledged
+        ) {
+            aiMessage = "Confirm permanent file deletion before applying this plan."
+            return
+        }
+
+        val requestedStorage = storage
+        val baselineSnapshot = aiBaselineFiles
+        aiBusy = true
+        aiMessage = "Checking the workspace for conflicts…"
+
+        scope.launch {
+            val result = runCatchingCancellable {
+                withContext(Dispatchers.IO) {
+                    val before = linkedMapOf<String, String?>()
+                    val createdDirectories = mutableListOf<String>()
+
+                    // Validate every target before the first write.
+                    for (change in proposal.changes) {
+                        val exists = requestedStorage.exists(change.path)
+                        when (change.operation) {
+                            AiChangeOperation.CREATE -> {
+                                check(!exists) {
+                                    "Cannot create " + change.path + ": that path already exists."
+                                }
+                                before[change.path] = null
+                            }
+                            AiChangeOperation.MODIFY,
+                            AiChangeOperation.DELETE -> {
+                                check(exists) {
+                                    "Cannot change " + change.path + ": the file no longer exists."
+                                }
+                                val original = requestedStorage.readText(change.path).text
+                                val expected = baselineSnapshot[change.path]
+                                check(expected != null && original == expected) {
+                                    "The file changed after the AI read it: " + change.path +
+                                        ". Generate a new plan so your latest work is not overwritten."
+                                }
+                                before[change.path] = original
+                            }
+                        }
+                    }
+
+                    fun ensureParentDirectories(path: String) {
+                        val segments = path.split('/').dropLast(1)
+                        var current = ""
+                        for (segment in segments) {
+                            current = if (current.isEmpty()) segment else current + "/" + segment
+                            if (!requestedStorage.exists(current)) {
+                                requestedStorage.createDirectory(current)
+                                createdDirectories += current
+                            } else {
+                                check(
+                                    runCatching {
+                                        requestedStorage.listDirectory(parentPath(current))
+                                            .any { it.path == current && it.type == FileEntryType.DIRECTORY }
+                                    }.getOrDefault(false),
+                                ) { "A required parent path is not a folder: " + current }
+                            }
+                        }
+                    }
+
+                    try {
+                        for (change in proposal.changes) {
+                            when (change.operation) {
+                                AiChangeOperation.CREATE -> {
+                                    ensureParentDirectories(change.path)
+                                    requestedStorage.writeText(change.path, change.content)
+                                }
+                                AiChangeOperation.MODIFY -> {
+                                    requestedStorage.writeText(change.path, change.content)
+                                }
+                                AiChangeOperation.DELETE -> {
+                                    // Deliberately permanent. The UI requires a separate deletion acknowledgement.
+                                    requestedStorage.delete(change.path, recursive = false)
+                                }
+                            }
+                        }
+                    } catch (failure: Throwable) {
+                        for ((path, oldText) in before.entries.toList().asReversed()) {
+                            runCatching {
+                                if (oldText == null) {
+                                    if (requestedStorage.exists(path)) {
+                                        requestedStorage.delete(path, recursive = false)
+                                    }
+                                } else {
+                                    requestedStorage.writeText(path, oldText)
+                                }
+                            }
+                        }
+                        createdDirectories.asReversed().forEach { directory ->
+                            runCatching { requestedStorage.delete(directory, recursive = false) }
+                        }
+                        throw failure
+                    }
+
+                    proposal
+                }
+            }
+
+            if (storage === requestedStorage) {
+                result.onSuccess { applied ->
+                    val changesByPath = applied.changes.associateBy { it.path }
+                    for (change in applied.changes) {
+                        clearEditorAutosaveSchedule(change.path)
+                        if (
+                            change.operation == AiChangeOperation.MODIFY ||
+                            change.operation == AiChangeOperation.DELETE
+                        ) {
+                            editorBuffers.remove(change.path)
+                        }
+                    }
+                    editorTabs = editorTabs.mapNotNull { tab ->
+                        val change = changesByPath[tab.path] ?: return@mapNotNull tab
+                        when (change.operation) {
+                            AiChangeOperation.DELETE -> null
+                            AiChangeOperation.MODIFY -> tab.copy(
+                                text = change.content,
+                                savedText = change.content,
+                                isLoading = false,
+                            )
+                            AiChangeOperation.CREATE -> tab
+                        }
+                    }
+                    if (openedFile != null && changesByPath[openedFile]?.operation == AiChangeOperation.DELETE) {
+                        openedFile = editorTabs.firstOrNull()?.path
+                    }
+                    refreshKey++
+                    aiProposal = null
+                    aiBaselineFiles = emptyMap()
+                    aiDeleteAcknowledged = false
+                    aiMessage = "Applied " + applied.changes.size +
+                        " file change(s). Deleted files were permanently removed."
+                    notify(aiMessage.orEmpty())
+                }.onFailure { error ->
+                    aiMessage = error.message ?: "The AI changes could not be applied."
+                }
+                aiBusy = false
+            }
+        }
+    }
+
+    fun executeTerminalCommand() {
+        val command = terminalCommand.trim()
+        if (command.isBlank()) {
+            terminalOutput = (terminalOutput + "\nEnter a command first.\n").takeLast(96 * 1024)
+            return
+        }
+        val runner = terminalRunner.getOrElse { error ->
+            terminalOutput = (terminalOutput + "\nTerminal unavailable: " +
+                (error.message ?: "no supported shell was found") + "\n").takeLast(96 * 1024)
+            return
+        }
+
+        // A one-shot shell is used for each command. Handle cd in the app so that
+        // the selected working directory remains stable between commands.
+        val cdMatch = Regex("^cd(?:\\s+(.+))?$").matchEntire(command)
+        if (cdMatch != null) {
+            val rawTarget = cdMatch.groupValues.getOrNull(1).orEmpty().trim()
+                .removeSurrounding("\"")
+                .removeSurrounding("'")
+            val requestedTarget = when {
+                rawTarget.isBlank() || rawTarget == "~" -> terminalWorkspaceRoot
+                rawTarget.startsWith("/") -> File(rawTarget)
+                else -> File(File(terminalWorkingDirectory), rawTarget)
+            }
+            val target = runCatching { requestedTarget.canonicalFile }.getOrNull()
+            val rootPath = terminalWorkspaceRoot.absolutePath
+            val targetPath = target?.absolutePath.orEmpty()
+            if (
+                target == null ||
+                (targetPath != rootPath && !targetPath.startsWith(rootPath + File.separator)) ||
+                !target.isDirectory
+            ) {
+                terminalOutput = (terminalOutput + "\ncd: directory is outside the terminal workspace or does not exist.\n")
+                    .takeLast(96 * 1024)
+            } else {
+                terminalWorkingDirectory = targetPath
+                terminalOutput = (terminalOutput + "\n$ cd " +
+                    (if (rawTarget.isBlank()) "~" else rawTarget) + "\n").takeLast(96 * 1024)
+            }
+            return
+        }
+
+        val requestedStorage = storage
+        val workingDirectory = File(terminalWorkingDirectory)
+        terminalBusy = true
+        scope.launch {
+            val result = runCatchingCancellable {
+                withContext(Dispatchers.IO) {
+                    runner.execute(command, workingDirectory, timeoutMillis = 60_000L)
+                }
+            }
+            if (storage === requestedStorage) {
+                val output = result.fold(
+                    onSuccess = { commandResult ->
+                        buildString {
+                            append("$ ").append(command).append('\n')
+                            if (commandResult.standardOutput.isNotEmpty()) {
+                                append(commandResult.standardOutput)
+                                if (!commandResult.standardOutput.endsWith('\n')) append('\n')
+                            }
+                            if (commandResult.standardError.isNotEmpty()) {
+                                append(commandResult.standardError)
+                                if (!commandResult.standardError.endsWith('\n')) append('\n')
+                            }
+                            if (commandResult.outputTruncated) append("[output limit reached]\n")
+                            if (commandResult.timedOut) append("[command timed out and was stopped]\n")
+                            else append("[exit ").append(commandResult.exitCode).append(" · ")
+                                .append(commandResult.durationMillis).append(" ms]\n")
+                        }
+                    },
+                    onFailure = { error ->
+                        "$ " + command + "\nTerminal error: " +
+                            (error.message ?: "command could not be executed") + "\n"
+                    },
+                )
+                terminalOutput = (terminalOutput + output).takeLast(96 * 1024)
+                terminalBusy = false
+            }
+        }
+    }
+
     fun recordRecentFile(path: String) {
         if (path.isBlank()) return
         val updated = (listOf(path) + recentEditorPaths.filterNot { it == path }).take(10)
@@ -1202,8 +1543,11 @@ private fun FileManagementScreen(
         }
         lastEditedAt = lastEditedAt + (path to now)
         autosaveRetryAt = autosaveRetryAt - path
+        val pieceTableBuffer = editorBuffers.getOrPut(path) { EditorBuffer(currentTab.text) }
+        pieceTableBuffer.applyTextFieldSnapshot(newText)
+        val bufferedText = pieceTableBuffer.text()
         editorTabs = editorTabs.map { tab ->
-            if (tab.path == path) tab.copy(text = newText) else tab
+            if (tab.path == path) tab.copy(text = bufferedText) else tab
         }
         return true
     }
@@ -1212,6 +1556,7 @@ private fun FileManagementScreen(
         if (oldIndex < 0) return
         val remaining = editorTabs.filterNot { it.path == path }
         editorTabs = remaining
+        editorBuffers.remove(path)
         clearEditorAutosaveSchedule(path)
         if (openedFile == path) {
             val nextPath = remaining.getOrNull(oldIndex.coerceAtMost(remaining.lastIndex))?.path
@@ -2353,7 +2698,8 @@ private fun FileManagementScreen(
         contextMenuEntry != null || treeContextEntry != null || changePathEntry != null || operationEntry != null || syncEntry != null ||
         treeWorkspaceContextEntry != null || showCreateWorkspaceDialog || renameWorkspaceEntry != null ||
         pendingDeleteWorkspaceEntry != null || showDiscardDialog || showEditorTabDiscardDialog ||
-        showWorkspaceManager || showSavedDocuments || showWorkspaceSafety || bulkActionKind != null || bulkActionInProgress
+        showWorkspaceManager || showSavedDocuments || showWorkspaceSafety || bulkActionKind != null || bulkActionInProgress ||
+        showAiAssistant || showTerminalPanel
     val canNavigateBack = inspectorEntry != null || openedFile != null || selectedDocument != null ||
         activeMainScreen != Screen.Editor || screenBackStack.isNotEmpty() || currentDirectory.isNotEmpty() || selectionMode
 
@@ -2962,10 +3308,25 @@ private fun FileManagementScreen(
                         DrawerAction.AskAi,
                         DrawerAction.FixBorrowChecker,
                         DrawerAction.GenerateCode,
-                        DrawerAction.ExplainCode -> notify("AI tools are not connected in this build.")
+                        DrawerAction.ExplainCode -> {
+                            showEditorDrawer = false
+                            aiProposal = null
+                            aiDeleteAcknowledged = false
+                            aiPrompt = when (event.action) {
+                                DrawerAction.FixBorrowChecker -> "Find and fix the borrow-checker or compiler errors in this project."
+                                DrawerAction.GenerateCode -> "Help me implement the feature I describe."
+                                DrawerAction.ExplainCode -> "Explain the currently open file and its role in this project."
+                                else -> ""
+                            }
+                            aiMessage = null
+                            showAiAssistant = true
+                        }
                         DrawerAction.GoToDefinition,
                         DrawerAction.FindReferences -> notify("Language-server navigation is unavailable until a language server is connected.")
-                        DrawerAction.OpenTerminal -> notify("Terminal execution is not connected to this drawer yet.")
+                        DrawerAction.OpenTerminal -> {
+                            showEditorDrawer = false
+                            showTerminalPanel = true
+                        }
                         DrawerAction.OpenGitChanges -> notify("Git integration is not connected in this build.")
                         DrawerAction.RunTests -> notify("In-app test execution is not connected in this build.")
                     }
@@ -4268,6 +4629,276 @@ private fun FileManagementScreen(
             onSync = {
                 inspectorEntry = null
                 prepareWorkspaceSync(entry)
+            },
+        )
+    }
+
+    if (showTerminalPanel) {
+        AlertDialog(
+            onDismissRequest = { if (!terminalBusy) showTerminalPanel = false },
+            title = { Text("Terminal") },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        "Android system shell · " + (terminalRunner.getOrNull()?.shellDescription ?: "unavailable"),
+                        color = MutedText,
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                    Text(
+                        if (storage is FileManagementSystem) {
+                            "Commands run inside the selected private workspace."
+                        } else {
+                            "This SAF workspace cannot be mounted into the app shell yet. Commands run in a separate private terminal folder."
+                        },
+                        color = MutedText,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Text(
+                        "This is not a full Ubuntu/Debian Linux environment. Only commands and utilities installed on Android are available. Each command starts a new shell; cd is remembered here.",
+                        color = MutedText,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Text(
+                        terminalWorkingDirectory,
+                        color = Mint,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                    OutlinedTextField(
+                        value = terminalCommand,
+                        onValueChange = { terminalCommand = it },
+                        modifier = Modifier.fillMaxWidth().testTag("terminal-command-input"),
+                        label = { Text("Command") },
+                        placeholder = { Text("ls -la") },
+                        enabled = !terminalBusy,
+                        singleLine = false,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(
+                            onClick = { executeTerminalCommand() },
+                            enabled = !terminalBusy && terminalCommand.isNotBlank(),
+                            modifier = Modifier.testTag("terminal-run-command"),
+                        ) {
+                            Text(if (terminalBusy) "Running…" else "Run")
+                        }
+                        TextButton(
+                            onClick = { terminalOutput = "" },
+                            enabled = !terminalBusy,
+                        ) { Text("Clear") }
+                    }
+                    if (terminalOutput.isNotBlank()) {
+                        Text(
+                            terminalOutput,
+                            color = PrimaryText,
+                            fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.fillMaxWidth().testTag("terminal-output"),
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { showTerminalPanel = false },
+                    enabled = !terminalBusy,
+                ) { Text("Close") }
+            },
+        )
+    }
+
+    if (showAiAssistant) {
+        val proposal = aiProposal
+        val containsDelete = proposal?.changes?.any {
+            it.operation == AiChangeOperation.DELETE
+        } == true
+        AlertDialog(
+            onDismissRequest = { if (!aiBusy) showAiAssistant = false },
+            title = { Text("AI workspace assistant") },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 580.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        "OpenAI Responses API · fixed provider endpoint · API key only",
+                        color = MutedText,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                    Text(
+                        "The app encrypts your personal key with Android Keystore. Project source files selected below are sent to OpenAI when you ask for a plan. Never add a shared developer key to this app.",
+                        color = MutedText,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedTextField(
+                        value = aiApiKeyInput,
+                        onValueChange = { aiApiKeyInput = it },
+                        modifier = Modifier.fillMaxWidth().testTag("ai-api-key-input"),
+                        label = { Text(if (aiHasApiKey) "Replace API key (optional)" else "OpenAI API key") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        enabled = !aiBusy,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(
+                            onClick = {
+                                runCatching { openAiAssistant.saveApiKey(aiApiKeyInput) }
+                                    .onSuccess {
+                                        aiHasApiKey = true
+                                        aiApiKeyInput = ""
+                                        aiMessage = "Encrypted API key saved."
+                                    }
+                                    .onFailure { error ->
+                                        aiMessage = error.message ?: "The API key could not be saved."
+                                    }
+                            },
+                            enabled = !aiBusy && aiApiKeyInput.isNotBlank(),
+                        ) { Text("Save key") }
+                        TextButton(
+                            onClick = {
+                                runCatching { openAiAssistant.removeApiKey() }
+                                    .onSuccess {
+                                        aiHasApiKey = false
+                                        aiApiKeyInput = ""
+                                        aiProposal = null
+                                        aiMessage = "Saved API key removed."
+                                    }
+                                    .onFailure { error ->
+                                        aiMessage = error.message ?: "The API key could not be removed."
+                                    }
+                            },
+                            enabled = !aiBusy && aiHasApiKey,
+                        ) { Text("Remove key") }
+                        Text(
+                            if (aiHasApiKey) "Key saved" else "No key saved",
+                            color = if (aiHasApiKey) Mint else MutedText,
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.align(Alignment.CenterVertically),
+                        )
+                    }
+                    OutlinedTextField(
+                        value = aiPrompt,
+                        onValueChange = {
+                            aiPrompt = it
+                            aiProposal = null
+                            aiDeleteAcknowledged = false
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("ai-task-input"),
+                        label = { Text("What should the AI change?") },
+                        placeholder = { Text("Create a settings screen and connect it to…") },
+                        minLines = 3,
+                        maxLines = 6,
+                        enabled = !aiBusy,
+                    )
+                    Text(
+                        "The assistant reads at most 60 supported text files (up to 600 KiB total), skips common secret-file names, and includes unsaved editor drafts. Current context: " +
+                            aiContextFileCount + " file(s).",
+                        color = MutedText,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    proposal?.let { plan ->
+                        Divider()
+                        Text("Proposed plan", style = MaterialTheme.typography.titleMedium)
+                        Text(plan.summary)
+                        if (plan.changes.isEmpty()) {
+                            Text("No file changes were proposed.")
+                        } else {
+                            plan.changes.forEach { change ->
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(
+                                        change.operation.name + " · " + change.path,
+                                        color = if (change.operation == AiChangeOperation.DELETE) Danger else Mint,
+                                        style = MaterialTheme.typography.labelLarge,
+                                    )
+                                    if (change.reason.isNotBlank()) {
+                                        Text(change.reason, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    if (change.operation != AiChangeOperation.DELETE) {
+                                        Text(
+                                            "New content preview: " + change.content.take(220)
+                                                .replace("\n", " ↵ ") +
+                                                if (change.content.length > 220) "…" else "",
+                                            color = MutedText,
+                                            style = MaterialTheme.typography.bodySmall,
+                                        )
+                                    } else {
+                                        Text(
+                                            "Permanent deletion. This does not use the workspace Trash.",
+                                            color = Danger,
+                                            style = MaterialTheme.typography.bodySmall,
+                                        )
+                                    }
+                                }
+                                Divider()
+                            }
+                            if (containsDelete) {
+                                OutlinedButton(
+                                    onClick = { aiDeleteAcknowledged = !aiDeleteAcknowledged },
+                                    modifier = Modifier.fillMaxWidth().testTag("ai-delete-acknowledgement"),
+                                ) {
+                                    Text(
+                                        if (aiDeleteAcknowledged) "Permanent deletions acknowledged"
+                                        else "I understand: permanently delete listed files",
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    aiMessage?.let { message ->
+                        Text(
+                            message,
+                            color = if (message.startsWith("The AI") || message.contains("failed", true)) Danger else MutedText,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.testTag("ai-assistant-message"),
+                        )
+                    }
+                    if (aiBusy) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Text("Working…", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                if (proposal != null) {
+                    TextButton(
+                        onClick = { applyAiWorkspacePlan() },
+                        enabled = !aiBusy && proposal.changes.isNotEmpty() &&
+                            (!containsDelete || aiDeleteAcknowledged),
+                        modifier = Modifier.testTag("ai-apply-proposal"),
+                    ) { Text("Apply " + proposal.changes.size + " change(s)") }
+                } else {
+                    TextButton(
+                        onClick = { requestAiWorkspacePlan() },
+                        enabled = !aiBusy && aiHasApiKey && aiPrompt.isNotBlank(),
+                        modifier = Modifier.testTag("ai-generate-proposal"),
+                    ) { Text(if (aiBusy) "Working…" else "Generate plan") }
+                }
+            },
+            dismissButton = {
+                Row {
+                    if (proposal != null && !aiBusy) {
+                        TextButton(
+                            onClick = {
+                                aiProposal = null
+                                aiBaselineFiles = emptyMap()
+                                aiDeleteAcknowledged = false
+                                aiMessage = "The proposal was discarded. No files were changed."
+                            },
+                        ) { Text("Discard plan") }
+                    }
+                    TextButton(
+                        onClick = { if (!aiBusy) showAiAssistant = false },
+                        enabled = !aiBusy,
+                    ) { Text("Close") }
+                }
             },
         )
     }
@@ -5579,6 +6210,33 @@ private suspend fun <T> runCatchingCancellable(block: suspend () -> T): Result<T
     } catch (error: Exception) {
         Result.failure(error)
     }
+
+private fun isAiWorkspaceTextFile(path: String): Boolean {
+    val segments = path.split('/')
+    if (segments.any { segment ->
+        segment in setOf(".git", ".gradle", "build", "node_modules", ".astracode", ".astracode_trash") ||
+            segment.equals(".env", ignoreCase = true) ||
+            segment.contains("secret", ignoreCase = true) ||
+            segment.contains("credential", ignoreCase = true)
+    }) return false
+
+    val name = segments.lastOrNull().orEmpty()
+    val lowered = name.lowercase()
+    if (
+        lowered.endsWith(".pem") || lowered.endsWith(".key") ||
+        lowered.endsWith(".p12") || lowered.endsWith(".pfx") ||
+        lowered.endsWith(".jks") || lowered.endsWith(".keystore") ||
+        lowered.contains("id_rsa") || lowered.contains("id_ed25519")
+    ) return false
+
+    val extension = lowered.substringAfterLast('.', missingDelimiterValue = "")
+    return extension in setOf(
+        "kt", "kts", "java", "xml", "json", "txt", "md", "properties",
+        "gradle", "sh", "py", "js", "mjs", "cjs", "ts", "tsx", "jsx",
+        "html", "css", "scss", "c", "cc", "cpp", "h", "hpp", "rs",
+        "go", "toml", "ini", "sql", "dart", "swift", "rb", "php", "yml", "yaml",
+    )
+}
 
 private fun isSimpleName(value: String): Boolean =
     value.isNotBlank() &&
