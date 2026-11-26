@@ -44,5 +44,6 @@ jobs:
             :feature-terminal:test \
             :core-filesystem:test \
             :core-connectors:testDebugUnitTest \
+            :core-buildengine:test \
             :app:testDebugUnitTest \
             :app:assembleDebug
