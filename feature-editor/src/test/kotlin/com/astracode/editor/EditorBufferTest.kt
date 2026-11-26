@@ -6,13 +6,20 @@ import kotlin.test.assertTrue
 
 class EditorBufferTest {
     @Test
-    fun exposesLineAndHistoryState() {
-        val buffer = EditorBuffer("a\nb")
+    fun exposesUtf8ByteLengthAndLineState() {
+        val buffer = EditorBuffer("ह\nb")
+        assertEquals(4, buffer.byteLength)
         assertEquals(2, buffer.lineCount)
-        buffer.insert(1, "x")
-        assertEquals("ax\nb", buffer.text())
+        buffer.insert(3, "x")
+        assertEquals("हx\nb", buffer.text())
         assertTrue(buffer.canUndo)
         buffer.undo()
-        assertEquals("a\nb", buffer.text())
+        assertEquals("ह\nb", buffer.text())
+    }
+
+    @Test
+    fun exportsRawUtf8ForPersistenceAndProtocols() {
+        val buffer = EditorBuffer("A😀")
+        assertEquals("A😀".toByteArray(Charsets.UTF_8).toList(), buffer.bytes().toList())
     }
 }
