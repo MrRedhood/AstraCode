@@ -57,15 +57,15 @@ data class AiModelCapabilities(
         if (!hasConfirmation) return this
         return copy(
             contextWindowTokens = verifiedContextWindowTokens ?: contextWindowTokens,
-            supportsToolCalling = if (toolCallingConfirmed) {
-                AiCapabilitySupport.SUPPORTED
-            } else {
-                supportsToolCalling
+            supportsToolCalling = when {
+                supportsToolCalling == AiCapabilitySupport.UNSUPPORTED -> AiCapabilitySupport.UNSUPPORTED
+                toolCallingConfirmed -> AiCapabilitySupport.SUPPORTED
+                else -> supportsToolCalling
             },
-            supportsStreaming = if (streamingConfirmed) {
-                AiCapabilitySupport.SUPPORTED
-            } else {
-                supportsStreaming
+            supportsStreaming = when {
+                supportsStreaming == AiCapabilitySupport.UNSUPPORTED -> AiCapabilitySupport.UNSUPPORTED
+                streamingConfirmed -> AiCapabilitySupport.SUPPORTED
+                else -> supportsStreaming
             },
             source = AiCapabilitySource.USER_CONFIRMED,
         )
