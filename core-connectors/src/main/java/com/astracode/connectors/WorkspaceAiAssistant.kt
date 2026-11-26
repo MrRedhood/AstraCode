@@ -553,25 +553,7 @@ class WorkspaceAiAssistant(context: Context) {
                 ?: response.finalPayload?.optString("id")?.takeIf { it.isNotBlank() }
                 ?: throw IOException("Gemini did not return an interaction ID for tool continuation")
             val results = executeToolCalls(calls, registry, onEvent)
-            val inputResults = JSONArray()
-            results.forEach { result ->
-                inputResults.put(
-                    JSONObject()
-                        .put("type", "function_result")
-                        .put("name", result.name)
-                        .put("call_id", result.callId)
-                        .put(
-                            "result",
-                            JSONObject().put(
-                                "content",
-                                JSONArray().put(
-                                    JSONObject().put("type", "text").put("text", result.content),
-                                ),
-                            ),
-                        ),
-                )
-            }
-            nextInput = inputResults
+            nextInput = GeminiToolResultPayload.from(results)
             round++
         }
     }
