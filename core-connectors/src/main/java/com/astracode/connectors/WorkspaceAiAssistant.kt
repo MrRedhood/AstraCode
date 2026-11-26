@@ -241,6 +241,16 @@ class WorkspaceAiAssistant(context: Context) {
                     provider.displayName + ". Choose a model with streaming support.",
             )
         }
+        val estimatedPrimaryTokens = contextText.toByteArray(StandardCharsets.UTF_8).size.toLong() +
+            MAX_OUTPUT_TOKENS + 4_000L
+        val primaryContextWindow = primaryCapabilities.contextWindowTokens
+        if (primaryContextWindow != null && estimatedPrimaryTokens > primaryContextWindow) {
+            throw IOException(
+                "This request may need about " + estimatedPrimaryTokens +
+                    " tokens, but " + model + " lists a context window of " +
+                    primaryContextWindow + ". Reduce the selected context or choose a larger-context model.",
+            )
+        }
 
         var useTools = enableTools
         if (useTools) {
@@ -264,7 +274,7 @@ class WorkspaceAiAssistant(context: Context) {
                 provider, model, customBaseUrl, key, contextText, registry,
                 useTools, maxToolRounds, onEvent,
             )
-            return parseProposal(output , writeProtectedPaths)
+            return parseProposal(output, writeProtectedPaths)
         } catch (primaryError: AiProviderRequestException) {
             if (!primaryError.retryable || !fallbackPolicy.enabled) throw primaryError
             onEvent(AiStreamEvent.Status(
@@ -326,7 +336,7 @@ class WorkspaceAiAssistant(context: Context) {
                         maxToolRounds,
                         onEvent,
                     )
-                    return parseProposal(fallbackOutput , writeProtectedPaths)
+                    return parseProposal(fallbackOutput, writeProtectedPaths)
                 } catch (fallbackError: AiProviderRequestException) {
                     lastFallbackError = fallbackError
                     onEvent(AiStreamEvent.Status(
@@ -366,7 +376,7 @@ class WorkspaceAiAssistant(context: Context) {
                     provider.displayName + ". Choose a model with streaming support.",
             )
         }
-        val fileList = files.joinToString("\n") { "- " + it.path }
+        val fileList = files.joinToString("\n") { "- " + it.path }.take(MAX_PLANNER_FILE_LIST_CHARS)
         val system = "You are AstraCode's task planner. Break a software development objective into " +
             "one to four small, independently reviewable tasks. Use one task when work is tightly coupled. " +
             "Only create dependencies when a later task genuinely needs an earlier task's result. " +
@@ -1301,7 +1311,7 @@ class WorkspaceAiAssistant(context: Context) {
     }
 
     private companion object {
-        const val MAX_TASK_CHARS = 8_000
+        const val MAX_TASK_CHARS = 48_000
         const val MAX_MODEL_CHARS = 256
         const val MAX_ENDPOINT_CHARS = 2_048
         const val MAX_FILES = 60
@@ -1319,6 +1329,7 @@ class WorkspaceAiAssistant(context: Context) {
         const val MAX_TOOL_CALLS_PER_ROUND = 6
         const val DEFAULT_TOOL_ROUNDS = 4
         const val MAX_AGENT_TASKS = 4
+        const val MAX_PLANNER_FILE_LIST_CHARS = 20_000
         val RESERVED_PATHS = setOf(
             ".git", ".astracode", ".astracode_trash",
             ".astracode-trash", ".astracode-operations",
