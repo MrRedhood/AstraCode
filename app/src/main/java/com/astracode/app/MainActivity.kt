@@ -1292,6 +1292,158 @@ private fun FileManagementScreen(
         mutableStateOf(selectedDocument != null)
     }
 
+    fun refreshAiConversationHistory() {
+        val workspaceId = activeWorkspaceId
+        val search = aiConversationSearch
+        aiHistoryLoading = true
+        scope.launch {
+            val result = runCatchingCancellable {
+                withContext(Dispatchers.IO) {
+                    aiConversationStore.listThreads(workspaceId, search)
+                }
+            }
+            if (activeWorkspaceId == workspaceId) {
+                result.onSuccess { aiConversationHistory = it }
+                    .onFailure { error ->
+                        aiMessage = error.message ?: "Conversation history could not be loaded."
+                    }
+                aiHistoryLoading = false
+            }
+        }
+    }
+
+    fun loadAiConversation(threadId: String) {
+        val workspaceId = activeWorkspaceId
+        scope.launch {
+            val result = runCatchingCancellable {
+                withContext(Dispatchers.IO) {
+                    val thread = aiConversationStore.getThread(threadId)
+                        ?: throw IllegalArgumentException("Conversation was not found.")
+                    require(thread.workspaceId == workspaceId) {
+                        "That conversation belongs to another workspace."
+                    }
+                    thread to aiConversationStore.loadMessages(threadId)
+                }
+            }
+            if (activeWorkspaceId == workspaceId) {
+                result.onSuccess { (thread, messages) ->
+                    aiConversationThread = thread
+                    aiConversationMessages = messages
+                    aiPreferences.edit()
+                        .putString("active_ai_thread_" + workspaceId, thread.id)
+                        .apply()
+                    aiPrompt = ""
+                    aiProposal = null
+                    aiBaselineFiles = emptyMap()
+                    aiDeleteAcknowledged = false
+                    aiExpandedPreviewPaths = emptySet()
+                    aiAgentSummary = null
+                    aiAgentAuditTrail = emptyList()
+                    aiShowHistoryDialog = false
+                }.onFailure { error ->
+                    aiMessage = error.message ?: "Conversation could not be opened."
+                }
+            }
+        }
+    }
+
+    fun startNewAiConversation() {
+        aiPreferences.edit().remove("active_ai_thread_" + activeWorkspaceId).apply()
+        aiConversationThread = null
+        aiConversationMessages = emptyList()
+        aiPrompt = ""
+        aiProposal = null
+        aiBaselineFiles = emptyMap()
+        aiDeleteAcknowledged = false
+        aiExpandedPreviewPaths = emptySet()
+        aiAgentSummary = null
+        aiAgentAuditTrail = emptyList()
+        aiMessage = "New conversation. Its first message will become the title."
+        aiShowHistoryDialog = false
+    }
+
+    fun renameAiConversation(thread: AiConversationThread, title: String) {
+        val workspaceId = activeWorkspaceId
+        scope.launch {
+            val result = runCatchingCancellable {
+                withContext(Dispatchers.IO) {
+                    aiConversationStore.renameThread(thread.id, title)
+                    aiConversationStore.getThread(thread.id)
+                        ?: throw IllegalArgumentException("Conversation was not found.")
+                }
+            }
+            if (activeWorkspaceId == workspaceId) {
+                result.onSuccess { updated ->
+                    if (aiConversationThread?.id == updated.id) aiConversationThread = updated
+                    aiRenameTarget = null
+                    aiRenameValue = ""
+                    refreshAiConversationHistory()
+                }.onFailure { error ->
+                    aiMessage = error.message ?: "Conversation could not be renamed."
+                }
+            }
+        }
+    }
+
+    fun deleteAiConversation(thread: AiConversationThread) {
+        val workspaceId = activeWorkspaceId
+        scope.launch {
+            val result = runCatchingCancellable {
+                withContext(Dispatchers.IO) { aiConversationStore.deleteThread(thread.id) }
+            }
+            if (activeWorkspaceId == workspaceId) {
+                result.onSuccess {
+                    if (aiConversationThread?.id == thread.id) startNewAiConversation()
+                    aiDeleteTarget = null
+                    refreshAiConversationHistory()
+                }.onFailure { error ->
+                    aiMessage = error.message ?: "Conversation could not be deleted."
+                }
+            }
+        }
+    }
+
+    fun exportAiConversation(thread: AiConversationThread) {
+        val workspaceId = activeWorkspaceId
+        scope.launch {
+            val result = runCatchingCancellable {
+                withContext(Dispatchers.IO) {
+                    aiConversationStore.exportThread(thread.id)
+                }
+            }
+            if (activeWorkspaceId == workspaceId) {
+                result.onSuccess { json ->
+                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                        type = "application/json"
+                        putExtra(Intent.EXTRA_SUBJECT, thread.title)
+                        putExtra(Intent.EXTRA_TEXT, json)
+                    }
+                    runCatching {
+                        context.startActivity(Intent.createChooser(shareIntent, "Export conversation"))
+                    }.onFailure { error ->
+                        aiMessage = error.message ?: "The conversation share sheet could not be opened."
+                    }
+                }.onFailure { error ->
+                    aiMessage = error.message ?: "Conversation could not be exported."
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(activeWorkspaceId) {
+        val workspaceId = activeWorkspaceId
+        val threadId = aiPreferences.getString("active_ai_thread_" + workspaceId, null)
+        if (!threadId.isNullOrBlank()) loadAiConversation(threadId)
+        else {
+            aiConversationThread = null
+            aiConversationMessages = emptyList()
+        }
+    }
+
+    LaunchedEffect(aiShowHistoryDialog, activeWorkspaceId) {
+        if (aiShowHistoryDialog) refreshAiConversationHistory()
+    }
+
     val activeEditorTab = editorTabs.firstOrNull { it.path == openedFile }
     val editorText = if (selectedDocument != null) standaloneEditorText else activeEditorTab?.text.orEmpty()
     val savedText = if (selectedDocument != null) standaloneSavedText else activeEditorTab?.savedText.orEmpty()
