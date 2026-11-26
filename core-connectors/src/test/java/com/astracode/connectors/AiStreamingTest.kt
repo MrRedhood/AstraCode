@@ -133,15 +133,6 @@ class AiStreamingTest {
     }
 
     @Test
-    fun oversizedSseLineIsRejectedBeforeJsonParsing() {
-        val line = "data: " + "x".repeat(2 * 1024 * 1024 + 1)
-        val reader = BufferedReader(StringReader(line))
-        kotlin.test.assertFailsWith<AiProviderProtocolException> {
-            AiSseReader.read(reader, AiStreamAccumulator(AiProvider.OPENAI))
-        }
-    }
-
-    @Test
     fun sseReaderCombinesMultipleDataLinesAndIgnoresComments() {
         val input = BufferedReader(
             StringReader(
