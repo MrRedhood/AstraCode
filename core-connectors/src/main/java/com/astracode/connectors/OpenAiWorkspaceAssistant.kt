@@ -300,13 +300,17 @@ class OpenAiWorkspaceAssistant(context: Context) {
             "The AI returned an unsafe workspace path"
         }
         val segments = path.split('/')
-        require(segments.none { it.isBlank() || it == "." || it == ".." }) {
+        require(
+            segments.size <= 128 &&
+                segments.none { it.isBlank() || it == "." || it == ".." },
+        ) {
             "The AI returned a path outside the workspace"
         }
         require(
             segments.none { segment ->
                 segment in RESERVED_TOP_LEVEL_PATHS ||
-                    segment.startsWith(".astracode-", ignoreCase = true)
+                    segment.equals(".git", ignoreCase = true) ||
+                    segment.startsWith(".astracode", ignoreCase = true)
             },
         ) {
             "The AI cannot change reserved workspace paths"
