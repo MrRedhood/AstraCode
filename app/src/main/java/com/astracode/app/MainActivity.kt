@@ -133,6 +133,10 @@ import com.astracode.connectors.AiCapabilitySupport
 import com.astracode.connectors.AiFallbackPolicy
 import com.astracode.connectors.AiAgentOrchestrator
 import com.astracode.connectors.AiStreamEvent
+import com.astracode.connectors.AiConversationStore
+import com.astracode.connectors.AiConversationThread
+import com.astracode.connectors.AiConversationMessage
+import com.astracode.connectors.AiConversationRole
 import com.astracode.connectors.WorkspaceAiAssistant
 import com.astracode.connectors.WorkspaceFileSnapshot
 import com.astracode.buildengine.BuildArtifactScanner
@@ -241,6 +245,8 @@ private data class AiWorkspaceRequestResult(
     val proposal: AiWorkspaceProposal,
     val agentSummary: String? = null,
     val agentAuditTrail: List<String> = emptyList(),
+    val conversationThread: AiConversationThread? = null,
+    val conversationMessages: List<AiConversationMessage> = emptyList(),
 )
 
 private fun editorTabBufferBytes(tab: EditorTab): Long =
@@ -1078,6 +1084,8 @@ private fun FileManagementScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val workspaceAiAssistant = remember(context) { WorkspaceAiAssistant(context) }
+    val aiConversationStore = remember(context) { AiConversationStore(context) }
+    val aiClipboardManager = LocalClipboardManager.current
     val aiPreferences = remember(context) {
         context.getSharedPreferences("astracode_ai_preferences", Context.MODE_PRIVATE)
     }
@@ -1136,6 +1144,21 @@ private fun FileManagementScreen(
     var aiReadOnlyToolsEnabled by remember(aiPreferences) {
         mutableStateOf(aiPreferences.getBoolean("read_only_tools_enabled", true))
     }
+    var aiConversationThread by remember(activeWorkspaceId) {
+        mutableStateOf<AiConversationThread?>(null)
+    }
+    var aiConversationMessages by remember(activeWorkspaceId) {
+        mutableStateOf(emptyList<AiConversationMessage>())
+    }
+    var aiConversationHistory by remember(activeWorkspaceId) {
+        mutableStateOf(emptyList<AiConversationThread>())
+    }
+    var aiConversationSearch by remember(activeWorkspaceId) { mutableStateOf("") }
+    var aiShowHistoryDialog by remember(activeWorkspaceId) { mutableStateOf(false) }
+    var aiHistoryLoading by remember { mutableStateOf(false) }
+    var aiRenameTarget by remember { mutableStateOf<AiConversationThread?>(null) }
+    var aiRenameValue by remember { mutableStateOf("") }
+    var aiDeleteTarget by remember { mutableStateOf<AiConversationThread?>(null) }
     var aiStreamingPreview by remember { mutableStateOf("") }
     var aiProgressEvents by remember { mutableStateOf(emptyList<String>()) }
     var aiAgentSummary by remember { mutableStateOf<String?>(null) }
