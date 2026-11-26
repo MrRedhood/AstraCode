@@ -60,6 +60,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -126,6 +127,10 @@ import com.astracode.terminal.TerminalCommandRunner
 import com.astracode.connectors.AiChangeOperation
 import com.astracode.connectors.AiWorkspaceProposal
 import com.astracode.connectors.AiProvider
+import com.astracode.connectors.AiModelCapabilities
+import com.astracode.connectors.AiFallbackPolicy
+import com.astracode.connectors.AiAgentOrchestrator
+import com.astracode.connectors.AiStreamEvent
 import com.astracode.connectors.WorkspaceAiAssistant
 import com.astracode.connectors.WorkspaceFileSnapshot
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -217,6 +222,13 @@ private data class EditorTab(
     val text: String = "",
     val savedText: String = "",
     val isLoading: Boolean = true,
+)
+
+private data class AiWorkspaceRequestResult(
+    val baselines: Map<String, String>,
+    val contextFileCount: Int,
+    val proposal: AiWorkspaceProposal,
+    val agentSummary: String? = null,
 )
 
 private fun editorTabBufferBytes(tab: EditorTab): Long =
@@ -1096,8 +1108,21 @@ private fun FileManagementScreen(
         mutableStateOf(aiPreferences.getString("base_url_" + aiProvider.id, "").orEmpty())
     }
     var aiModels by remember { mutableStateOf(emptyList<String>()) }
+    var aiModelCatalog by remember { mutableStateOf(emptyList<AiModelCapabilities>()) }
     var aiModelMenuExpanded by remember { mutableStateOf(false) }
     var aiLoadingModels by remember { mutableStateOf(false) }
+    var aiFallbackEnabled by remember(aiPreferences) {
+        mutableStateOf(aiPreferences.getBoolean("fallback_enabled", false))
+    }
+    var aiFallbackProviderIds by remember(aiPreferences) {
+        mutableStateOf(aiPreferences.getStringSet("fallback_providers", emptySet())?.toSet().orEmpty())
+    }
+    var aiUseAgentWorkflow by remember(aiPreferences) {
+        mutableStateOf(aiPreferences.getBoolean("agent_workflow_enabled", false))
+    }
+    var aiStreamingPreview by remember { mutableStateOf("") }
+    var aiProgressEvents by remember { mutableStateOf(emptyList<String>()) }
+    var aiAgentSummary by remember { mutableStateOf<String?>(null) }
     var aiPrompt by remember(storage) { mutableStateOf("") }
     var aiBusy by remember(storage) { mutableStateOf(false) }
     var aiMessage by remember(storage) { mutableStateOf<String?>(null) }
@@ -1256,6 +1281,17 @@ private fun FileManagementScreen(
         }
 
         val requestedStorage = storage
+        val requestedFallbackPolicy = AiFallbackPolicy(
+            enabled = aiFallbackEnabled,
+            allowedProviderIds = aiFallbackProviderIds.toList(),
+        )
+        val requestedFallbackModels = AiProvider.entries.associate { provider ->
+            provider.id to aiPreferences.getString("model_" + provider.id, "").orEmpty()
+        }
+        val requestedFallbackBaseUrls = AiProvider.entries.associate { provider ->
+            provider.id to aiPreferences.getString("base_url_" + provider.id, "").orEmpty()
+        }
+        val requestedAgentWorkflow = aiUseAgentWorkflow
         val unsavedEditorText = editorTabs
             .filterNot { it.isLoading }
             .associate { it.path to it.text }
@@ -1265,6 +1301,32 @@ private fun FileManagementScreen(
         aiBaselineFiles = emptyMap()
         aiDeleteAcknowledged = false
         aiExpandedPreviewPaths = emptySet()
+        aiStreamingPreview = ""
+        aiProgressEvents = emptyList()
+        aiAgentSummary = null
+
+        fun onAiStreamEvent(event: AiStreamEvent) {
+            scope.launch(Dispatchers.Main.immediate) {
+                when (event) {
+                    is AiStreamEvent.TextDelta -> {
+                        aiStreamingPreview = (aiStreamingPreview + event.text).takeLast(8_000)
+                    }
+                    is AiStreamEvent.Status -> {
+                        aiProgressEvents = (aiProgressEvents + event.message).takeLast(8)
+                    }
+                    is AiStreamEvent.ToolStarted -> {
+                        aiProgressEvents = (aiProgressEvents + ("Using read-only tool: " + event.name)).takeLast(8)
+                    }
+                    is AiStreamEvent.ToolFinished -> {
+                        aiProgressEvents = (
+                            aiProgressEvents + (
+                                event.name + if (event.succeeded) " completed" else " returned an error"
+                            )
+                        ).takeLast(8)
+                    }
+                }
+            }
+        }
 
         scope.launch {
             val result = runCatchingCancellable {
@@ -1321,23 +1383,51 @@ private fun FileManagementScreen(
                         totalContextBytes += contextBytes
                     }
 
-                    val proposal = workspaceAiAssistant.createWorkspaceProposal(
-                        requestedProvider,
-                        requestedModel,
-                        requestedBaseUrl,
-                        task,
-                        snapshots,
-                    )
-                    Triple(baselines, snapshots.size, proposal)
+                    val requestResult = if (requestedAgentWorkflow) {
+                        val report = AiAgentOrchestrator(workspaceAiAssistant).execute(
+                            provider = requestedProvider,
+                            model = requestedModel,
+                            customBaseUrl = requestedBaseUrl,
+                            objective = task,
+                            files = snapshots,
+                            fallbackPolicy = requestedFallbackPolicy,
+                            fallbackModels = requestedFallbackModels,
+                            fallbackBaseUrls = requestedFallbackBaseUrls,
+                            onEvent = ::onAiStreamEvent,
+                        )
+                        AiWorkspaceRequestResult(
+                            baselines,
+                            snapshots.size,
+                            report.proposal,
+                            report.summary + if (report.conflictingPaths.isEmpty()) "" else
+                                " Conflicting paths withheld: " + report.conflictingPaths.sorted().joinToString(", "),
+                        )
+                    } else {
+                        val proposal = workspaceAiAssistant.createWorkspaceProposal(
+                            requestedProvider,
+                            requestedModel,
+                            requestedBaseUrl,
+                            task,
+                            snapshots,
+                            fallbackPolicy = requestedFallbackPolicy,
+                            fallbackModels = requestedFallbackModels,
+                            fallbackBaseUrls = requestedFallbackBaseUrls,
+                            enableTools = true,
+                            onEvent = ::onAiStreamEvent,
+                        )
+                        AiWorkspaceRequestResult(baselines, snapshots.size, proposal)
+                    }
+                    requestResult
                 }
             }
 
             if (storage === requestedStorage) {
-                result.onSuccess { (baselines, count, proposal) ->
-                    aiBaselineFiles = baselines
-                    aiContextFileCount = count
-                    aiProposal = proposal
-                    aiMessage = if (proposal.changes.isEmpty()) {
+                result.onSuccess { request ->
+                    aiBaselineFiles = request.baselines
+                    aiContextFileCount = request.contextFileCount
+                    aiProposal = request.proposal
+                    aiAgentSummary = request.agentSummary
+                    aiMessage = if (request.proposal.changes.isEmpty()) {
                         "The AI returned an explanation but no file changes."
                     } else {
                         "Review every proposed change before applying it."
@@ -4830,8 +4920,11 @@ private fun FileManagementScreen(
                                         aiProviderMenuExpanded = false
                                         aiApiKeyInput = ""
                                         aiModels = emptyList()
+                                        aiModelCatalog = emptyList()
                                         aiModelMenuExpanded = false
                                         aiLoadingModels = false
+                                        aiStreamingPreview = ""
+                                        aiProgressEvents = emptyList()
                                         aiProposal = null
                                         aiMessage = null
                                         aiKeyRefresh++
@@ -4886,15 +4979,19 @@ private fun FileManagementScreen(
                                     aiLoadingModels = true
                                     val result = runCatchingCancellable {
                                         withContext(Dispatchers.IO) {
-                                            workspaceAiAssistant.fetchModels(selectedProvider, selectedEndpoint)
+                                            workspaceAiAssistant.fetchModelCatalog(selectedProvider, selectedEndpoint)
                                         }
                                     }
                                     if (aiProvider == selectedProvider) {
                                         result.onSuccess { models ->
-                                            aiModels = models
+                                            aiModelCatalog = models
+                                            aiModels = models.map { it.modelId }
                                             aiModelMenuExpanded = models.isNotEmpty()
+                                            val known = models.firstOrNull { it.modelId == aiModel }
                                             aiMessage = if (models.isEmpty()) {
                                                 "No models were listed. You can still enter a model ID manually."
+                                            } else if (known != null) {
+                                                "Loaded " + models.size + " model(s). " + known.capabilitySummary()
                                             } else {
                                                 "Loaded " + models.size + " model(s). Choose one below."
                                             }
@@ -4962,6 +5059,7 @@ private fun FileManagementScreen(
                                         aiKeyRefresh++
                                         aiApiKeyInput = ""
                                         aiModels = emptyList()
+                                        aiModelCatalog = emptyList()
                                         aiProposal = null
                                         aiMessage = "Saved " + aiProvider.displayName + " API key removed."
                                     }
