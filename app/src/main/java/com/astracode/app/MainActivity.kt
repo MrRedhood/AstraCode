@@ -1645,12 +1645,10 @@ private fun FileManagementScreen(
                         val diskBytes = diskText.toByteArray(Charsets.UTF_8).size
                         if (diskBytes > 96 * 1024) continue
                         val contextText = unsavedEditorText[entry.path] ?: diskText
-                        // Check both disk and editor draft. If a secret was removed
-                        // only from the draft, keep this path protected so the model
-                        // cannot write a generated file back over the original secret.
-                        val redactedDisk = AiSecretRedactor.redact(diskText)
-                        val redacted = AiSecretRedactor.redact(contextText)
-                        val writeProtected = redactedDisk.wasRedacted || redacted.wasRedacted
+                        val redacted = AiSecretRedactor.redactWorkspaceSnapshot(
+                            diskContent = diskText,
+                            draftContent = contextText,
+                        )
                         val contextBytes = redacted.content.toByteArray(Charsets.UTF_8).size
                         if (contextBytes > 96 * 1024) continue
                         if (totalContextBytes + contextBytes > 600L * 1024L) break
@@ -1658,7 +1656,7 @@ private fun FileManagementScreen(
                         snapshots += WorkspaceFileSnapshot(
                             path = entry.path,
                             content = redacted.content,
-                            writeProtected = writeProtected,
+                            writeProtected = redacted.writeProtected,
                         )
                         totalContextBytes += contextBytes
                     }
