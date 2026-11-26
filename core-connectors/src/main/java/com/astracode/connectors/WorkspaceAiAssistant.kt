@@ -912,6 +912,7 @@ class WorkspaceAiAssistant(context: Context) {
         if (provider == AiProvider.ANTHROPIC) {
             val capabilities = item.optJSONObject("capabilities")
             val lifecycle = item.optString("lifecycle")
+            val isCurrentModel = lifecycle == "active"
             val imageInput = readNestedSupport(capabilities, "image_input")
             val modalities = buildSet {
                 add("text")
@@ -924,7 +925,6 @@ class WorkspaceAiAssistant(context: Context) {
                     if (readNestedSupport(capabilities, it) == AiCapabilitySupport.SUPPORTED) add(it)
                 }
             }
-            val isCurrentModel = lifecycle == "active"
             return AiModelCapabilities(
                 provider = provider,
                 modelId = modelId,
