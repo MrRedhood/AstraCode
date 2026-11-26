@@ -7628,6 +7628,19 @@ private suspend fun <T> runCatchingCancellable(block: suspend () -> T): Result<T
         Result.failure(error)
     }
 
+private fun isAiWorkspaceGitIgnoreFile(path: String): Boolean {
+    val segments = path.split('/')
+    if (segments.size > 128 || segments.lastOrNull() != ".gitignore") return false
+    return segments.dropLast(1).none { segment ->
+        val lowered = segment.lowercase()
+        lowered in setOf(".git", ".gradle", "build", "node_modules", ".astracode") ||
+            lowered.startsWith(".astracode-") ||
+            lowered == ".env" ||
+            lowered.contains("secret") ||
+            lowered.contains("credential")
+    }
+}
+
 private fun isAiWorkspaceTextFile(path: String): Boolean {
     val segments = path.split('/')
     if (segments.any { segment ->
