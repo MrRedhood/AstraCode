@@ -162,7 +162,14 @@ class AiAgentOrchestrator(
             maximumTasks = profile.maxAgentTasks,
             allowedInputPaths = files.map { it.path }.toSet(),
         )
-        record(profile.id, "planned", tasks.joinToString { it.id })
+        record(
+            profile.id,
+            "planned",
+            tasks.joinToString("; ") { task ->
+                task.id + " · inputs=[" + task.inputPaths.joinToString(",") +
+                    "] · expected=" + task.expectedOutput.take(160)
+            },
+        )
 
         val completed = linkedMapOf<String, AiAgentTaskResult>()
         val pending = tasks.toMutableList()
@@ -211,14 +218,12 @@ class AiAgentOrchestrator(
                                     error.message ?: "Dependency context could not be built",
                                 )
                             }
-                            val dependencyTaskIds = AiAgentTaskGraph.ancestorIds(task, tasks)
-                            val dependencyPaths = dependencyTaskIds.flatMap { dependencyId ->
-                                completed[dependencyId]?.proposal?.changes.orEmpty().map { it.path }
-                            }.toSet()
-                            val selectedInputPaths = task.inputPaths.toSet()
-                            val scopedFiles = taskFiles.filter { file ->
-                                file.path in selectedInputPaths || file.path in dependencyPaths
-                            }
+                            val scopedFiles = AiAgentTaskGraph.selectInputFiles(
+                                task = task,
+                                allTasks = tasks,
+                                availableFiles = taskFiles,
+                                completedResults = completed,
+                            )
                             val prompt = buildString {
                                 appendLine("Main objective:")
                                 appendLine(objective)
