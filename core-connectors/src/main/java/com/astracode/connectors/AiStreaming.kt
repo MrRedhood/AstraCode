@@ -122,7 +122,9 @@ class AiStreamAccumulator(private val provider: AiProvider) {
                     val tool = tools.getOrPut(index) { ToolBuilder() }
                     tool.id = step.optString("id", tool.id)
                     tool.name = step.optString("name", tool.name)
-                    step.optJSONObject("arguments")?.let { tool.arguments.append(it.toString()) }
+                    step.optJSONObject("arguments")?.let { arguments ->
+                        if (arguments.length() > 0) tool.arguments.append(arguments.toString())
+                    }
                     if (tool.name.isNotBlank()) onEvent(AiStreamEvent.ToolStarted(tool.name))
                 }
             }
