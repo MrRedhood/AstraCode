@@ -568,8 +568,8 @@ class WorkspaceAiAssistant(context: Context) {
         var selectedModel = model
         var selectedBaseUrl = customBaseUrl
         var selectedKey = readKey(provider)
-        var selectedPricing = getModelCapabilities(provider, model, customBaseUrl).pricing
         val primaryCapabilities = getModelCapabilities(provider, model, customBaseUrl)
+        var selectedPricing = primaryCapabilities.pricing
         val primaryCapabilityProblem = when {
             primaryCapabilities.supportsStreaming == AiCapabilitySupport.UNSUPPORTED ->
                 model + " does not expose a streaming endpoint through " + provider.displayName + "."
@@ -915,6 +915,7 @@ class WorkspaceAiAssistant(context: Context) {
                         .put("allow_fallbacks", false)
                         .put("require_parameters", enableTools),
                 )
+                body.put("stream_options", JSONObject().put("include_usage", true))
             }
             if (enableTools) body.put("tools", chatTools(registry))
             val response = transport.stream(url, key, provider, body, onEvent)
@@ -1012,6 +1013,7 @@ class WorkspaceAiAssistant(context: Context) {
                 // Do not let OpenRouter silently select another upstream
                 // provider; cross-provider fallback is controlled by AstraCode.
                 body.put("provider", JSONObject().put("allow_fallbacks", false))
+                body.put("stream_options", JSONObject().put("include_usage", true))
                 transport.stream(
                     AiProviderAdapters.forProvider(provider).streamingUrl(), key, provider, body, onEvent,
                 )
@@ -1137,6 +1139,8 @@ class WorkspaceAiAssistant(context: Context) {
             val pricingData = item.optJSONObject("pricing")
             val promptPrice = pricingData?.optDouble("prompt", Double.NaN)
             val completionPrice = pricingData?.optDouble("completion", Double.NaN)
+            val cachedReadPrice = pricingData?.optDouble("input_cache_read", Double.NaN)
+                ?.takeIf { it.isFinite() && it >= 0.0 }
             val pricing = if (
                 promptPrice != null && completionPrice != null &&
                 promptPrice.isFinite() && completionPrice.isFinite() &&
@@ -1145,6 +1149,7 @@ class WorkspaceAiAssistant(context: Context) {
                 AiModelPricing(
                     inputUsdPerMillionTokens = promptPrice * 1_000_000.0,
                     outputUsdPerMillionTokens = completionPrice * 1_000_000.0,
+                    cachedInputUsdPerMillionTokens = cachedReadPrice?.times(1_000_000.0),
                 )
             } else {
                 null
