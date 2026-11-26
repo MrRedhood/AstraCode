@@ -553,7 +553,9 @@ class WorkspaceAiAssistant(context: Context) {
         val system = "You are AstraCode's task planner. Break a software development objective into " +
             "one to four small, independently reviewable tasks. Use one task when work is tightly coupled. " +
             "Only create dependencies when a later task genuinely needs an earlier task's result. " +
-            "Return only JSON with a tasks array. Every task must have id, title, instructions, and dependsOn."
+            "Return only JSON with a tasks array. Every task must have id, title, instructions, expectedOutput, inputPaths, and dependsOn. " +
+            "inputPaths must contain only exact paths from the provided list. Assign the smallest set of files needed for each task. " +
+            "expectedOutput must describe a concrete, reviewable result."
         val user = "Objective:\n" + objective + "\n\nAvailable workspace files:\n" + fileList +
             "\n\nDo not propose shell commands, secrets, or direct file writes. Each agent returns a reviewable proposal."
         val schema = agentPlanSchema()
@@ -615,7 +617,7 @@ class WorkspaceAiAssistant(context: Context) {
                 schema,
                 onEvent,
             )
-            return parseAgentTasks(output)
+            return parseAgentTasks(output, files.map { it.path }.toSet())
         } catch (primaryError: AiProviderRequestException) {
             if (!primaryError.retryable || !fallbackPolicy.enabled) throw primaryError
 
@@ -1387,7 +1389,10 @@ class WorkspaceAiAssistant(context: Context) {
         return AiWorkspaceProposal(summary, changes)
     }
 
-    private fun parseAgentTasks(raw: String): List<AiAgentTask> {
+    private fun parseAgentTasks(
+        raw: String,
+        allowedInputPaths: Set<String>,
+    ): List<AiAgentTask> {
         val json = try {
             JSONObject(stripCodeFence(raw))
         } catch (error: Exception) {
@@ -1402,13 +1407,32 @@ class WorkspaceAiAssistant(context: Context) {
         for (index in 0 until array.length()) {
             val item = array.optJSONObject(index)
                 ?: throw IOException("The agent planner returned a malformed task")
-            val dependencies = item.optJSONArray("dependsOn") ?: JSONArray()
+            val dependencies = item.optJSONArray("dependsOn")
+                ?: throw IOException("Agent task " + (index + 1) + " has no dependsOn array")
             val dependsOn = (0 until dependencies.length()).map { dependencies.optString(it) }
+            val inputPathsArray = item.optJSONArray("inputPaths")
+                ?: throw IOException("Agent task " + (index + 1) + " has no inputPaths array")
+            val inputPaths = (0 until inputPathsArray.length())
+                .map { inputPathsArray.optString(it) }
+                .distinct()
+            val unknownPaths = inputPaths.filterNot { it in allowedInputPaths }
+            if (unknownPaths.isNotEmpty()) {
+                throw IOException(
+                    "Agent task " + (index + 1) + " requested files outside the approved context: " +
+                        unknownPaths.joinToString(", "),
+                )
+            }
+            val expectedOutput = item.optString("expectedOutput").trim()
+            if (expectedOutput.isBlank()) {
+                throw IOException("Agent task " + (index + 1) + " must describe its expected output")
+            }
             tasks += AiAgentTask(
                 id = item.optString("id", "agent-" + (index + 1)),
                 title = item.optString("title"),
                 instructions = item.optString("instructions"),
                 dependsOn = dependsOn,
+                inputPaths = inputPaths,
+                expectedOutput = expectedOutput,
             )
         }
         return tasks
@@ -1461,12 +1485,16 @@ class WorkspaceAiAssistant(context: Context) {
                     .put("id", JSONObject().put("type", "string"))
                     .put("title", JSONObject().put("type", "string"))
                     .put("instructions", JSONObject().put("type", "string"))
+                    .put("expectedOutput", JSONObject().put("type", "string"))
+                    .put("inputPaths", JSONObject().put("type", "array")
+                        .put("items", JSONObject().put("type", "string")))
                     .put("dependsOn", JSONObject().put("type", "array")
                         .put("items", JSONObject().put("type", "string"))),
             )
             .put(
                 "required",
-                JSONArray().put("id").put("title").put("instructions").put("dependsOn"),
+                JSONArray().put("id").put("title").put("instructions")
+                    .put("expectedOutput").put("inputPaths").put("dependsOn"),
             )
             .put("additionalProperties", false)
         return JSONObject()
