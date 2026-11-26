@@ -294,6 +294,7 @@ class WorkspaceAiAssistant(context: Context) {
         fallbackBaseUrls: Map<String, String>,
         estimatedTokens: Long,
         requiresToolCalling: Boolean,
+        excludedProviderIds: Set<String> = emptySet(),
         onEvent: (AiStreamEvent) -> Unit,
     ): ResolvedAiModel? {
         if (!policy.enabled) return null
@@ -303,6 +304,7 @@ class WorkspaceAiAssistant(context: Context) {
             minimumContextTokens = estimatedTokens,
         )
         for (candidate in policy.candidates(primaryProvider)) {
+            if (candidate.id in excludedProviderIds) continue
             val candidateModel = fallbackModels[candidate.id].orEmpty().trim()
             if (candidateModel.isBlank()) {
                 onEvent(AiStreamEvent.Status(
@@ -545,25 +547,9 @@ class WorkspaceAiAssistant(context: Context) {
         require(objective.length <= MAX_TASK_CHARS) { "The request is too long" }
         require(files.size <= MAX_FILES) { "Too many files were included in the agent context" }
         if (provider.customEndpoint) validateCustomBaseUrl(customBaseUrl)
-        val plannerCapabilities = getModelCapabilities(provider, model, customBaseUrl)
-        if (plannerCapabilities.supportsStreaming == AiCapabilitySupport.UNSUPPORTED) {
-            throw IOException(
-                model + " does not expose a streaming endpoint through " +
-                    provider.displayName + ". Choose a model with streaming support.",
-            )
-        }
-        val fileList = files.joinToString("\n") { "- " + it.path }.take(MAX_PLANNER_FILE_LIST_CHARS)
-        val estimatedPlannerTokens = (
-            objective.toByteArray(StandardCharsets.UTF_8).size.toLong() +
-                fileList.toByteArray(StandardCharsets.UTF_8).size.toLong()
-            ) / 3L + MAX_OUTPUT_TOKENS + 4_000L
-        val plannerWindow = plannerCapabilities.contextWindowTokens
-        if (plannerWindow != null && estimatedPlannerTokens > plannerWindow) {
-            throw IOException(
-                "The agent planner request may need about " + estimatedPlannerTokens +
-                    " tokens, but " + model + " lists a context window of " + plannerWindow + ".",
-            )
-        }
+
+        val fileList = files.joinToString("\n") { "- " + it.path }
+            .take(MAX_PLANNER_FILE_LIST_CHARS)
         val system = "You are AstraCode's task planner. Break a software development objective into " +
             "one to four small, independently reviewable tasks. Use one task when work is tightly coupled. " +
             "Only create dependencies when a later task genuinely needs an earlier task's result. " +
@@ -571,58 +557,108 @@ class WorkspaceAiAssistant(context: Context) {
         val user = "Objective:\n" + objective + "\n\nAvailable workspace files:\n" + fileList +
             "\n\nDo not propose shell commands, secrets, or direct file writes. Each agent returns a reviewable proposal."
         val schema = agentPlanSchema()
-        val primaryKey = readKey(provider)
-        val output = try {
-            runSimpleStreaming(
-                provider, model, customBaseUrl, primaryKey,
-                system, user, schema, onEvent,
+        val estimatedTokens = (
+            user.toByteArray(StandardCharsets.UTF_8).size.toLong() +
+                system.toByteArray(StandardCharsets.UTF_8).size.toLong()
+            ) / 3L + MAX_OUTPUT_TOKENS + 4_000L
+
+        var selectedProvider = provider
+        var selectedModel = model
+        var selectedBaseUrl = customBaseUrl
+        var selectedKey = readKey(provider)
+        val primaryCapabilities = getModelCapabilities(provider, model, customBaseUrl)
+        val primaryCapabilityProblem = when {
+            primaryCapabilities.supportsStreaming == AiCapabilitySupport.UNSUPPORTED ->
+                model + " does not expose a streaming endpoint through " + provider.displayName + "."
+            primaryCapabilities.contextWindowTokens != null &&
+                estimatedTokens > primaryCapabilities.contextWindowTokens ->
+                "The agent planner request may need about " + estimatedTokens +
+                    " tokens, but " + model + " lists a context window of " +
+                    primaryCapabilities.contextWindowTokens + "."
+            else -> null
+        }
+
+        if (primaryCapabilityProblem != null) {
+            onEvent(AiStreamEvent.Status(
+                "The selected planner model does not satisfy the task. Checking explicitly approved fallbacks.",
+            ))
+            val fallback = findApprovedFallback(
+                primaryProvider = provider,
+                policy = fallbackPolicy,
+                fallbackModels = fallbackModels,
+                fallbackBaseUrls = fallbackBaseUrls,
+                estimatedTokens = estimatedTokens,
+                requiresToolCalling = false,
+                onEvent = onEvent,
+            ) ?: throw IOException(
+                primaryCapabilityProblem +
+                    " No explicitly approved fallback model has a verified streaming endpoint and sufficient context.",
             )
+            selectedProvider = fallback.provider
+            selectedModel = fallback.modelId
+            selectedBaseUrl = fallback.baseUrl
+            selectedKey = fallback.apiKey
+            onEvent(AiStreamEvent.Status(
+                "Agent planner switched to approved fallback: " +
+                    selectedProvider.displayName + " · " + selectedModel,
+            ))
+        }
+
+        try {
+            val output = runSimpleStreaming(
+                selectedProvider,
+                selectedModel,
+                selectedBaseUrl,
+                selectedKey,
+                system,
+                user,
+                schema,
+                onEvent,
+            )
+            return parseAgentTasks(output)
         } catch (primaryError: AiProviderRequestException) {
             if (!primaryError.retryable || !fallbackPolicy.enabled) throw primaryError
-            val contextBytes = files.sumOf {
-                it.content.toByteArray(StandardCharsets.UTF_8).size.toLong()
-            } + user.toByteArray(StandardCharsets.UTF_8).size.toLong()
-            // Conservatively assume one token per UTF-8 byte plus fixed prompt overhead.
-            // This intentionally prefers a skipped fallback to a context overflow.
-            val estimatedTokens = contextBytes + MAX_OUTPUT_TOKENS + 4_000L
-            var fallbackOutput: String? = null
-            var lastFallbackError: AiProviderRequestException? = null
-            for (candidate in fallbackPolicy.candidates(provider)) {
-                val candidateModel = fallbackModels[candidate.id].orEmpty().trim()
-                if (candidateModel.isBlank()) continue
-                val candidateKey = runCatching { readKey(candidate) }.getOrNull() ?: continue
-                val candidateBaseUrl = fallbackBaseUrls[candidate.id].orEmpty()
-                if (candidate.customEndpoint && candidateBaseUrl.isBlank()) continue
-                val capability = getModelCapabilities(candidate, candidateModel, candidateBaseUrl)
-                if (!capability.canSatisfy(
-                        AiCapabilityRequirements(
-                            requiresToolCalling = false,
-                            requiresStreaming = true,
-                            minimumContextTokens = estimatedTokens,
-                        ),
-                    )
-                ) continue
+
+            var lastFallbackError: AiProviderRequestException = primaryError
+            val excluded = mutableSetOf(selectedProvider.id)
+            while (true) {
+                val fallback = findApprovedFallback(
+                    primaryProvider = provider,
+                    policy = fallbackPolicy,
+                    fallbackModels = fallbackModels,
+                    fallbackBaseUrls = fallbackBaseUrls,
+                    estimatedTokens = estimatedTokens,
+                    requiresToolCalling = false,
+                    excludedProviderIds = excluded,
+                    onEvent = onEvent,
+                ) ?: throw lastFallbackError
+                excluded += fallback.provider.id
                 onEvent(AiStreamEvent.Status(
-                    "Agent planner is using explicitly allowed fallback: " +
-                        candidate.displayName + " · " + candidateModel,
+                    "Agent planner is using another approved fallback: " +
+                        fallback.provider.displayName + " · " + fallback.modelId,
                 ))
                 try {
-                    fallbackOutput = runSimpleStreaming(
-                        candidate, candidateModel, candidateBaseUrl, candidateKey,
-                        system, user, schema, onEvent,
+                    val output = runSimpleStreaming(
+                        fallback.provider,
+                        fallback.modelId,
+                        fallback.baseUrl,
+                        fallback.apiKey,
+                        system,
+                        user,
+                        schema,
+                        onEvent,
                     )
-                    break
+                    return parseAgentTasks(output)
                 } catch (fallbackError: AiProviderRequestException) {
                     lastFallbackError = fallbackError
                     onEvent(AiStreamEvent.Status(
-                        candidate.displayName + " agent-planner fallback failed: " +
+                        fallback.provider.displayName + " agent-planner fallback failed: " +
                             fallbackError.message,
                     ))
+                    if (!fallbackError.retryable) throw fallbackError
                 }
             }
-            fallbackOutput ?: throw (lastFallbackError ?: primaryError)
         }
-        return parseAgentTasks(output)
     }
 
     private fun runProviderToolLoop(
