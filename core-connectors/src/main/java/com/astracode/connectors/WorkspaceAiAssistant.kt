@@ -447,7 +447,7 @@ class WorkspaceAiAssistant(context: Context) {
                 registry,
                 useTools,
                 maxToolRounds,
-                onEvent,
+                withUsagePricing(onEvent, selectedCapabilities.pricing),
             )
             return parseProposal(output, writeProtectedPaths)
         } catch (primaryError: AiProviderRequestException) {
@@ -510,7 +510,7 @@ class WorkspaceAiAssistant(context: Context) {
                         registry,
                         useTools,
                         maxToolRounds,
-                        onEvent,
+                        withUsagePricing(onEvent, capability.pricing),
                     )
                     return parseProposal(fallbackOutput, writeProtectedPaths)
                 } catch (fallbackError: AiProviderRequestException) {
@@ -568,6 +568,7 @@ class WorkspaceAiAssistant(context: Context) {
         var selectedModel = model
         var selectedBaseUrl = customBaseUrl
         var selectedKey = readKey(provider)
+        var selectedPricing = getModelCapabilities(provider, model, customBaseUrl).pricing
         val primaryCapabilities = getModelCapabilities(provider, model, customBaseUrl)
         val primaryCapabilityProblem = when {
             primaryCapabilities.supportsStreaming == AiCapabilitySupport.UNSUPPORTED ->
@@ -600,6 +601,7 @@ class WorkspaceAiAssistant(context: Context) {
             selectedModel = fallback.modelId
             selectedBaseUrl = fallback.baseUrl
             selectedKey = fallback.apiKey
+            selectedPricing = fallback.capabilities.pricing
             onEvent(AiStreamEvent.Status(
                 "Agent planner switched to approved fallback: " +
                     selectedProvider.displayName + " · " + selectedModel,
@@ -615,7 +617,7 @@ class WorkspaceAiAssistant(context: Context) {
                 system,
                 user,
                 schema,
-                onEvent,
+                withUsagePricing(onEvent, selectedPricing),
             )
             return parseAgentTasks(output, files.map { it.path }.toSet())
         } catch (primaryError: AiProviderRequestException) {
@@ -648,7 +650,7 @@ class WorkspaceAiAssistant(context: Context) {
                         system,
                         user,
                         schema,
-                        onEvent,
+                        withUsagePricing(onEvent, fallback.capabilities.pricing),
                     )
                     return parseAgentTasks(output)
                 } catch (fallbackError: AiProviderRequestException) {
@@ -660,6 +662,17 @@ class WorkspaceAiAssistant(context: Context) {
                     if (!fallbackError.retryable) throw fallbackError
                 }
             }
+        }
+    }
+
+    private fun withUsagePricing(
+        onEvent: (AiStreamEvent) -> Unit,
+        pricing: AiModelPricing?,
+    ): (AiStreamEvent) -> Unit = { event ->
+        if (event is AiStreamEvent.Usage) {
+            onEvent(event.copy(usage = event.usage.withPricing(pricing)))
+        } else {
+            onEvent(event)
         }
     }
 
