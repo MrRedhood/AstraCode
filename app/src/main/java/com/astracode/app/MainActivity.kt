@@ -1271,7 +1271,7 @@ private fun FileManagementScreen(
                 withContext(Dispatchers.IO) {
                     val baselines = linkedMapOf<String, String>()
                     val snapshots = mutableListOf<WorkspaceFileSnapshot>()
-                    var totalCharacters = 0L
+                    var totalContextBytes = 0L
 
                     val candidates = mutableListOf<FileEntry>()
                     val pendingFolders = mutableListOf("" to 0)
@@ -1307,16 +1307,18 @@ private fun FileManagementScreen(
 
                     for (entry in candidates) {
                         val diskText = requestedStorage.readText(entry.path).text
-                        if (diskText.length > 96 * 1024 || containsLikelyEmbeddedSecret(diskText)) continue
+                        val diskBytes = diskText.toByteArray(Charsets.UTF_8).size
+                        if (diskBytes > 96 * 1024 || containsLikelyEmbeddedSecret(diskText)) continue
                         val contextText = unsavedEditorText[entry.path] ?: diskText
+                        val contextBytes = contextText.toByteArray(Charsets.UTF_8).size
                         if (
-                            contextText.length > 96 * 1024 ||
+                            contextBytes > 96 * 1024 ||
                             containsLikelyEmbeddedSecret(contextText)
                         ) continue
-                        if (totalCharacters + contextText.length > 600L * 1024L) break
+                        if (totalContextBytes + contextBytes > 600L * 1024L) break
                         baselines[entry.path] = diskText
                         snapshots += WorkspaceFileSnapshot(entry.path, contextText)
-                        totalCharacters += contextText.length
+                        totalContextBytes += contextBytes
                     }
 
                     val proposal = workspaceAiAssistant.createWorkspaceProposal(
@@ -4829,6 +4831,7 @@ private fun FileManagementScreen(
                                         aiApiKeyInput = ""
                                         aiModels = emptyList()
                                         aiModelMenuExpanded = false
+                                        aiLoadingModels = false
                                         aiProposal = null
                                         aiMessage = null
                                         aiKeyRefresh++
