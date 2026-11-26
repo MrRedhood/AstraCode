@@ -7,7 +7,11 @@ import java.io.IOException
 import java.net.URI
 import java.nio.charset.StandardCharsets
 
-data class WorkspaceFileSnapshot(val path: String, val content: String)
+data class WorkspaceFileSnapshot(
+    val path: String,
+    val content: String,
+    val writeProtected: Boolean = false,
+)
 
 enum class AiChangeOperation(val wireValue: String) {
     CREATE("create"),
@@ -229,6 +233,7 @@ class WorkspaceAiAssistant(context: Context) {
         val contextText = buildWorkspaceContext(task, files)
         val key = readKey(provider)
         val registry = AiToolRegistry(files)
+        val writeProtectedPaths = files.filter { it.writeProtected }.map { it.path }.toSet()
         val primaryCapabilities = getModelCapabilities(provider, model, customBaseUrl)
         if (primaryCapabilities.supportsStreaming == AiCapabilitySupport.UNSUPPORTED) {
             throw IOException(
@@ -259,7 +264,7 @@ class WorkspaceAiAssistant(context: Context) {
                 provider, model, customBaseUrl, key, contextText, registry,
                 useTools, maxToolRounds, onEvent,
             )
-            return parseProposal(output)
+            return parseProposal(output , writeProtectedPaths)
         } catch (primaryError: AiProviderRequestException) {
             if (!primaryError.retryable || !fallbackPolicy.enabled) throw primaryError
             onEvent(AiStreamEvent.Status(
@@ -321,7 +326,7 @@ class WorkspaceAiAssistant(context: Context) {
                         maxToolRounds,
                         onEvent,
                     )
-                    return parseProposal(fallbackOutput)
+                    return parseProposal(fallbackOutput , writeProtectedPaths)
                 } catch (fallbackError: AiProviderRequestException) {
                     lastFallbackError = fallbackError
                     onEvent(AiStreamEvent.Status(
@@ -1083,13 +1088,19 @@ class WorkspaceAiAssistant(context: Context) {
             for (file in files) {
                 appendLine()
                 appendLine("===== FILE: " + file.path + " =====")
+                if (file.writeProtected) {
+                    appendLine("This file contained recognized secret material. The content below is redacted and this file must not be changed.")
+                }
                 appendLine(file.content)
                 appendLine("===== END FILE =====")
             }
         }
     }
 
-    private fun parseProposal(raw: String): AiWorkspaceProposal {
+    private fun parseProposal(
+        raw: String,
+        writeProtectedPaths: Set<String>,
+    ): AiWorkspaceProposal {
         val text = stripCodeFence(raw)
         val json = try {
             JSONObject(text)
@@ -1110,6 +1121,12 @@ class WorkspaceAiAssistant(context: Context) {
             val content = item.optString("content")
             val reason = item.optString("reason").take(MAX_REASON_CHARS)
             validateWorkspacePath(path)
+            if (path in writeProtectedPaths) {
+                throw IOException(
+                    "The AI proposed changing " + path +
+                        ", but that file contains recognized secret material and was shared in redacted form.",
+                )
+            }
             if (!seen.add(path)) throw IOException("The AI proposed the same path more than once")
             if (content.toByteArray(StandardCharsets.UTF_8).size > MAX_PROPOSED_FILE_BYTES) {
                 throw IOException("Proposed file is too large: " + path)
