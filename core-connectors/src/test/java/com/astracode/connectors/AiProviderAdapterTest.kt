@@ -107,6 +107,12 @@ class AiProviderAdapterTest {
         assertFailsWith<IllegalArgumentException> {
             adapter.streamingUrl("")
         }
+        assertFailsWith<IllegalArgumentException> {
+            adapter.streamingUrl("//api.example.com/v1")
+        }
+        assertFailsWith<IllegalArgumentException> {
+            adapter.streamingUrl("api.example.com/v1")
+        }
     }
 
     @Test
