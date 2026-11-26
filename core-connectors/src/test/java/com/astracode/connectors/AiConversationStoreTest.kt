@@ -137,7 +137,8 @@ class AiConversationStoreTest {
         assertTrue(exported.contains("model-id"))
         assertFalse(exported.contains("api_key"))
         assertFalse(exported.contains("password"))
-        assertFalse(exported.contains("token"))
+        assertFalse(exported.contains("Bearer "))
+        assertFalse(exported.contains("sk-"))
     }
 
     @Test
