@@ -241,8 +241,9 @@ class WorkspaceAiAssistant(context: Context) {
                     provider.displayName + ". Choose a model with streaming support.",
             )
         }
-        val estimatedPrimaryTokens = contextText.toByteArray(StandardCharsets.UTF_8).size.toLong() +
-            MAX_OUTPUT_TOKENS + 4_000L
+        val estimatedPrimaryTokens =
+            contextText.toByteArray(StandardCharsets.UTF_8).size.toLong() / 3L +
+                MAX_OUTPUT_TOKENS + 4_000L
         val primaryContextWindow = primaryCapabilities.contextWindowTokens
         if (primaryContextWindow != null && estimatedPrimaryTokens > primaryContextWindow) {
             throw IOException(
@@ -280,9 +281,10 @@ class WorkspaceAiAssistant(context: Context) {
             onEvent(AiStreamEvent.Status(
                 provider.displayName + " is temporarily unavailable. Checking explicitly allowed fallbacks.",
             ))
-            // Assume up to one token per UTF-8 byte plus fixed prompt overhead.
-            // A skipped fallback is safer than selecting a model with too little context.
-            val estimatedTokens = contextText.toByteArray(StandardCharsets.UTF_8).size.toLong() +
+            // Estimate code/text at about three UTF-8 bytes per token, with
+            // explicit output and safety overhead. This remains conservative
+            // without rejecting ordinary source-code workspaces unnecessarily.
+            val estimatedTokens = contextText.toByteArray(StandardCharsets.UTF_8).size.toLong() / 3L +
                 MAX_OUTPUT_TOKENS + 4_000L
             var lastFallbackError: AiProviderRequestException? = null
             for (candidate in fallbackPolicy.candidates(provider)) {
@@ -377,6 +379,17 @@ class WorkspaceAiAssistant(context: Context) {
             )
         }
         val fileList = files.joinToString("\n") { "- " + it.path }.take(MAX_PLANNER_FILE_LIST_CHARS)
+        val estimatedPlannerTokens = (
+            objective.toByteArray(StandardCharsets.UTF_8).size.toLong() +
+                fileList.toByteArray(StandardCharsets.UTF_8).size.toLong()
+            ) / 3L + MAX_OUTPUT_TOKENS + 4_000L
+        val plannerWindow = plannerCapabilities.contextWindowTokens
+        if (plannerWindow != null && estimatedPlannerTokens > plannerWindow) {
+            throw IOException(
+                "The agent planner request may need about " + estimatedPlannerTokens +
+                    " tokens, but " + model + " lists a context window of " + plannerWindow + ".",
+            )
+        }
         val system = "You are AstraCode's task planner. Break a software development objective into " +
             "one to four small, independently reviewable tasks. Use one task when work is tightly coupled. " +
             "Only create dependencies when a later task genuinely needs an earlier task's result. " +
