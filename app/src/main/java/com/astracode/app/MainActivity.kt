@@ -1542,6 +1542,7 @@ private fun FileManagementScreen(
         val unsavedEditorText = editorTabs
             .filterNot { it.isLoading }
             .associate { it.path to it.text }
+        workspaceAiAssistant.beginOperation()
         aiBusy = true
         aiMessage = "Reading a bounded set of workspace source files and requesting a plan…"
         aiProposal = null
@@ -5942,6 +5943,7 @@ private fun FileManagementScreen(
                                 val selectedModel = aiModel.trim()
                                 val selectedEndpoint = aiCustomBaseUrl
                                 scope.launch {
+                                    workspaceAiAssistant.beginOperation()
                                     aiTestingConnection = true
                                     try {
                                         val result = runCatchingCancellable {
@@ -5979,6 +5981,7 @@ private fun FileManagementScreen(
                                 val selectedProvider = aiProvider
                                 val selectedEndpoint = aiCustomBaseUrl
                                 scope.launch {
+                                    workspaceAiAssistant.beginOperation()
                                     aiLoadingModels = true
                                     val result = runCatchingCancellable {
                                         withContext(Dispatchers.IO) {
@@ -6241,6 +6244,15 @@ private fun FileManagementScreen(
             },
             dismissButton = {
                 Row {
+                    if (aiBusy) {
+                        TextButton(
+                            onClick = {
+                                workspaceAiAssistant.cancelActiveRequests()
+                                aiMessage = "Cancellation requested. Completed agent results will remain in the review plan."
+                            },
+                            modifier = Modifier.testTag("ai-cancel-request"),
+                        ) { Text("Cancel task") }
+                    }
                     if (proposal != null && !aiBusy) {
                         TextButton(
                             onClick = {
