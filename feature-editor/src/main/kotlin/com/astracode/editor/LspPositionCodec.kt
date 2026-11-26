@@ -1,56 +1,30 @@
 package com.astracode.editor
 
-/**
- * Position encodings defined by LSP 3.17.
- * The editor itself always uses UTF-8 byte offsets. UTF-16 exists here only
- * to translate the wire coordinates of older language servers.
- */
-enum class LspPositionEncoding(val wireName: String) {
-    UTF8("utf-8"),
-    UTF16("utf-16"),
-}
-
+/** An LSP position. Character counts are UTF-8 bytes, matching the negotiated encoding. */
 data class LspPosition(val line: Int, val character: Int)
 
 /**
- * Converts between internal UTF-8 byte offsets and negotiated LSP line/character
- * positions. Callers should advertise ["utf-8"] in initialize when possible.
- * LSP servers that omit positionEncoding use UTF-16 by protocol default.
+ * LSP position adapter for a UTF-8-native editor.
+ *
+ * AstraCode advertises only "utf-8" in general.positionEncodings and requires
+ * the server to select it in initialize. No UTF-16 document coordinates are
+ * used by this module.
  */
 object LspPositionCodec {
-    fun byteOffsetForPosition(
-        document: ByteArray,
-        position: LspPosition,
-        encoding: LspPositionEncoding = LspPositionEncoding.UTF8,
-    ): Int {
+    const val POSITION_ENCODING = "utf-8"
+
+    fun byteOffsetForPosition(document: ByteArray, position: LspPosition): Int {
         require(position.line >= 0 && position.character >= 0) { "Negative LSP position" }
         val (lineStart, lineEnd) = lineBounds(document, position.line)
-        var byteOffset = lineStart
-        var units = 0
-        while (byteOffset < lineEnd && units < position.character) {
-            val codePointLength = utf8SequenceLength(document[byteOffset])
-            val nextUnits = units + when (encoding) {
-                LspPositionEncoding.UTF8 -> codePointLength
-                LspPositionEncoding.UTF16 -> {
-                    val codePoint = decodeCodePoint(document, byteOffset, codePointLength)
-                    if (codePoint > 0xFFFF) 2 else 1
-                }
-            }
-            require(nextUnits <= position.character) {
-                "LSP character position splits a UTF-8 character"
-            }
-            byteOffset += codePointLength
-            units = nextUnits
+        val byteOffset = lineStart + position.character
+        require(byteOffset <= lineEnd) { "LSP character position is outside the line" }
+        require(isBoundary(document, byteOffset)) {
+            "LSP character position splits a UTF-8 character"
         }
-        require(units == position.character) { "LSP character position is outside the line" }
         return byteOffset
     }
 
-    fun positionForByteOffset(
-        document: ByteArray,
-        byteOffset: Int,
-        encoding: LspPositionEncoding = LspPositionEncoding.UTF8,
-    ): LspPosition {
+    fun positionForByteOffset(document: ByteArray, byteOffset: Int): LspPosition {
         require(byteOffset in 0..document.size) { "Byte offset is outside the document" }
         require(isBoundary(document, byteOffset)) { "Byte offset splits a UTF-8 character" }
 
@@ -63,24 +37,11 @@ object LspPositionCodec {
             }
         }
 
-        var lineEnd = byteOffset
-        // A position immediately before CRLF is represented at the end of the line.
-        if (lineEnd > lineStart && document[lineEnd - 1] == CARRIAGE_RETURN) lineEnd--
-        var units = 0
-        var index = lineStart
-        while (index < lineEnd) {
-            val length = utf8SequenceLength(document[index])
-            require(index + length <= lineEnd) { "Byte offset splits a UTF-8 character" }
-            units += when (encoding) {
-                LspPositionEncoding.UTF8 -> length
-                LspPositionEncoding.UTF16 -> {
-                    val codePoint = decodeCodePoint(document, index, length)
-                    if (codePoint > 0xFFFF) 2 else 1
-                }
-            }
-            index += length
+        var characterOffset = byteOffset
+        if (characterOffset > lineStart && document[characterOffset - 1] == CARRIAGE_RETURN) {
+            characterOffset--
         }
-        return LspPosition(line, units)
+        return LspPosition(line, characterOffset - lineStart)
     }
 
     private fun lineBounds(document: ByteArray, line: Int): Pair<Int, Int> {
@@ -89,7 +50,11 @@ object LspPositionCodec {
         for (index in document.indices) {
             if (document[index] == NEWLINE) {
                 if (currentLine == line) {
-                    val end = if (index > start && document[index - 1] == CARRIAGE_RETURN) index - 1 else index
+                    val end = if (index > start && document[index - 1] == CARRIAGE_RETURN) {
+                        index - 1
+                    } else {
+                        index
+                    }
                     return start to end
                 }
                 currentLine++
@@ -98,27 +63,6 @@ object LspPositionCodec {
         }
         require(currentLine == line) { "LSP line is outside the document" }
         return start to document.size
-    }
-
-    private fun utf8SequenceLength(first: Byte): Int = when (first.toInt() and 0xFF) {
-        in 0x00..0x7F -> 1
-        in 0xC2..0xDF -> 2
-        in 0xE0..0xEF -> 3
-        in 0xF0..0xF4 -> 4
-        else -> throw IllegalArgumentException("Document contains invalid UTF-8")
-    }
-
-    private fun decodeCodePoint(bytes: ByteArray, start: Int, length: Int): Int {
-        var value = bytes[start].toInt() and when (length) {
-            1 -> 0x7F
-            2 -> 0x1F
-            3 -> 0x0F
-            else -> 0x07
-        }
-        for (index in 1 until length) {
-            value = (value shl 6) or (bytes[start + index].toInt() and 0x3F)
-        }
-        return value
     }
 
     private fun isBoundary(bytes: ByteArray, offset: Int): Boolean =
