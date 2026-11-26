@@ -976,10 +976,14 @@ class WorkspaceAiAssistant(context: Context) {
                 maxOutputTokens = item.optLongValue("max_tokens"),
                 inputModalities = modalities,
                 outputModalities = setOf("text"),
-                // The model catalogue does not expose a separate client-function
-                // tool capability. Keep it UNKNOWN instead of inferring it from lifecycle.
-                // Active Messages API models support the documented streaming interface.
-                supportsToolCalling = AiCapabilitySupport.UNKNOWN,
+                // Anthropic's current model overview states that all current
+                // Claude models support client-side tool use. Lifecycle metadata
+                // is used to avoid asserting this for deprecated/retired models.
+                supportsToolCalling = if (isCurrentModel) {
+                    AiCapabilitySupport.SUPPORTED
+                } else {
+                    AiCapabilitySupport.UNKNOWN
+                },
                 supportsStreaming = if (isCurrentModel) {
                     AiCapabilitySupport.SUPPORTED
                 } else {
