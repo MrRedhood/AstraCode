@@ -196,13 +196,17 @@ class AiAgentOrchestrator(
                             }
                         }
                     })
-                    wave.zip(futures).forEach { (_, future) ->
-                        val result = runCatching { future.get() }.getOrElse { error ->
-                            val task = wave.getOrNull(futures.indexOf(future))
-                                ?: AiAgentTask("unknown", "Agent", "")
+                    wave.zip(futures).forEach { (task, future) ->
+                        val result = try {
+                            future.get()
+                        } catch (error: java.util.concurrent.ExecutionException) {
+                            val cause = error.cause
+                            if (cause is CancellationException) throw cause
                             AiAgentTaskResult(
-                                task, AiAgentTaskStatus.FAILED, null,
-                                error.message ?: "Agent execution failed",
+                                task,
+                                AiAgentTaskStatus.FAILED,
+                                null,
+                                cause?.message ?: error.message ?: "Agent execution failed",
                             )
                         }
                         completed[result.task.id] = result
