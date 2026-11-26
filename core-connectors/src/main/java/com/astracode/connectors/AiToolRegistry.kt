@@ -31,10 +31,13 @@ data class AiToolResult(
  * The model receives only read-only tools over the bounded context that the
  * user already selected for this request. No shell, network, writes or deletes.
  */
-class AiToolRegistry(files: List<WorkspaceFileSnapshot>) {
+class AiToolRegistry(
+    files: List<WorkspaceFileSnapshot>,
+    allowedToolNames: Set<String> = DEFAULT_TOOL_NAMES,
+) {
     private val snapshots = files.associateBy { it.path }
 
-    val definitions: List<AiToolDefinition> = listOf(
+    private val allDefinitions: List<AiToolDefinition> = listOf(
         AiToolDefinition(
             name = "list_workspace_files",
             description = "List file paths already included in this request's safe workspace context.",
@@ -66,6 +69,17 @@ class AiToolRegistry(files: List<WorkspaceFileSnapshot>) {
             ),
         ),
     )
+
+    init {
+        require(allowedToolNames.all { allowed ->
+            allDefinitions.any { it.name == allowed }
+        }) {
+            "An agent profile requested an unknown workspace tool"
+        }
+    }
+
+    val definitions: List<AiToolDefinition> =
+        allDefinitions.filter { it.name in allowedToolNames }
 
     fun execute(call: AiToolCall): AiToolResult {
         return try {
@@ -159,6 +173,14 @@ class AiToolRegistry(files: List<WorkspaceFileSnapshot>) {
             .put("properties", properties)
             .put("required", requiredArray)
             .put("additionalProperties", false)
+    }
+
+    companion object {
+        val DEFAULT_TOOL_NAMES: Set<String> = setOf(
+            "list_workspace_files",
+            "read_workspace_file",
+            "search_workspace_files",
+        )
     }
 
     private companion object {
