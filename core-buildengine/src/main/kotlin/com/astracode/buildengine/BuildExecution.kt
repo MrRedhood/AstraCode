@@ -137,15 +137,19 @@ class BuildProcessRunner {
                     File.pathSeparator + environment["PATH"].orEmpty()
             }
 
-            emit(BuildExecutionEvent.Started(profile.taskName, profile.command))
+            emit(BuildExecutionEvent.Started(profile.taskName, redactCommand(profile.command)))
             process = builder.start()
             val activeProcess = process
+            // Builds are non-interactive. EOF prevents a hidden prompt from hanging a task.
+            activeProcess.outputStream.close()
+            val secrets = collectSensitiveValues(profile)
             readers = listOf(
                 readerPool.submit(Callable {
                     copyOutput(
                         activeProcess.inputStream,
                         BuildOutputStream.STDOUT,
                         output,
+                        BuildOutputRedactor(secrets),
                         emit,
                     )
                 }),
@@ -154,6 +158,7 @@ class BuildProcessRunner {
                         activeProcess.errorStream,
                         BuildOutputStream.STDERR,
                         output,
+                        BuildOutputRedactor(secrets),
                         emit,
                     )
                 }),
@@ -234,19 +239,82 @@ class BuildProcessRunner {
         stream: InputStream,
         source: BuildOutputStream,
         output: BoundedBuildOutput,
+        redactor: BuildOutputRedactor,
         onEvent: (BuildExecutionEvent) -> Unit,
     ) {
+        fun publish(chunk: String) {
+            if (chunk.isEmpty()) return
+            output.append(chunk)
+            runCatching { onEvent(BuildExecutionEvent.Output(source, chunk)) }
+        }
         InputStreamReader(stream, StandardCharsets.UTF_8).buffered().use { reader: BufferedReader ->
             val buffer = CharArray(4_096)
             while (true) {
                 val count = reader.read(buffer)
                 if (count < 0) break
-                val chunk = String(buffer, 0, count)
-                output.append(chunk)
-                runCatching { onEvent(BuildExecutionEvent.Output(source, chunk)) }
+                publish(redactor.append(String(buffer, 0, count)))
             }
         }
+        publish(redactor.finish())
     }
+
+    private fun redactCommand(command: List<String>): List<String> {
+        val result = mutableListOf<String>()
+        var redactNext = false
+        command.forEach { argument ->
+            if (redactNext) {
+                result += "<redacted>"
+                redactNext = false
+            } else {
+                val equalIndex = argument.indexOf('=')
+                val name = if (equalIndex >= 0) argument.substring(0, equalIndex) else argument
+                if (isSensitiveName(name)) {
+                    if (equalIndex >= 0) {
+                        result += argument.substring(0, equalIndex + 1) + "<redacted>"
+                    } else {
+                        result += argument
+                        redactNext = true
+                    }
+                } else {
+                    result += argument
+                }
+            }
+        }
+        if (redactNext) result += "<missing>"
+        return result
+    }
+
+    private fun collectSensitiveValues(profile: BuildExecutionProfile): List<String> {
+        val secrets = linkedSetOf<String>()
+        profile.environment.forEach { (key, value) ->
+            if (isSensitiveName(key) && value.length >= MIN_SECRET_LENGTH) secrets += value
+        }
+        var redactNext = false
+        profile.command.forEach { argument ->
+            if (redactNext) {
+                if (argument.length >= MIN_SECRET_LENGTH) secrets += argument
+                redactNext = false
+            } else {
+                val equalIndex = argument.indexOf('=')
+                val name = if (equalIndex >= 0) argument.substring(0, equalIndex) else argument
+                if (isSensitiveName(name)) {
+                    if (equalIndex >= 0) {
+                        val value = argument.substring(equalIndex + 1)
+                        if (value.length >= MIN_SECRET_LENGTH) secrets += value
+                    } else {
+                        redactNext = true
+                    }
+                }
+            }
+        }
+        return secrets.sortedByDescending { it.length }
+    }
+
+    private fun isSensitiveName(value: String): Boolean =
+        SENSITIVE_NAME.containsMatchIn(value) &&
+            !value.contains("_FILE", ignoreCase = true) &&
+            !value.contains("_PATH", ignoreCase = true)
+
 
     private fun awaitReaders(readers: List<Future<*>>) {
         readers.forEach { future ->
@@ -266,6 +334,35 @@ class BuildProcessRunner {
     private companion object {
         const val PROCESS_EXIT_GRACE_MS = 2_000L
         const val READER_JOIN_TIMEOUT_MS = 3_000L
+        const val MIN_SECRET_LENGTH = 4
+        val SENSITIVE_NAME = Regex(
+            "(?i)(password|passphrase|token|secret|credential|api[-_]?key|signing.*key)",
+        )
+    }
+}
+
+/**
+ * Redacts known secret values even when a value is split between read chunks.
+ * A suffix is retained until the next chunk so a partial secret is never emitted.
+ */
+private class BuildOutputRedactor(secrets: List<String>) {
+    private val values = secrets.filter { it.isNotEmpty() }.distinct()
+    private val carryLength = values.maxOfOrNull { it.length } ?: 0
+    private val pending = StringBuilder()
+
+    fun append(chunk: String): String {
+        if (chunk.isNotEmpty()) pending.append(chunk)
+        val safeLength = (pending.length - carryLength).coerceAtLeast(0)
+        return emitPrefix(safeLength)
+    }
+
+    fun finish(): String = emitPrefix(pending.length)
+
+    private fun emitPrefix(length: Int): String {
+        if (length <= 0) return ""
+        val prefix = pending.substring(0, length)
+        pending.delete(0, length)
+        return values.fold(prefix) { result, secret -> result.replace(secret, "<redacted>") }
     }
 }
 
