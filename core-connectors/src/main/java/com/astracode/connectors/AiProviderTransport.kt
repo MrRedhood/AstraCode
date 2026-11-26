@@ -161,7 +161,15 @@ internal class AiProviderTransport {
             throw AiProviderProtocolException(provider.displayName + " returned invalid JSON", error)
         }
         result.optJSONObject("error")?.let { error ->
-            throw IOException(error.optString("message", provider.displayName + " request failed"))
+            val code = error.optString("code").lowercase()
+            val retryable = code.contains("rate") || code.contains("overloaded") ||
+                code.contains("timeout") || code.contains("server") ||
+                code.contains("temporarily_unavailable")
+            throw AiProviderRequestException(
+                error.optString("message", provider.displayName + " request failed"),
+                null,
+                retryable,
+            )
         }
         return result
     }
