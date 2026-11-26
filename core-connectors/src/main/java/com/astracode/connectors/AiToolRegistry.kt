@@ -36,6 +36,7 @@ class AiToolRegistry(
     allowedToolNames: Set<String> = DEFAULT_TOOL_NAMES,
 ) {
     private val snapshots = files.associateBy { it.path }
+    private val allowedNames = allowedToolNames.toSet()
 
     private val allDefinitions: List<AiToolDefinition> = listOf(
         AiToolDefinition(
@@ -83,6 +84,9 @@ class AiToolRegistry(
 
     fun execute(call: AiToolCall): AiToolResult {
         return try {
+            require(call.name in allowedNames) {
+                "This tool is not permitted by the active agent profile"
+            }
             val result = when (call.name) {
                 "list_workspace_files" -> listFiles()
                 "read_workspace_file" -> readFile(call.arguments)
