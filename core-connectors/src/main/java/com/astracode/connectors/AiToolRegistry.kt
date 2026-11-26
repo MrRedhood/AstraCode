@@ -185,14 +185,12 @@ class AiToolRegistry(
             "read_workspace_file",
             "search_workspace_files",
         )
-    }
 
-    private companion object {
-        const val MAX_LISTED_PATHS = 200
-        const val MAX_TOOL_FILE_BYTES = 64 * 1024
-        const val MAX_SEARCH_QUERY_LENGTH = 200
-        const val MAX_SEARCH_RESULTS = 40
-        const val MAX_RESULT_LINE_CHARS = 500
-        const val MAX_PATH_CHARS = 512
+        private const val MAX_LISTED_PATHS = 200
+        private const val MAX_TOOL_FILE_BYTES = 64 * 1024
+        private const val MAX_SEARCH_QUERY_LENGTH = 200
+        private const val MAX_SEARCH_RESULTS = 40
+        private const val MAX_RESULT_LINE_CHARS = 500
+        private const val MAX_PATH_CHARS = 512
     }
 }
