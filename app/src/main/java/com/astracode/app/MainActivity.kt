@@ -1793,8 +1793,9 @@ private fun FileManagementScreen(
                 }
             }
 
-            if (storage === requestedStorage && activeWorkspaceId == requestedWorkspaceId) {
-                result.onSuccess { request ->
+            if (storage === requestedStorage) {
+                if (activeWorkspaceId == requestedWorkspaceId) {
+                    result.onSuccess { request ->
                     aiConversationThread = request.conversationThread
                     aiConversationMessages = request.conversationMessages
                     aiConversationThread?.let { thread ->
@@ -1830,6 +1831,7 @@ private fun FileManagementScreen(
                         }
                     }
                     aiMessage = error.message ?: "The AI request failed."
+                    }
                 }
                 aiBusy = false
             }
