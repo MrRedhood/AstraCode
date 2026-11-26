@@ -268,7 +268,7 @@ class BuildProcessRunner {
             } else {
                 val equalIndex = argument.indexOf('=')
                 val name = if (equalIndex >= 0) argument.substring(0, equalIndex) else argument
-                if (isSensitiveName(name)) {
+                if (isSensitiveArgumentName(name)) {
                     if (equalIndex >= 0) {
                         result += argument.substring(0, equalIndex + 1) + "<redacted>"
                     } else {
@@ -297,7 +297,7 @@ class BuildProcessRunner {
             } else {
                 val equalIndex = argument.indexOf('=')
                 val name = if (equalIndex >= 0) argument.substring(0, equalIndex) else argument
-                if (isSensitiveName(name)) {
+                if (isSensitiveArgumentName(name)) {
                     if (equalIndex >= 0) {
                         val value = argument.substring(equalIndex + 1)
                         if (value.isNotEmpty()) secrets += value
@@ -314,6 +314,9 @@ class BuildProcessRunner {
         SENSITIVE_NAME.containsMatchIn(value) &&
             !value.contains("_FILE", ignoreCase = true) &&
             !value.contains("_PATH", ignoreCase = true)
+
+    private fun isSensitiveArgumentName(value: String): Boolean =
+        value.startsWith("-") && isSensitiveName(value)
 
 
     private fun awaitReaders(readers: List<Future<*>>) {
