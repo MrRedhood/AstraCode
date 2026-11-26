@@ -34,7 +34,13 @@ data class AiTokenUsage(
 ) {
     fun withPricing(pricing: AiModelPricing?): AiTokenUsage {
         if (pricing == null || inputTokens == null || outputTokens == null) return this
-        return copy(estimatedCostUsd = pricing.estimateCostUsd(inputTokens, outputTokens))
+        return copy(
+            estimatedCostUsd = pricing.estimateCostUsd(
+                inputTokens = inputTokens,
+                outputTokens = outputTokens,
+                cachedInputTokens = cachedInputTokens ?: 0L,
+            ),
+        )
     }
 
     /**
@@ -136,7 +142,11 @@ class AiStreamAccumulator(private val provider: AiProvider) {
         ) null else AiTokenUsage(
             inputTokens = inputTokens,
             outputTokens = outputTokens,
-            totalTokens = totalTokens,
+            totalTokens = totalTokens ?: if (inputTokens != null && outputTokens != null) {
+                inputTokens + outputTokens
+            } else {
+                null
+            },
             cachedInputTokens = cachedInputTokens,
         )
         return AiStreamResult(
@@ -342,11 +352,10 @@ class AiStreamAccumulator(private val provider: AiProvider) {
         totalTokens = if (inputTokens != null || outputTokens != null) {
             (inputTokens ?: 0L) + (outputTokens ?: 0L)
         } else totalTokens
-        cachedInputTokens = (
-            usage.optTokenCount("cache_read_input_tokens") ?: 0L
-            ) + (usage.optTokenCount("cache_creation_input_tokens") ?: 0L)
-        if (outputUsageMayBeMissing && outputTokens == null) {
-            outputTokens = null
+        val cacheRead = usage.optTokenCount("cache_read_input_tokens")
+        val cacheCreated = usage.optTokenCount("cache_creation_input_tokens")
+        if (cacheRead != null || cacheCreated != null) {
+            cachedInputTokens = (cacheRead ?: 0L) + (cacheCreated ?: 0L)
         }
     }
 
