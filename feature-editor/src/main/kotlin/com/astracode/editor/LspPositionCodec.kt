@@ -109,7 +109,12 @@ object LspPositionCodec {
     }
 
     private fun decodeCodePoint(bytes: ByteArray, start: Int, length: Int): Int {
-        var value = bytes[start].toInt() and (0x7F shr length)
+        var value = bytes[start].toInt() and when (length) {
+            1 -> 0x7F
+            2 -> 0x1F
+            3 -> 0x0F
+            else -> 0x07
+        }
         for (index in 1 until length) {
             value = (value shl 6) or (bytes[start + index].toInt() and 0x3F)
         }
