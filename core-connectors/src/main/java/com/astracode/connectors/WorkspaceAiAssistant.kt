@@ -172,8 +172,11 @@ class WorkspaceAiAssistant(context: Context) {
                     onEvent(AiStreamEvent.Status("Skipping " + candidate.displayName + ": no fallback model is configured."))
                     continue
                 }
-                if (!hasApiKey(candidate)) {
-                    onEvent(AiStreamEvent.Status("Skipping " + candidate.displayName + ": no API key is saved."))
+                val fallbackKeyResult = runCatching { readKey(candidate) }
+                if (fallbackKeyResult.isFailure) {
+                    onEvent(AiStreamEvent.Status(
+                        "Skipping " + candidate.displayName + ": its API key is unavailable or cannot be decrypted.",
+                    ))
                     continue
                 }
                 val candidateBaseUrl = fallbackBaseUrls[candidate.id].orEmpty()
@@ -202,7 +205,7 @@ class WorkspaceAiAssistant(context: Context) {
                 onEvent(AiStreamEvent.Status(
                     "Using explicitly allowed fallback: " + candidate.displayName + " · " + candidateModel,
                 ))
-                val fallbackKey = readKey(candidate)
+                val fallbackKey = fallbackKeyResult.getOrThrow()
                 val fallbackOutput = runProviderToolLoop(
                     candidate,
                     candidateModel,
@@ -263,7 +266,8 @@ class WorkspaceAiAssistant(context: Context) {
             var fallbackOutput: String? = null
             for (candidate in fallbackPolicy.candidates(provider)) {
                 val candidateModel = fallbackModels[candidate.id].orEmpty().trim()
-                if (candidateModel.isBlank() || !hasApiKey(candidate)) continue
+                if (candidateModel.isBlank()) continue
+                val candidateKey = runCatching { readKey(candidate) }.getOrNull() ?: continue
                 val candidateBaseUrl = fallbackBaseUrls[candidate.id].orEmpty()
                 if (candidate.customEndpoint && candidateBaseUrl.isBlank()) continue
                 val capability = runCatching {
@@ -283,7 +287,7 @@ class WorkspaceAiAssistant(context: Context) {
                         candidate.displayName + " · " + candidateModel,
                 ))
                 fallbackOutput = runSimpleStreaming(
-                    candidate, candidateModel, candidateBaseUrl, readKey(candidate),
+                    candidate, candidateModel, candidateBaseUrl, candidateKey,
                     system, user, schema, onEvent,
                 )
                 break
