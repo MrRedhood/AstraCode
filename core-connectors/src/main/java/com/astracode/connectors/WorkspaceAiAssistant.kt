@@ -537,7 +537,9 @@ class WorkspaceAiAssistant(context: Context) {
                         .put("schema", proposalSchema()),
                 )
             }
-            if (enableTools && previousInteractionId == null) {
+            if (enableTools) {
+                // The REST continuation request must retain the tool declarations
+                // so the model can resolve another function after the first result.
                 body.put("tools", geminiTools(registry))
             }
             if (previousInteractionId != null) {
