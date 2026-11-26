@@ -12,6 +12,7 @@ enum class AiCapabilitySupport {
 enum class AiCapabilitySource {
     PROVIDER_MODEL_METADATA,
     PROVIDER_API_CONTRACT,
+    PROVIDER_METADATA_AND_API_CONTRACT,
     UNKNOWN,
 }
 
