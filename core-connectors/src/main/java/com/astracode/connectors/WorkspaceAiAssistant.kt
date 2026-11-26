@@ -297,8 +297,6 @@ class WorkspaceAiAssistant(context: Context) {
             requiresToolCalling = requiresToolCalling,
             requiresStreaming = true,
             minimumContextTokens = estimatedTokens,
-            requiredInputModalities = setOf("text"),
-            requiredOutputModalities = setOf("text"),
         )
         for (candidate in policy.candidates(primaryProvider)) {
             val candidateModel = fallbackModels[candidate.id].orEmpty().trim()
@@ -599,8 +597,6 @@ class WorkspaceAiAssistant(context: Context) {
                             requiresToolCalling = false,
                             requiresStreaming = true,
                             minimumContextTokens = estimatedTokens,
-                            requiredInputModalities = setOf("text"),
-                            requiredOutputModalities = setOf("text"),
                         ),
                     )
                 ) continue
