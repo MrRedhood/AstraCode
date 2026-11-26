@@ -77,6 +77,24 @@ class AiModelCapabilitiesTest {
     }
 
     @Test
+    fun userConfirmationCannotOverrideExplicitlyUnsupportedCapability() {
+        val model = AiModelCapabilities(
+            provider = AiProvider.OPENROUTER,
+            modelId = "known-no-tools",
+            displayName = "Known unsupported",
+            supportsToolCalling = AiCapabilitySupport.UNSUPPORTED,
+            supportsStreaming = AiCapabilitySupport.UNSUPPORTED,
+        ).withUserConfirmedCapabilities(
+            verifiedContextWindowTokens = 32_000,
+            toolCallingConfirmed = true,
+            streamingConfirmed = true,
+        )
+        assertEquals(AiCapabilitySupport.UNSUPPORTED, model.supportsToolCalling)
+        assertEquals(AiCapabilitySupport.UNSUPPORTED, model.supportsStreaming)
+        assertEquals(32_000L, model.contextWindowTokens)
+    }
+
+    @Test
     fun manualContextCanBeAddedWithoutAssumingToolSupport() {
         val model = AiModelCapabilities(
             provider = AiProvider.OPENAI,
