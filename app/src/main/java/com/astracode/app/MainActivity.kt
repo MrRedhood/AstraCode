@@ -1139,6 +1139,7 @@ private fun FileManagementScreen(
     var lspErrorMessage by remember(storage) { mutableStateOf<String?>(null) }
     var lspErrors by remember(storage) { mutableStateOf(0) }
     var lspWarnings by remember(storage) { mutableStateOf(0) }
+    var lspCompletionSuggestions by remember(storage) { mutableStateOf(emptyList<String>()) }
     var lspBusy by remember(storage) { mutableStateOf(false) }
     var showLspConfigureDialog by remember(storage) { mutableStateOf(false) }
     var lspConfigureError by remember(storage) { mutableStateOf<String?>(null) }
@@ -3961,6 +3962,57 @@ private fun FileManagementScreen(
                 if (isActive) "" else "External", if (isActive) dirtyWorkspaceBufferCount else 0, isActive))
         }
     }
+    LaunchedEffect(lspBridge, lspDocumentUri, lspDocumentPath, lspDocumentVersion, openedFile, editorCaretTextIndex) {
+        val bridge = lspBridge
+        val uri = lspDocumentUri
+        val path = lspDocumentPath
+        if (bridge == null || uri == null || path == null || openedFile != path) {
+            lspCompletionSuggestions = emptyList()
+            return@LaunchedEffect
+        }
+        delay(140)
+        lspSyncMutex.lock()
+        try {
+            if (lspBridge !== bridge || lspDocumentUri != uri || lspDocumentPath != path || openedFile != path) {
+                lspCompletionSuggestions = emptyList()
+                return@LaunchedEffect
+            }
+            val currentText = editorTabs.firstOrNull { it.path == path }?.text
+            if (currentText == null) {
+                lspCompletionSuggestions = emptyList()
+                return@LaunchedEffect
+            }
+            val caretIndex = editorCaretTextIndex.coerceIn(0, currentText.length)
+            if (codeCompletionPrefixRange(currentText, caretIndex, path) == null) {
+                lspCompletionSuggestions = emptyList()
+                return@LaunchedEffect
+            }
+            val version = lspDocumentVersion
+            val byteOffset = withContext(Dispatchers.IO) {
+                EditorBuffer(currentText).byteOffsetForTextIndex(caretIndex)
+            }
+            if (lspBridge !== bridge || lspDocumentVersion != version || editorCaretTextIndex != caretIndex) {
+                return@LaunchedEffect
+            }
+            bridge.requestCompletion(uri, byteOffset, version) { result ->
+                scope.launch {
+                    if (lspBridge === bridge && lspDocumentUri == uri &&
+                        lspDocumentPath == path && lspDocumentVersion == version &&
+                        editorCaretTextIndex == caretIndex && openedFile == path
+                    ) {
+                        lspCompletionSuggestions = result.getOrNull().orEmpty().distinct().take(32)
+                    }
+                }
+            }
+        } catch (_: CancellationException) {
+            throw CancellationException()
+        } catch (_: Throwable) {
+            lspCompletionSuggestions = emptyList()
+        } finally {
+            lspSyncMutex.unlock()
+        }
+    }
+
     LaunchedEffect(openedFile, selectedDocument, lspDocumentPath) {
         if (lspDocumentPath != null && (openedFile != lspDocumentPath || selectedDocument != null)) {
             disconnectLanguageServer(showMessage = false)
@@ -8397,16 +8449,16 @@ private fun EditorPanel(
             null
         }
         val completionSuggestions = remember(
-            path, readOnly, editorFieldValue.text, editorFieldValue.selection,
+            path, readOnly, editorFieldValue.text, editorFieldValue.selection, lspCompletionSuggestions,
         ) {
             if (completionPrefixRangeAtRender == null) {
                 emptyList()
             } else {
-                codeCompletionSuggestions(
+                (lspCompletionSuggestions + codeCompletionSuggestions(
                     sourceText = completionValueAtRender.text,
                     path = path,
                     caretOffset = completionValueAtRender.selection.end,
-                )
+                )).distinct().take(16)
             }
         }
         CodeCompletionRow(
