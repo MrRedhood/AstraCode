@@ -61,7 +61,33 @@ class LspWorkspaceManagerTest {
     fun launchesUtf8ServerOpensDocumentAndShutsDownCleanly() {
         val root = Files.createTempDirectory("astracode-lsp-process").toFile()
         try {
-            val script = "import json, sys\nwhile True:\n    headers = {}\n    while True:\n        line = sys.stdin.buffer.readline()\n        if not line:\n            sys.exit(0)\n        if line in (b'\\\\r\\\\n', b'\\\\n'):\n            break\n        name, value = line.decode('ascii').split(':', 1)\n        headers[name.strip().lower()] = value.strip()\n    length = int(headers['content-length'])\n    message = json.loads(sys.stdin.buffer.read(length).decode('utf-8'))\n    method = message.get('method')\n    response = None\n    if method == 'initialize':\n        response = {'jsonrpc': '2.0', 'id': message['id'], 'result': {'capabilities': {'positionEncoding': 'utf-8'}}}\n    elif method == 'shutdown':\n        response = {'jsonrpc': '2.0', 'id': message['id'], 'result': None}\n    elif method == 'exit':\n        break\n    if response is not None:\n        payload = json.dumps(response, separators=(',', ':')).encode('utf-8')\n        sys.stdout.buffer.write(('Content-Length: %d\\\\r\\\\n\\\\r\\\\n' % len(payload)).encode('ascii') + payload)\n        sys.stdout.buffer.flush()"
+            val script = """
+                import json, sys
+                while True:
+                    headers = {}
+                    while True:
+                        line = sys.stdin.buffer.readline()
+                        if not line:
+                            sys.exit(0)
+                        if line in (b'\r\n', b'\n'):
+                            break
+                        name, value = line.decode('ascii').split(':', 1)
+                        headers[name.strip().lower()] = value.strip()
+                    length = int(headers['content-length'])
+                    message = json.loads(sys.stdin.buffer.read(length).decode('utf-8'))
+                    method = message.get('method')
+                    response = None
+                    if method == 'initialize':
+                        response = {'jsonrpc': '2.0', 'id': message['id'], 'result': {'capabilities': {'positionEncoding': 'utf-8'}}}
+                    elif method == 'shutdown':
+                        response = {'jsonrpc': '2.0', 'id': message['id'], 'result': None}
+                    elif method == 'exit':
+                        break
+                    if response is not None:
+                        payload = json.dumps(response, separators=(',', ':')).encode('utf-8')
+                        sys.stdout.buffer.write(('Content-Length: %d\r\n\r\n' % len(payload)).encode('ascii') + payload)
+                        sys.stdout.buffer.flush()
+            """.trimIndent()
             val configuration = LanguageServerConfiguration(
                 id = "fake-kotlin",
                 languageIds = setOf("kotlin"),
