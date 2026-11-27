@@ -235,4 +235,124 @@ class CodeCompletionTest {
         )
     }
 
+
+    @Test
+    fun kotlinCompletionsIncludeCoroutineAndModernLanguageSymbols() {
+        val source = "val value = susp"
+        assertTrue(codeCompletionSuggestions(source, "Main.kt", source.length).contains("suspend"))
+        assertTrue(codeCompletionSuggestions(source, "Main.kt", source.length).contains("supervisorScope"))
+    }
+
+    @Test
+    fun javaCompletionsIncludeModernLanguageAndJdkSymbols() {
+        val source = "class Example { rec"
+        assertTrue(codeCompletionSuggestions(source, "Example.java", source.length).contains("record"))
+    }
+
+    @Test
+    fun javascriptCompletionsIncludeBrowserAndPlatformApis() {
+        val source = "const value = URL"
+        assertTrue(codeCompletionSuggestions(source, "main.js", source.length).contains("URLSearchParams"))
+    }
+
+    @Test
+    fun typescriptCompletionsIncludeTypeOperatorsAndUtilityTypes() {
+        val source = "type Value = key"
+        assertTrue(codeCompletionSuggestions(source, "main.ts", source.length).contains("keyof"))
+    }
+
+    @Test
+    fun rustCompletionsIncludeOwnershipAndStandardLibrarySymbols() {
+        val source = "let result: Res"
+        assertTrue(codeCompletionSuggestions(source, "main.rs", source.length).contains("Result"))
+    }
+
+    @Test
+    fun goCompletionsIncludeContextAndStandardLibrarySymbols() {
+        val source = "ctx, cancel := context.WithT"
+        assertTrue(codeCompletionSuggestions(source, "main.go", source.length).contains("WithTimeout"))
+    }
+
+    @Test
+    fun cppCompletionsIncludeSmartPointersAndStandardLibrarySymbols() {
+        val source = "auto value = std::unique"
+        assertTrue(codeCompletionSuggestions(source, "main.cpp", source.length).contains("unique_ptr"))
+    }
+
+    @Test
+    fun csharpAndCCompletionsIncludeTheirStandardLibrarySymbols() {
+        val csharp = "var token = Cancel"
+        val c = "size_t length = strn"
+        assertTrue(codeCompletionSuggestions(csharp, "Main.cs", csharp.length).contains("CancellationToken"))
+        assertTrue(codeCompletionSuggestions(c, "main.c", c.length).contains("strncmp"))
+    }
+
+    @Test
+    fun swiftAndDartCompletionsIncludeTheirCoreLanguageSymbols() {
+        val swift = "gua"
+        val dart = "Fut"
+        assertTrue(codeCompletionSuggestions(swift, "Main.swift", swift.length).contains("guard"))
+        assertTrue(codeCompletionSuggestions(dart, "main.dart", dart.length).contains("Future"))
+    }
+
+    @Test
+    fun groovyAndPhpCompletionsIncludeTheirCommonApis() {
+        val groovy = "GStr"
+        val php = "str_con"
+        assertTrue(codeCompletionSuggestions(groovy, "build.gradle", groovy.length).contains("GString"))
+        assertTrue(codeCompletionSuggestions(php, "index.php", php.length).contains("str_contains"))
+    }
+
+    @Test
+    fun caseSensitiveLocalMatchesArePrioritized() {
+        val source = "val printCount = 1\nval PrintConfig = 2\nval result = Pri"
+        val suggestions = codeCompletionSuggestions(source, "Main.kt", source.length)
+        assertEquals("PrintConfig", suggestions.first())
+    }
+
+    @Test
+    fun nearbyLocalIdentifiersArePrioritizedOverDistantOnes() {
+        val source = "val prior = 1\nval privateValue = 2\nval result = pri"
+        val suggestions = codeCompletionSuggestions(source, "Main.kt", source.length)
+        assertEquals("privateValue", suggestions.first())
+        assertEquals("prior", suggestions[1])
+    }
+
+    @Test
+    fun supplementaryUnicodeLettersAreSupportedInIdentifierRangesAndSuggestions() {
+        val source = "val 𐐀printable = 1\nval result = 𐐀pri"
+        val caret = source.length
+        val range = codeCompletionPrefixRange(source, caret, "Main.kt")
+        assertEquals(TextRange(source.lastIndexOf("𐐀pri"), caret), range)
+        assertTrue(codeCompletionSuggestions(source, "Main.kt", caret).contains("𐐀printable"))
+    }
+
+    @Test
+    fun completionMergeNormalizesUnicodeAndRejectsMalformedLabels() {
+        assertEquals(
+            listOf("println", "private"),
+            mergeCodeCompletionSuggestions(
+                languageServerSuggestions = listOf("  println  ", "Ｐrintln", "print\nline"),
+                localSuggestions = listOf("private"),
+            ),
+        )
+    }
+
+    @Test
+    fun applyingCompletionRejectsRangesThatSplitSupplementaryCharacters() {
+        val value = TextFieldValue("𐐀pri", selection = TextRange(5))
+        assertEquals(
+            null,
+            applyCodeCompletionAtRange(value, "print", TextRange(1, 4), "Main.kt"),
+        )
+    }
+
+    @Test
+    fun singleCharacterPrefixesCanShowBoundedSuggestions() {
+        val source = "f"
+        val suggestions = codeCompletionSuggestions(source, "Main.kt", source.length)
+        assertTrue(suggestions.isNotEmpty())
+        assertTrue(suggestions.size <= 16)
+    }
+
 }
