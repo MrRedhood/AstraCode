@@ -1147,6 +1147,9 @@ private fun FileManagementScreen(
     var lspDocumentUri by remember(storage) { mutableStateOf<String?>(null) }
     var lspDocumentPath by remember(storage) { mutableStateOf<String?>(null) }
     var lspDocumentVersion by remember(storage) { mutableStateOf(1) }
+    var editorCaretTextIndex by remember(storage) { mutableStateOf(0) }
+    var lspReferenceLocations by remember(storage) { mutableStateOf(emptyList<String>()) }
+    var showLspReferencesDialog by remember(storage) { mutableStateOf(false) }
     val lspSyncMutex = remember(storage) { Mutex() }
     val snackbarHostState = remember { SnackbarHostState() }
     val editorSaveMutex = remember(storage) { Mutex() }
@@ -2445,21 +2448,38 @@ private fun FileManagementScreen(
                 val bridge = withContext(Dispatchers.IO) {
                     manager.connectForDocument(document).get(60, TimeUnit.SECONDS)
                 }
+                val latestText = editorTabs.firstOrNull { it.path == path }?.text
+                    ?: throw IllegalStateException("The open editor tab was closed during LSP startup.")
+                if (storage !== localStorage || openedFile != path || selectedDocument != null) {
+                    manager.close()
+                    return@launch
+                }
+                var openedDocument = document.copy(text = latestText)
                 bridge.setDiagnosticsListener { diagnostics ->
                     scope.launch {
                         lspErrors = diagnostics.count { it.severity == EditorDiagnostic.Severity.ERROR }
                         lspWarnings = diagnostics.count { it.severity == EditorDiagnostic.Severity.WARNING }
                     }
                 }
-                withContext(Dispatchers.IO) { bridge.openDocument(document) }
-                if (lspManager !== manager) {
+                withContext(Dispatchers.IO) { bridge.openDocument(openedDocument) }
+                val textAfterOpen = editorTabs.firstOrNull { it.path == path }?.text
+                    ?: throw IllegalStateException("The open editor tab was closed during LSP startup.")
+                var openedVersion = openedDocument.version
+                if (textAfterOpen != openedDocument.text) {
+                    openedVersion += 1
+                    withContext(Dispatchers.IO) {
+                        bridge.replaceDocument(openedDocument.uri, openedVersion, textAfterOpen)
+                    }
+                    openedDocument = openedDocument.copy(text = textAfterOpen, version = openedVersion)
+                }
+                if (lspManager !== manager || storage !== localStorage || openedFile != path) {
                     manager.close()
                     return@launch
                 }
                 lspBridge = bridge
-                lspDocumentUri = document.uri
+                lspDocumentUri = openedDocument.uri
                 lspDocumentPath = path
-                lspDocumentVersion = document.version
+                lspDocumentVersion = openedVersion
                 lspStatus = "Ready"
                 notify("Language server connected for " + fileName(path) + ".")
             } catch (error: Throwable) {
@@ -2473,6 +2493,101 @@ private fun FileManagementScreen(
                 }
             } finally {
                 lspBusy = false
+            }
+        }
+    }
+
+    fun openLspLocation(location: String) {
+        val targetUri = location.substringBefore('#')
+        val position = location.substringAfter('#', missingDelimiterValue = "")
+        val targetLine = position.substringBefore(':').toIntOrNull()
+        if (targetLine == null || targetLine < 1) {
+            notify("The language server returned an invalid source location.")
+            return
+        }
+        val localRoot = (storage as? FileManagementSystem)?.rootDirectory?.toFile()?.canonicalFile
+        if (localRoot == null) {
+            notify("Language-server navigation is only available in local workspaces.")
+            return
+        }
+        val targetFile = runCatching { File(java.net.URI(targetUri)).canonicalFile }.getOrNull()
+        if (targetFile == null || !targetFile.toPath().startsWith(localRoot.toPath()) || targetFile == localRoot) {
+            notify("The language server returned a location outside this workspace.")
+            return
+        }
+        val relativePath = localRoot.toPath().relativize(targetFile.toPath()).toString()
+            .replace(File.separatorChar, '/')
+        showEditorDrawer = false
+        goToLineRequest = targetLine
+        if (openedFile != relativePath) openWorkspaceEditorPath(relativePath)
+    }
+
+    fun requestLspDefinition() {
+        val bridge = lspBridge
+        val uri = lspDocumentUri
+        val path = lspDocumentPath
+        val tab = editorTabs.firstOrNull { it.path == path }
+        if (bridge == null || uri == null || path == null || tab == null || openedFile != path) {
+            notify("Connect a language server to the currently open local file first.")
+            return
+        }
+        scope.launch {
+            lspSyncMutex.lock()
+            try {
+                val version = lspDocumentVersion
+                val byteOffset = withContext(Dispatchers.IO) {
+                    EditorBuffer(tab.text).byteOffsetForTextIndex(editorCaretTextIndex.coerceIn(0, tab.text.length))
+                }
+                bridge.requestDefinition(uri, byteOffset, version) { result ->
+                    scope.launch {
+                        result.onSuccess { locations ->
+                            val first = locations.firstOrNull()
+                            if (first == null) notify("No definition was found at the current caret.")
+                            else openLspLocation(first)
+                        }.onFailure { error ->
+                            notify("Go to Definition failed: " + (error.message ?: "Language-server request failed."))
+                        }
+                    }
+                }
+            } catch (error: Throwable) {
+                notify(error.message ?: "The current caret is not a valid UTF-8 position.")
+            } finally {
+                lspSyncMutex.unlock()
+            }
+        }
+    }
+
+    fun requestLspReferences() {
+        val bridge = lspBridge
+        val uri = lspDocumentUri
+        val path = lspDocumentPath
+        val tab = editorTabs.firstOrNull { it.path == path }
+        if (bridge == null || uri == null || path == null || tab == null || openedFile != path) {
+            notify("Connect a language server to the currently open local file first.")
+            return
+        }
+        scope.launch {
+            lspSyncMutex.lock()
+            try {
+                val version = lspDocumentVersion
+                val byteOffset = withContext(Dispatchers.IO) {
+                    EditorBuffer(tab.text).byteOffsetForTextIndex(editorCaretTextIndex.coerceIn(0, tab.text.length))
+                }
+                bridge.requestReferences(uri, byteOffset, version, includeDeclaration = true) { result ->
+                    scope.launch {
+                        result.onSuccess { locations ->
+                            lspReferenceLocations = locations
+                            showLspReferencesDialog = true
+                            if (locations.isEmpty()) notify("No references were found at the current caret.")
+                        }.onFailure { error ->
+                            notify("Find References failed: " + (error.message ?: "Language-server request failed."))
+                        }
+                    }
+                }
+            } catch (error: Throwable) {
+                notify(error.message ?: "The current caret is not a valid UTF-8 position.")
+            } finally {
+                lspSyncMutex.unlock()
             }
         }
     }
@@ -3794,6 +3909,12 @@ private fun FileManagementScreen(
                 if (isActive) "" else "External", if (isActive) dirtyWorkspaceBufferCount else 0, isActive))
         }
     }
+    LaunchedEffect(openedFile, selectedDocument, lspDocumentPath) {
+        if (lspDocumentPath != null && (openedFile != lspDocumentPath || selectedDocument != null)) {
+            disconnectLanguageServer(showMessage = false)
+        }
+    }
+
     val drawerBuffers = if (selectedDocument != null) {
         listOf(BufferUi(selectedDocument.name, fileBadgeForPath(selectedDocument.name),
             if (standaloneDocumentLoading) "Loading" else "External", true, selectedDocument.id,
@@ -3976,6 +4097,7 @@ private fun FileManagementScreen(
                                 }
                                 if (sameDocument) updateCurrentEditorHistory(panelPath, redo) else null
                             },
+                            onCaretChanged = { textIndex -> editorCaretTextIndex = textIndex },
                             onSave = ::saveFile,
                             fontSizeSp = editorFontSize,
                             wordWrapEnabled = editorWordWrap,
@@ -4426,11 +4548,8 @@ private fun FileManagementScreen(
                         }
                         DrawerAction.ConnectLanguageServer -> connectLanguageServer()
                         DrawerAction.DisconnectLanguageServer -> disconnectLanguageServer()
-                        DrawerAction.GoToDefinition,
-                        DrawerAction.FindReferences -> notify(
-                            if (lspBridge == null) "Connect a language server first." else
-                                "Navigation requests are being connected to the editor caret.",
-                        )
+                        DrawerAction.GoToDefinition -> requestLspDefinition()
+                        DrawerAction.FindReferences -> requestLspReferences()
                         DrawerAction.OpenTerminal -> {
                             showEditorDrawer = false
                             showTerminalPanel = true
@@ -4462,6 +4581,39 @@ private fun FileManagementScreen(
                 showEditorDrawer = false
                 drawerOptionsTargetId = null
             },
+        )
+    }
+
+    if (showLspReferencesDialog) {
+        AlertDialog(
+            onDismissRequest = { showLspReferencesDialog = false },
+            title = { Text("References (" + lspReferenceLocations.size + ")") },
+            text = {
+                if (lspReferenceLocations.isEmpty()) {
+                    Text("No references were found.")
+                } else {
+                    Column(
+                        Modifier.fillMaxWidth().heightIn(max = 320.dp).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        lspReferenceLocations.forEach { location ->
+                            val uri = location.substringBefore('#')
+                            val fileLabel = runCatching { File(java.net.URI(uri)).name }.getOrDefault(uri)
+                            val position = location.substringAfter('#', "")
+                            TextButton(
+                                onClick = {
+                                    showLspReferencesDialog = false
+                                    openLspLocation(location)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(fileLabel + " · " + position, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showLspReferencesDialog = false }) { Text("Close") } },
         )
     }
 
@@ -7815,6 +7967,7 @@ private fun EditorPanel(
     onTextChange: (String) -> Boolean,
     onTextEdit: (Int, Int, String) -> String?,
     onHistoryAction: (Boolean) -> String?,
+    onCaretChanged: (Int) -> Unit,
     onSave: () -> Unit,
     fontSizeSp: Int = 14,
     wordWrapEnabled: Boolean = true,
@@ -7879,6 +8032,10 @@ private fun EditorPanel(
         if (editorFieldValue.text != text) {
             editorFieldValue = TextFieldValue(text, selection = TextRange(text.length))
         }
+    }
+
+    LaunchedEffect(path, editorFieldValue.selection.end) {
+        onCaretChanged(editorFieldValue.selection.end.coerceIn(0, editorFieldValue.text.length))
     }
 
     LaunchedEffect(path, goToLineRequest) {
