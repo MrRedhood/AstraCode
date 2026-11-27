@@ -122,6 +122,61 @@ class JsonRpcLanguageServerBridgeTest {
     }
 
     @Test
+    fun referencesAndRenameReturnLocationsAndWorkspaceEditProposals() {
+        val endpoint = FakeEndpoint()
+        val bridge = endpoint.bridge()
+        val uri = "file:///workspace/Main.kt"
+        bridge.openDocument(EditorDocument(uri, "kotlin", 5, "fun main() = Unit"))
+
+        var references: Result<List<String>>? = null
+        bridge.requestReferences(uri, 4, 5, includeDeclaration = false) { references = it }
+        val referencesRequest = endpoint.requests.last()
+        assertEquals("textDocument/references", referencesRequest.method)
+        assertEquals(
+            false,
+            map(map(referencesRequest.params)["context"])["includeDeclaration"],
+        )
+        referencesRequest.future.complete(
+            listOf(
+                mapOf(
+                    "uri" to uri,
+                    "range" to mapOf("start" to mapOf("line" to 0, "character" to 4)),
+                ),
+                mapOf(
+                    "uri" to "file:///workspace/Other.kt",
+                    "range" to mapOf("start" to mapOf("line" to 7, "character" to 2)),
+                ),
+            ),
+        )
+        assertEquals(
+            listOf("$uri#1:5", "file:///workspace/Other.kt#8:3"),
+            references?.getOrThrow(),
+        )
+
+        var rename: Result<Map<String, Any?>>? = null
+        bridge.requestRename(uri, 4, 5, "entryPoint") { rename = it }
+        val renameRequest = endpoint.requests.last()
+        assertEquals("textDocument/rename", renameRequest.method)
+        assertEquals("entryPoint", map(renameRequest.params)["newName"])
+        val workspaceEdit = mapOf(
+            "changes" to mapOf(
+                uri to listOf(
+                    mapOf(
+                        "range" to mapOf(
+                            "start" to mapOf("line" to 0, "character" to 4),
+                            "end" to mapOf("line" to 0, "character" to 8),
+                        ),
+                        "newText" to "entryPoint",
+                    ),
+                ),
+            ),
+        )
+        renameRequest.future.complete(workspaceEdit)
+        assertEquals(workspaceEdit, rename?.getOrThrow())
+        bridge.close()
+    }
+
+    @Test
     fun staleRequestVersionsFailBeforeSendingRequests() {
         val endpoint = FakeEndpoint()
         val bridge = endpoint.bridge()

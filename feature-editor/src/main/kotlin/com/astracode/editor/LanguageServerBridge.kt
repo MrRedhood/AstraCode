@@ -38,6 +38,20 @@ interface LanguageServerBridge : AutoCloseable {
     fun requestCompletion(uri: String, offset: Int, version: Int, callback: (Result<List<String>>) -> Unit)
     fun requestHover(uri: String, offset: Int, version: Int, callback: (Result<String?>) -> Unit)
     fun requestDefinition(uri: String, offset: Int, version: Int, callback: (Result<List<String>>) -> Unit)
+    fun requestReferences(
+        uri: String,
+        offset: Int,
+        version: Int,
+        includeDeclaration: Boolean,
+        callback: (Result<List<String>>) -> Unit,
+    )
+    fun requestRename(
+        uri: String,
+        offset: Int,
+        version: Int,
+        newName: String,
+        callback: (Result<Map<String, Any?>>) -> Unit,
+    )
     fun setDiagnosticsListener(listener: (List<EditorDiagnostic>) -> Unit)
 
     override fun close()

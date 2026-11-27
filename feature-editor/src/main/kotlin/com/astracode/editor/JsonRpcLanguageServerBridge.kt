@@ -182,6 +182,49 @@ class JsonRpcLanguageServerBridge internal constructor(
         completeRequest("textDocument/definition", params, ::parseDefinitions, callback)
     }
 
+    override fun requestReferences(
+        uri: String,
+        offset: Int,
+        version: Int,
+        includeDeclaration: Boolean,
+        callback: (Result<List<String>>) -> Unit,
+    ) {
+        val params = runCatching {
+            val position = positionFor(uri, offset, version)
+            mapOf(
+                "textDocument" to mapOf("uri" to uri),
+                "position" to position.toWireMap(),
+                "context" to mapOf("includeDeclaration" to includeDeclaration),
+            )
+        }.getOrElse {
+            callbackSafely(callback, Result.failure(it))
+            return
+        }
+        completeRequest("textDocument/references", params, ::parseDefinitions, callback)
+    }
+
+    override fun requestRename(
+        uri: String,
+        offset: Int,
+        version: Int,
+        newName: String,
+        callback: (Result<Map<String, Any?>>) -> Unit,
+    ) {
+        val params = runCatching {
+            require(newName.isNotBlank()) { "A replacement symbol name is required" }
+            val position = positionFor(uri, offset, version)
+            mapOf(
+                "textDocument" to mapOf("uri" to uri),
+                "position" to position.toWireMap(),
+                "newName" to newName,
+            )
+        }.getOrElse {
+            callbackSafely(callback, Result.failure(it))
+            return
+        }
+        completeRequest("textDocument/rename", params, ::parseWorkspaceEdit, callback)
+    }
+
     override fun setDiagnosticsListener(listener: (List<EditorDiagnostic>) -> Unit) {
         diagnosticsListener.set(listener)
     }
@@ -274,6 +317,12 @@ class JsonRpcLanguageServerBridge internal constructor(
                 (raw["value"] as? String)?.let { "${language}: ${it}" }
             }
         else -> null
+    }
+
+    private fun parseWorkspaceEdit(raw: Any?): Map<String, Any?> {
+        @Suppress("UNCHECKED_CAST")
+        return raw as? Map<String, Any?>
+            ?: throw IllegalArgumentException("Language server returned an invalid workspace edit")
     }
 
     private fun parseDefinitions(raw: Any?): List<String> {
