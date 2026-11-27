@@ -86,6 +86,14 @@ class AiConversationStoreTest {
     }
 
     @Test
+    fun keepsCustomThreadTitleWhenFirstUserMessageArrives() {
+        val thread = store.createThread("workspace-one", "My chosen title")
+        store.appendMessage(thread.id, AiConversationRole.USER, "First user message")
+
+        assertEquals("My chosen title", store.getThread(thread.id)?.title)
+    }
+
+    @Test
     fun searchesOnlyWithinRequestedWorkspace() {
         val first = store.createThread("workspace-one", "Alpha thread")
         store.appendMessage(first.id, AiConversationRole.USER, "Configure a Kotlin compiler")

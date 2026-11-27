@@ -55,12 +55,13 @@ class AiGitIgnoreMatcher(ignoreFiles: List<AiGitIgnoreFile>) {
             .mapNotNull { rawLine ->
                 var value = rawLine.trim()
                 if (value.isBlank()) return@mapNotNull null
-                if (value.startsWith("\\#") || value.startsWith("\\!")) {
+                val escapedLeadingMarker = value.startsWith("\\#") || value.startsWith("\\!")
+                if (escapedLeadingMarker) {
                     value = value.substring(1)
                 } else if (value.startsWith("#")) {
                     return@mapNotNull null
                 }
-                val negated = value.startsWith("!")
+                val negated = !escapedLeadingMarker && value.startsWith("!")
                 if (negated) value = value.substring(1)
                 if (value.isBlank()) return@mapNotNull null
                 val directoryOnly = value.endsWith("/")

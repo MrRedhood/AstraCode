@@ -220,7 +220,11 @@ class AiConversationStore(context: Context) : SQLiteOpenHelper(
                 putNullable("estimated_input_tokens", estimatedInputTokens)
             }
             id = db.insertOrThrow("messages", null, values)
-            val title = if (role == AiConversationRole.USER && threadBeforeInsert.messageCount == 0) {
+            val title = if (
+                role == AiConversationRole.USER &&
+                threadBeforeInsert.messageCount == 0 &&
+                threadBeforeInsert.title == DEFAULT_TITLE
+            ) {
                 normalizeTitle(safeContent)
             } else {
                 threadBeforeInsert.title

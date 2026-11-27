@@ -25,7 +25,7 @@ object AiSecretRedactor {
         Regex("""(?i)\bAKIA[0-9A-Z]{16}\b"""),
         Regex("""(?i)\bBearer\s+[A-Za-z0-9._~-]{20,}"""),
         Regex(
-            """(?im)^(\s*(?:[A-Z0-9_.-]*(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD|PASSWD|PRIVATE[_-]?KEY|ACCESS[_-]?KEY))\s*[:=]\s*)["']?[^\s"']{8,}["']?""",
+            """(?im)^(\s*(?:[A-Z0-9_.-]*(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD|PASSWD|PRIVATE[_-]?KEY|ACCESS[_-]?KEY))\s*[:=]\s*)["']?(?!\[(?:removed(?:\s+in\s+editor)?|redacted(?:\s+private\s+key)?)\])[^\s"']{8,}["']?""",
         ),
         Regex(
             """(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----""",
