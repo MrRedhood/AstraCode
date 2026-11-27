@@ -59,6 +59,53 @@ class LruBufferCacheTest {
     }
 
     @Test
+    fun `weigher is evaluated once and insertion weight is retained`() {
+        var currentWeight = 2L
+        var weigherCalls = 0
+        val cache = LruBufferCache<String, String>(capacity = 2, maxWeight = 4L) {
+            weigherCalls++
+            currentWeight
+        }
+
+        cache.put("a", "A")
+        assertEquals(1, weigherCalls)
+
+        currentWeight = 4L
+        assertEquals("A", cache.remove("a"))
+        assertEquals(0L, cache.currentWeight())
+        assertEquals(1, weigherCalls)
+
+        cache.put("b", "B")
+        assertEquals(4L, cache.currentWeight())
+        currentWeight = 1L
+        cache.put("c", "C")
+
+        assertNull(cache["b"])
+        assertEquals("C", cache["c"])
+        assertEquals(1L, cache.currentWeight())
+        assertEquals(3, weigherCalls)
+    }
+
+    @Test
+    fun `maximum weight and zero weight entries do not overflow accounting`() {
+        val cache = LruBufferCache<String, Long>(
+            capacity = 3,
+            maxWeight = Long.MAX_VALUE,
+            weigher = { it },
+        )
+        cache.put("maximum", Long.MAX_VALUE)
+        cache.put("free", 0L)
+        assertEquals(Long.MAX_VALUE, cache.currentWeight())
+
+        cache.put("one", 1L)
+
+        assertNull(cache["maximum"])
+        assertEquals(0L, cache["free"])
+        assertEquals(1L, cache["one"])
+        assertEquals(1L, cache.currentWeight())
+    }
+
+    @Test
     fun `zero capacity disables caching`() {
         val cache = LruBufferCache<String, String>(0)
         cache.put("a", "A")

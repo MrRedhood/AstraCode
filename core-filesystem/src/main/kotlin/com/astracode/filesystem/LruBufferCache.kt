@@ -2,13 +2,18 @@ package com.astracode.filesystem
 
 import java.util.LinkedHashMap
 
-/** A thread-safe least-recently-used cache bounded by both entry count and weight. */
+/**
+ * A thread-safe least-recently-used cache bounded by both entry count and weight.
+ * Each value's weight is captured once when it is inserted.
+ */
 class LruBufferCache<K : Any, V : Any>(
     val capacity: Int,
     val maxWeight: Long = Long.MAX_VALUE,
     private val weigher: (V) -> Long = { 1L },
 ) {
-    private val entries = LinkedHashMap<K, V>(16, 0.75f, true)
+    private data class CacheEntry<V : Any>(val value: V, val weight: Long)
+
+    private val entries = LinkedHashMap<K, CacheEntry<V>>(16, 0.75f, true)
     private var storedWeight = 0L
 
     init {
@@ -17,14 +22,14 @@ class LruBufferCache<K : Any, V : Any>(
     }
 
     @Synchronized
-    operator fun get(key: K): V? = entries[key]
+    operator fun get(key: K): V? = entries[key]?.value
 
     @Synchronized
     fun put(key: K, value: V) {
         val weight = weigher(value)
         require(weight >= 0L) { "Cached values must have a non-negative weight" }
         entries.remove(key)?.let { previous ->
-            storedWeight -= weigher(previous)
+            storedWeight -= previous.weight
         }
         if (capacity == 0 || maxWeight == 0L || weight > maxWeight) return
 
@@ -33,15 +38,15 @@ class LruBufferCache<K : Any, V : Any>(
         ) {
             evictEldest()
         }
-        entries[key] = value
+        entries[key] = CacheEntry(value, weight)
         storedWeight += weight
     }
 
     @Synchronized
     fun remove(key: K): V? {
         val removed = entries.remove(key) ?: return null
-        storedWeight -= weigher(removed)
-        return removed
+        storedWeight -= removed.weight
+        return removed.value
     }
 
     @Synchronized
@@ -50,7 +55,7 @@ class LruBufferCache<K : Any, V : Any>(
         while (iterator.hasNext()) {
             val entry = iterator.next()
             if (predicate(entry.key)) {
-                storedWeight -= weigher(entry.value)
+                storedWeight -= entry.value.weight
                 iterator.remove()
             }
         }
@@ -75,7 +80,7 @@ class LruBufferCache<K : Any, V : Any>(
         val iterator = entries.entries.iterator()
         if (!iterator.hasNext()) return
         val eldest = iterator.next()
-        storedWeight -= weigher(eldest.value)
+        storedWeight -= eldest.value.weight
         iterator.remove()
     }
 }

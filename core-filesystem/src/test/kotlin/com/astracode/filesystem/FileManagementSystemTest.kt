@@ -93,6 +93,24 @@ class FileManagementSystemTest {
     }
 
     @Test
+    fun `zero repair span budget still reports malformed text as repaired`() {
+        val workspace = temporaryDirectory.resolve("workspace")
+        Files.createDirectories(workspace)
+        Files.write(workspace.resolve("broken.txt"), byteArrayOf(0x80.toByte()))
+
+        FileManagementSystem(
+            workspace,
+            FileSystemOptions(maxRepairSpans = 0),
+        ).use { fileSystem ->
+            val snapshot = fileSystem.readText("broken.txt")
+            assertEquals("\uFFFD", snapshot.text)
+            assertTrue(snapshot.repairedSpans.isEmpty())
+            assertTrue(snapshot.repairedSpansTruncated)
+            assertTrue(snapshot.wasRepaired)
+        }
+    }
+
+    @Test
     fun `BOM is omitted from the in-memory text and canonical save`() {
         val workspace = temporaryDirectory.resolve("workspace")
         Files.createDirectories(workspace)

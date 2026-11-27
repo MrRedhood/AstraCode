@@ -68,6 +68,15 @@ class Utf8RepairDecoderTest {
         assertEquals("\uFFFD\uFFFD\uFFFD", output)
         assertEquals(2, decoder.repairedSpans.size)
         assertTrue(decoder.repairedSpansTruncated)
+
+        val noMetadata = Utf8RepairDecoder(maxRepairSpans = 0)
+        val noMetadataOutput = noMetadata.decode(
+            byteArrayOf(0x80.toByte(), 0x81.toByte()),
+            endOfInput = true,
+        )
+        assertEquals("\uFFFD\uFFFD", noMetadataOutput)
+        assertTrue(noMetadata.repairedSpans.isEmpty())
+        assertTrue(noMetadata.repairedSpansTruncated)
     }
 
     @Test
