@@ -259,4 +259,163 @@ class JsonRpcLanguageServerBridgeTest {
         bridge.close()
         assertFalse(endpoint.notificationHandler != null)
     }
+
+    @Test
+    fun completionListSupportsLabelsFilterTextInsertTextAndTextEdits() {
+        val endpoint = FakeEndpoint()
+        val bridge = endpoint.bridge()
+        val uri = "file:///workspace/Main.kt"
+        bridge.openDocument(EditorDocument(uri, "kotlin", 1, "fun main() = Unit"))
+
+        var completions: Result<List<String>>? = null
+        bridge.requestCompletion(uri, 4, 1) { completions = it }
+        endpoint.requests.last().future.complete(
+            mapOf(
+                "isIncomplete" to true,
+                "items" to listOf(
+                    mapOf("label" to "  println  "),
+                    mapOf("label" to "println"),
+                    mapOf("filterText" to "print"),
+                    mapOf("insertText" to "printable"),
+                    mapOf("textEdit" to mapOf("newText" to "private")),
+                    mapOf("label" to "   "),
+                    mapOf("label" to "bad\nlabel"),
+                    mapOf("label" to "x".repeat(257)),
+                ),
+            ),
+        )
+
+        assertEquals(listOf("println", "print", "printable", "private"), completions?.getOrThrow())
+        bridge.close()
+    }
+
+    @Test
+    fun malformedCompletionListReturnsAnEmptySuggestionList() {
+        val endpoint = FakeEndpoint()
+        val bridge = endpoint.bridge()
+        val uri = "file:///workspace/Main.kt"
+        bridge.openDocument(EditorDocument(uri, "kotlin", 1, "fun main() {}"))
+
+        var completions: Result<List<String>>? = null
+        bridge.requestCompletion(uri, 0, 1) { completions = it }
+        endpoint.requests.last().future.complete(mapOf("items" to "not-an-array"))
+
+        assertEquals(emptyList(), completions?.getOrThrow())
+        bridge.close()
+    }
+
+    @Test
+    fun diagnosticsRejectFractionalAndOutOfRangeLspCoordinates() {
+        val endpoint = FakeEndpoint()
+        val bridge = endpoint.bridge()
+        val uri = "file:///workspace/Main.kt"
+        bridge.openDocument(EditorDocument(uri, "kotlin", 1, "alpha"))
+        val updates = mutableListOf<List<EditorDiagnostic>>()
+        bridge.setDiagnosticsListener { updates += it }
+
+        val valid = mapOf(
+            "range" to mapOf(
+                "start" to mapOf("line" to 0, "character" to 0),
+                "end" to mapOf("line" to 0, "character" to 1),
+            ),
+            "severity" to 1,
+            "message" to "Valid diagnostic",
+        )
+        val fractional = mapOf(
+            "range" to mapOf(
+                "start" to mapOf("line" to 0.5, "character" to 0),
+                "end" to mapOf("line" to 0, "character" to 1),
+            ),
+            "message" to "Fractional line",
+        )
+        val overflow = mapOf(
+            "range" to mapOf(
+                "start" to mapOf("line" to Int.MAX_VALUE.toLong() + 1L, "character" to 0),
+                "end" to mapOf("line" to 0, "character" to 1),
+            ),
+            "message" to "Overflowing line",
+        )
+
+        endpoint.publish(
+            "textDocument/publishDiagnostics",
+            mapOf("uri" to uri, "version" to 1, "diagnostics" to listOf(fractional, overflow, valid)),
+        )
+
+        assertEquals(1, updates.single().size)
+        assertEquals("Valid diagnostic", updates.single().single().message)
+        bridge.close()
+    }
+
+    @Test
+    fun diagnosticsWithFractionalDocumentVersionsAreIgnored() {
+        val endpoint = FakeEndpoint()
+        val bridge = endpoint.bridge()
+        val uri = "file:///workspace/Main.kt"
+        bridge.openDocument(EditorDocument(uri, "kotlin", 2, "alpha"))
+        val updates = mutableListOf<List<EditorDiagnostic>>()
+        bridge.setDiagnosticsListener { updates += it }
+
+        endpoint.publish(
+            "textDocument/publishDiagnostics",
+            mapOf("uri" to uri, "version" to 2.5, "diagnostics" to emptyList<Any>()),
+        )
+
+        assertTrue(updates.isEmpty())
+        bridge.close()
+    }
+
+    @Test
+    fun definitionLocationsFormatLargeCoordinatesWithoutIntegerOverflow() {
+        val endpoint = FakeEndpoint()
+        val bridge = endpoint.bridge()
+        val uri = "file:///workspace/Main.kt"
+        bridge.openDocument(EditorDocument(uri, "kotlin", 1, "x"))
+
+        var definitions: Result<List<String>>? = null
+        bridge.requestDefinition(uri, 0, 1) { definitions = it }
+        endpoint.requests.last().future.complete(
+            mapOf(
+                "uri" to uri,
+                "range" to mapOf(
+                    "start" to mapOf("line" to Int.MAX_VALUE, "character" to Int.MAX_VALUE),
+                ),
+            ),
+        )
+
+        assertEquals(
+            listOf("$uri#2147483648:2147483648"),
+            definitions?.getOrThrow(),
+        )
+        bridge.close()
+    }
+
+    @Test
+    fun workspaceEditRejectsNonStringObjectKeys() {
+        val endpoint = FakeEndpoint()
+        val bridge = endpoint.bridge()
+        val uri = "file:///workspace/Main.kt"
+        bridge.openDocument(EditorDocument(uri, "kotlin", 1, "x"))
+
+        var rename: Result<Map<String, Any?>>? = null
+        bridge.requestRename(uri, 0, 1, "renamed") { rename = it }
+        endpoint.requests.last().future.complete(mapOf(1 to "invalid-key"))
+
+        assertTrue(rename?.isFailure == true)
+        bridge.close()
+    }
+
+    @Test
+    fun throwingDiagnosticsListenerCannotBreakDocumentClose() {
+        val endpoint = FakeEndpoint()
+        val bridge = endpoint.bridge()
+        val uri = "file:///workspace/Main.kt"
+        bridge.openDocument(EditorDocument(uri, "kotlin", 1, "x"))
+        bridge.setDiagnosticsListener { throw IllegalStateException("UI listener failed") }
+
+        bridge.closeDocument(uri)
+
+        assertEquals("textDocument/didClose", endpoint.notifications.last().method)
+        bridge.close()
+    }
+
 }
