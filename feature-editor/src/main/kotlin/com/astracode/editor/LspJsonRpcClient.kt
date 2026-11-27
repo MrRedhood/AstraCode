@@ -22,6 +22,7 @@ class LspJsonRpcClient(
 ) : Closeable {
     private val nextRequestId = AtomicLong(1L)
     private val closed = AtomicBoolean(false)
+    private val pendingLock = Any()
     private val pending = ConcurrentHashMap<Long, CompletableFuture<Any?>>()
 
     val pendingRequestCount: Int get() = pending.size
@@ -29,12 +30,14 @@ class LspJsonRpcClient(
     fun request(method: String, params: Any? = null): CompletableFuture<Any?> {
         require(method.isNotBlank()) { "JSON-RPC method is required" }
         check(!closed.get()) { "JSON-RPC client is closed" }
-        require(pending.size < MAX_PENDING_REQUESTS) { "Too many pending LSP requests" }
-
-        val id = nextRequestId.getAndIncrement()
-        check(id > 0L) { "JSON-RPC request ID space exhausted" }
         val future = CompletableFuture<Any?>()
-        check(pending.putIfAbsent(id, future) == null) { "Duplicate JSON-RPC request ID" }
+        val id: Long
+        synchronized(pendingLock) {
+            require(pending.size < MAX_PENDING_REQUESTS) { "Too many pending LSP requests" }
+            id = nextRequestId.getAndIncrement()
+            check(id > 0L) { "JSON-RPC request ID space exhausted" }
+            check(pending.putIfAbsent(id, future) == null) { "Duplicate JSON-RPC request ID" }
+        }
         future.whenComplete { _, _ -> pending.remove(id, future) }
 
         val message = linkedMapOf<String, Any?>(
