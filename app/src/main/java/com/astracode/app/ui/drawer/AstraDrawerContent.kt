@@ -872,6 +872,12 @@ private fun LspSection(state: DrawerUiState, onEvent: (DrawerEvent) -> Unit) {
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                LspTile("Hover", "Current symbol", Modifier.weight(1f)) {
+                    onEvent(DrawerEvent.Action(DrawerAction.Hover))
+                }
+                Spacer(Modifier.weight(1f))
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 LspTile("Configure", "Server profile", Modifier.weight(1f)) {
                     onEvent(DrawerEvent.Action(DrawerAction.ConfigureLanguageServer))
                 }

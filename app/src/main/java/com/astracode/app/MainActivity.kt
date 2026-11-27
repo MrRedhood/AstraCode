@@ -1150,6 +1150,8 @@ private fun FileManagementScreen(
     var editorCaretTextIndex by remember(storage) { mutableStateOf(0) }
     var lspReferenceLocations by remember(storage) { mutableStateOf(emptyList<String>()) }
     var showLspReferencesDialog by remember(storage) { mutableStateOf(false) }
+    var lspHoverText by remember(storage) { mutableStateOf("") }
+    var showLspHoverDialog by remember(storage) { mutableStateOf(false) }
     var pendingLspNavigation by remember(storage) { mutableStateOf<Pair<String, Int>?>(null) }
     val lspSyncMutex = remember(storage) { Mutex() }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -2587,6 +2589,43 @@ private fun FileManagementScreen(
                             if (locations.isEmpty()) notify("No references were found at the current caret.")
                         }.onFailure { error ->
                             notify("Find References failed: " + (error.message ?: "Language-server request failed."))
+                        }
+                    }
+                }
+            } catch (error: Throwable) {
+                notify(error.message ?: "The current caret is not a valid UTF-8 position.")
+            } finally {
+                lspSyncMutex.unlock()
+            }
+        }
+    }
+
+    fun requestLspHover() {
+        val bridge = lspBridge
+        val uri = lspDocumentUri
+        val path = lspDocumentPath
+        if (bridge == null || uri == null || path == null || openedFile != path) {
+            notify("Connect a language server to the currently open local file first.")
+            return
+        }
+        scope.launch {
+            lspSyncMutex.lock()
+            try {
+                val currentText = editorTabs.firstOrNull { it.path == path }?.text
+                    ?: throw IllegalStateException("The connected editor tab is no longer open.")
+                val version = lspDocumentVersion
+                val caretIndex = editorCaretTextIndex.coerceIn(0, currentText.length)
+                val byteOffset = withContext(Dispatchers.IO) {
+                    EditorBuffer(currentText).byteOffsetForTextIndex(caretIndex)
+                }
+                if (lspBridge !== bridge || lspDocumentVersion != version || openedFile != path) return@launch
+                bridge.requestHover(uri, byteOffset, version) { result ->
+                    scope.launch {
+                        result.onSuccess { hover ->
+                            lspHoverText = hover ?: "No hover information is available at the current caret."
+                            showLspHoverDialog = true
+                        }.onFailure { error ->
+                            notify("Hover request failed: " + (error.message ?: "Language-server request failed."))
                         }
                     }
                 }
@@ -4566,6 +4605,7 @@ private fun FileManagementScreen(
                         DrawerAction.DisconnectLanguageServer -> disconnectLanguageServer()
                         DrawerAction.GoToDefinition -> requestLspDefinition()
                         DrawerAction.FindReferences -> requestLspReferences()
+                        DrawerAction.Hover -> requestLspHover()
                         DrawerAction.OpenTerminal -> {
                             showEditorDrawer = false
                             showTerminalPanel = true
@@ -4597,6 +4637,21 @@ private fun FileManagementScreen(
                 showEditorDrawer = false
                 drawerOptionsTargetId = null
             },
+        )
+    }
+
+    if (showLspHoverDialog) {
+        AlertDialog(
+            onDismissRequest = { showLspHoverDialog = false },
+            title = { Text("Language Server Hover") },
+            text = {
+                Text(
+                    lspHoverText,
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp).verticalScroll(rememberScrollState()),
+                    fontSize = 13.sp,
+                )
+            },
+            confirmButton = { TextButton(onClick = { showLspHoverDialog = false }) { Text("Close") } },
         )
     }
 
