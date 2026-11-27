@@ -14,12 +14,14 @@ class LspProcessSessionTest {
         val workspace = Files.createTempDirectory("astracode-lsp-session").toFile()
         val failureCount = AtomicInteger(0)
         val failureSignal = CountDownLatch(1)
+        val failures = java.util.concurrent.CopyOnWriteArrayList<Throwable>()
         try {
             val session = LspProcessSession.start(
-                command = listOf("sh", "-c", "exit 0"),
+                command = listOf("sh", "-c", "echo intentional-lsp-startup-error >&2; exit 23"),
                 workspaceRoot = workspace,
                 workingDirectory = workspace,
-                onFailure = {
+                onFailure = { error ->
+                    failures += error
                     failureCount.incrementAndGet()
                     failureSignal.countDown()
                 },
@@ -28,6 +30,7 @@ class LspProcessSessionTest {
             assertTrue(failureSignal.await(5, TimeUnit.SECONDS))
             assertEquals(LspProcessSessionState.FAILED, session.state)
             assertEquals(1, failureCount.get())
+            assertTrue(failures.single().message.orEmpty().contains("intentional-lsp-startup-error"))
             session.close()
         } finally {
             workspace.deleteRecursively()

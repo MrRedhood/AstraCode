@@ -125,14 +125,17 @@ class JsonRpcProcessTransport private constructor(
 ) : Closeable {
     private val closed = AtomicBoolean(false)
     private val writeLock = Any()
+    private val stderrLock = Any()
+    private val stderrTail = StringBuilder()
     private val stderrThread = Thread({
         runCatching {
             process.errorStream.buffered().use { stream ->
                 val buffer = ByteArray(8 * 1024)
-                while (!closed.get() && stream.read(buffer) >= 0) {
-                    // Drain stderr to prevent a verbose language server from
-                    // blocking on a full OS pipe. Diagnostics are surfaced by
-                    // JSON-RPC notifications, not unbounded process logs.
+                while (!closed.get()) {
+                    val count = stream.read(buffer)
+                    if (count < 0) break
+                    if (count == 0) continue
+                    appendStderr(buffer, count)
                 }
             }
         }
@@ -143,6 +146,16 @@ class JsonRpcProcessTransport private constructor(
     private val readerThread = Thread(::readLoop, "astracode-lsp-reader").apply {
         isDaemon = true
         start()
+    }
+
+    private fun appendStderr(buffer: ByteArray, count: Int) {
+        val chunk = String(buffer, 0, count, StandardCharsets.UTF_8)
+        synchronized(stderrLock) {
+            stderrTail.append(chunk)
+            if (stderrTail.length > MAX_STDERR_TAIL_CHARS) {
+                stderrTail.delete(0, stderrTail.length - MAX_STDERR_TAIL_CHARS)
+            }
+        }
     }
 
     fun send(jsonRpcMessage: String) {
@@ -171,7 +184,10 @@ class JsonRpcProcessTransport private constructor(
                 } else {
                     "exited with code " + process.exitValue()
                 }
-                throw IOException("Language server " + reason + " before shutdown completed")
+                runCatching { stderrThread.join(STDERR_DRAIN_GRACE_MS) }
+                val diagnostic = synchronized(stderrLock) { stderrTail.toString().trim() }
+                val detail = if (diagnostic.isBlank()) "" else "; stderr: " + diagnostic
+                throw IOException("Language server " + reason + " before shutdown completed" + detail)
             }
         } catch (error: Throwable) {
             if (!closed.get()) runCatching { onFailure(error) }
@@ -195,6 +211,8 @@ class JsonRpcProcessTransport private constructor(
 
     companion object {
         private const val PROCESS_EXIT_GRACE_MS = 500L
+        private const val STDERR_DRAIN_GRACE_MS = 250L
+        private const val MAX_STDERR_TAIL_CHARS = 4 * 1024
 
         fun start(
             command: List<String>,
