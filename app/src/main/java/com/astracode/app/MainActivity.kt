@@ -4004,8 +4004,8 @@ private fun FileManagementScreen(
                     }
                 }
             }
-        } catch (_: CancellationException) {
-            throw CancellationException()
+        } catch (error: java.util.concurrent.CancellationException) {
+            throw error
         } catch (_: Throwable) {
             lspCompletionSuggestions = emptyList()
         } finally {
