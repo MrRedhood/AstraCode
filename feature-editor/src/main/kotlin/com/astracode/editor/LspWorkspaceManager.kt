@@ -209,7 +209,9 @@ class LspWorkspaceManager(
         if (connection == null && session == null) {
             return CompletableFuture.completedFuture(Unit)
         }
-        connection?.whenComplete { handle, _ -> handle?.bridge?.close() }
+        connection?.whenComplete { handle, _ ->
+            if (session == null) handle?.close() else handle?.bridge?.close()
+        }
         val result = CompletableFuture<Unit>()
         if (session == null) {
             result.complete(Unit)
@@ -277,7 +279,7 @@ class LspWorkspaceManager(
         }
         sessions.forEach(LspProcessSession::close)
         active.forEach { future ->
-            future.whenComplete { handle, _ -> handle?.bridge?.close() }
+            future.whenComplete { handle, _ -> handle?.close() }
         }
     }
 
