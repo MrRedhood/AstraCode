@@ -15,7 +15,7 @@ class EditorTextToolsTest {
             "fun main() { println(1) }",
             "fun main() { println(2) }",
         )
-        assertEquals(EditorTextEdit(22, 23, "2"), edit)
+        assertEquals(EditorTextEdit(21, 22, "2"), edit)
     }
 
     @Test

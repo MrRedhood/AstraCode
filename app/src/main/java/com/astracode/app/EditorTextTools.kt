@@ -14,7 +14,7 @@ internal data class EditorTextEdit(
     val replacement: String,
 )
 
-private fun splitsSurrogatePair(text: String, index: Int): Boolean =
+internal fun splitsSurrogatePair(text: String, index: Int): Boolean =
     index in 1 until text.length &&
         Character.isHighSurrogate(text[index - 1]) &&
         Character.isLowSurrogate(text[index])
