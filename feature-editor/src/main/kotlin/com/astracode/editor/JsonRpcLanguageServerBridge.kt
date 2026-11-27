@@ -5,6 +5,7 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
+import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -19,6 +20,11 @@ class JsonRpcLanguageServerBridge internal constructor(
     private val sendNotification: (String, Any?) -> Unit,
     subscribeNotifications: ((String, Map<String, Any?>) -> Unit) -> Closeable,
 ) : LanguageServerBridge {
+    private companion object {
+        const val MAX_COMPLETION_ITEMS = 64
+        const val MAX_COMPLETION_LABEL_LENGTH = 256
+    }
+
     private class OpenDocumentState(document: EditorDocument) {
         val lock = Any()
         var buffer = EditorBuffer(document.text)
@@ -140,7 +146,7 @@ class JsonRpcLanguageServerBridge internal constructor(
                 mapOf("textDocument" to mapOf("uri" to uri)),
             )
         }
-        diagnosticsListener.get().invoke(emptyList())
+        runCatching { diagnosticsListener.get().invoke(emptyList()) }
     }
 
     override fun requestCompletion(
@@ -251,7 +257,9 @@ class JsonRpcLanguageServerBridge internal constructor(
         if (closed.get() || method != "textDocument/publishDiagnostics") return
         val uri = params["uri"] as? String ?: return
         val state = documents[uri] ?: return
-        val serverVersion = (params["version"] as? Number)?.toInt()
+        val rawVersion = params["version"]
+        val serverVersion = rawVersion?.let(::parseNonNegativeInt)
+        if (rawVersion != null && serverVersion == null) return
         val diagnostics = synchronized(state.lock) {
             if (serverVersion != null && serverVersion != state.version) return
             val bytes = state.buffer.bytes()
@@ -299,11 +307,17 @@ class JsonRpcLanguageServerBridge internal constructor(
 
     private fun parsePosition(raw: Any?): LspPosition? {
         val position = raw as? Map<*, *> ?: return null
-        val line = (position["line"] as? Number)?.toInt() ?: return null
-        val character = (position["character"] as? Number)?.toInt() ?: return null
-        return runCatching { LspPosition(line, character).also {
-            require(it.line >= 0 && it.character >= 0)
-        } }.getOrNull()
+        val line = parseNonNegativeInt(position["line"]) ?: return null
+        val character = parseNonNegativeInt(position["character"]) ?: return null
+        return LspPosition(line, character)
+    }
+
+    private fun parseNonNegativeInt(raw: Any?): Int? {
+        val number = raw as? Number ?: return null
+        val value = number.toDouble()
+        if (!value.isFinite() || value < 0.0 || value > Int.MAX_VALUE.toDouble()) return null
+        if (value % 1.0 != 0.0) return null
+        return value.toInt()
     }
 
     private fun parseCompletionItems(raw: Any?): List<String> {
@@ -312,13 +326,27 @@ class JsonRpcLanguageServerBridge internal constructor(
             is Map<*, *> -> raw["items"] as? List<*> ?: emptyList<Any?>()
             else -> emptyList()
         }
-        return items.mapNotNull { item ->
-            when (item) {
+        val uniqueLabels = LinkedHashMap<String, String>()
+        items.forEach { item ->
+            val rawLabel = when (item) {
                 is String -> item
-                is Map<*, *> -> item["label"] as? String
+                is Map<*, *> -> {
+                    val textEdit = item["textEdit"] as? Map<*, *>
+                    sequenceOf(
+                        item["label"] as? String,
+                        item["filterText"] as? String,
+                        item["insertText"] as? String,
+                        textEdit?.get("newText") as? String,
+                    ).firstOrNull { !it.isNullOrBlank() }
+                }
                 else -> null
-            }
+            } ?: return@forEach
+            val label = rawLabel.trim()
+            if (label.isEmpty() || label.length > MAX_COMPLETION_LABEL_LENGTH) return@forEach
+            if (label.any { Character.isISOControl(it) }) return@forEach
+            uniqueLabels.putIfAbsent(label.lowercase(Locale.ROOT), label)
         }
+        return uniqueLabels.values.take(MAX_COMPLETION_ITEMS)
     }
 
     private fun parseHoverContents(raw: Any?): String? {
@@ -338,9 +366,13 @@ class JsonRpcLanguageServerBridge internal constructor(
     }
 
     private fun parseWorkspaceEdit(raw: Any?): Map<String, Any?> {
-        @Suppress("UNCHECKED_CAST")
-        return raw as? Map<String, Any?>
+        val edit = raw as? Map<*, *>
             ?: throw IllegalArgumentException("Language server returned an invalid workspace edit")
+        return edit.entries.associate { (key, value) ->
+            val name = key as? String
+                ?: throw IllegalArgumentException("Workspace edit contains a non-string key")
+            name to value
+        }
     }
 
     private fun parseDefinitions(raw: Any?): List<String> {
@@ -358,7 +390,7 @@ class JsonRpcLanguageServerBridge internal constructor(
                 ?: (value["targetRange"] as? Map<*, *>)
                 ?: return@mapNotNull uri
             val start = parsePosition(range["start"]) ?: return@mapNotNull uri
-            "${uri}#${start.line + 1}:${start.character + 1}"
+            "${uri}#${start.line.toLong() + 1L}:${start.character.toLong() + 1L}"
         }
     }
 
