@@ -225,7 +225,7 @@ private fun completionKey(value: String): String =
 private fun normalizeCompletionLabel(value: String): String? {
     val label = value.trim()
     if (label.isEmpty() || label.length > MAX_COMPLETION_LABEL_LENGTH) return null
-    if (label.any(Char::isISOControl)) return null
+    if (label.any { Character.isISOControl(it) }) return null
     return label
 }
 
