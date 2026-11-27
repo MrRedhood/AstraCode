@@ -6,6 +6,9 @@ import java.util.concurrent.CompletionException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
+import java.util.concurrent.ScheduledThreadPoolExecutor
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -47,8 +50,10 @@ class LspJsonRpcClient(
             check(id > 0L) { "JSON-RPC request ID space exhausted" }
             check(pending.putIfAbsent(id, future) == null) { "Duplicate JSON-RPC request ID" }
         }
+        val timeoutTask = AtomicReference<ScheduledFuture<*>?>()
         future.whenComplete { _, error ->
             pending.remove(id, future)
+            timeoutTask.getAndSet(null)?.cancel(false)
             val cause = (error as? CompletionException)?.cause ?: error
             if (future.isCancelled || cause is TimeoutException) {
                 sendCancellation(id)
@@ -64,7 +69,13 @@ class LspJsonRpcClient(
 
         try {
             sendMessage(LspJsonCodec.encode(message))
-            future.orTimeout(requestTimeoutMillis, TimeUnit.MILLISECONDS)
+            val scheduled = REQUEST_TIMEOUT_EXECUTOR.schedule(
+                { future.completeExceptionally(TimeoutException("LSP request timed out: " + method)) },
+                requestTimeoutMillis,
+                TimeUnit.MILLISECONDS,
+            )
+            timeoutTask.set(scheduled)
+            if (future.isDone) scheduled.cancel(false)
         } catch (error: Throwable) {
             pending.remove(id, future)
             future.completeExceptionally(error)
@@ -198,5 +209,10 @@ class LspJsonRpcClient(
         const val MAX_PENDING_REQUESTS = 128
         const val DEFAULT_REQUEST_TIMEOUT_MILLIS = 60_000L
         const val MAX_REQUEST_TIMEOUT_MILLIS = 5 * 60_000L
+        val REQUEST_TIMEOUT_EXECUTOR = ScheduledThreadPoolExecutor(1) { runnable ->
+            Thread(runnable, "astracode-lsp-timeout").apply { isDaemon = true }
+        }.apply {
+            removeOnCancelPolicy = true
+        }
     }
 }
