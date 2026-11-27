@@ -4111,6 +4111,9 @@ private fun FileManagementScreen(
                                 if (sameDocument) updateCurrentEditorHistory(panelPath, redo) else null
                             },
                             onCaretChanged = { textIndex -> editorCaretTextIndex = textIndex },
+                            onLspAction = { findReferences ->
+                                if (findReferences) requestLspReferences() else requestLspDefinition()
+                            },
                             onSave = ::saveFile,
                             fontSizeSp = editorFontSize,
                             wordWrapEnabled = editorWordWrap,
@@ -7981,6 +7984,7 @@ private fun EditorPanel(
     onTextEdit: (Int, Int, String) -> String?,
     onHistoryAction: (Boolean) -> String?,
     onCaretChanged: (Int) -> Unit,
+    onLspAction: (Boolean) -> Unit,
     onSave: () -> Unit,
     fontSizeSp: Int = 14,
     wordWrapEnabled: Boolean = true,
@@ -8362,6 +8366,7 @@ private fun EditorPanel(
                 path = path,
                 onTextEdit = onTextEdit,
                 onHistoryAction = onHistoryAction,
+                onLspAction = onLspAction,
                 onValueChange = { newValue ->
                     if (onTextChange(newValue.text)) {
                         editorFieldValue = newValue
@@ -8430,7 +8435,12 @@ private fun EditorPanel(
                     )
                     .focusRequester(editorFocusRequester)
                     .onPreviewKeyEvent { event ->
-                        if (event.type != KeyEventType.KeyDown || !event.isCtrlPressed) {
+                        if (event.type != KeyEventType.KeyDown) {
+                            false
+                        } else if (event.key == Key.F12) {
+                            onLspAction(event.isShiftPressed)
+                            true
+                        } else if (!event.isCtrlPressed) {
                             false
                         } else if (event.key == Key.Z || event.key == Key.Y) {
                             val redo = event.key == Key.Y || event.isShiftPressed

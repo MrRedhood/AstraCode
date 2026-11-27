@@ -248,6 +248,7 @@ internal fun VirtualizedCodeEditor(
     onValueChange: (TextFieldValue) -> Boolean,
     onTextEdit: (Int, Int, String) -> String?,
     onHistoryAction: (Boolean) -> String?,
+    onLspAction: (Boolean) -> Unit,
     readOnly: Boolean,
     wordWrapEnabled: Boolean,
     focusRequester: FocusRequester,
@@ -454,6 +455,7 @@ internal fun VirtualizedCodeEditor(
                                         readOnly = readOnly,
                                         onValueChange = { next -> onValueChange(next) },
                                         onHistoryAction = onHistoryAction,
+                                        onLspAction = onLspAction,
                                         onTextEdit = { next, editStart, oldEnd, replacement ->
                                             val updatedText = onTextEdit(editStart, oldEnd, replacement)
                                             if (updatedText != null) {
@@ -505,8 +507,13 @@ private fun handleVirtualEditorKey(
     onValueChange: (TextFieldValue) -> Unit,
     onTextEdit: (TextFieldValue, Int, Int, String) -> Unit,
     onHistoryAction: (Boolean) -> String?,
+    onLspAction: (Boolean) -> Unit,
 ): Boolean {
     if (event.type != KeyEventType.KeyDown) return false
+    if (event.key == Key.F12) {
+        onLspAction(event.isShiftPressed)
+        return true
+    }
     val source = value.text
     val selection = value.selection
     val collapsed = selection.collapsed
