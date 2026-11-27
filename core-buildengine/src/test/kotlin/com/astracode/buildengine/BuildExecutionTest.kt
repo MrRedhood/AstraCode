@@ -115,6 +115,86 @@ class BuildExecutionTest {
         assertEquals("", redactor.finish())
     }
 
+
+    @Test
+    fun redactorPrefersLongerSecretsWhenOneSecretPrefixesAnother() {
+        val redactor = BuildOutputRedactor(listOf("abc", "abcd"))
+        assertEquals("", redactor.append("abcd"))
+        assertEquals("", redactor.append("!"))
+        assertEquals("<redacted>!", redactor.finish())
+    }
+
+    @Test
+    fun redactorWithholdsAnIncompleteSupplementaryUnicodeCharacterBetweenChunks() {
+        val redactor = BuildOutputRedactor(emptyList())
+        assertEquals("A", redactor.append("A\\uD83D"))
+        assertEquals("😀B", redactor.append("\\uDE00B"))
+        assertEquals("", redactor.finish())
+    }
+
+    @Test
+    fun redactorHandlesAnEmptySecretAlongsideRealSecrets() {
+        val redactor = BuildOutputRedactor(listOf("", "token"))
+        assertEquals("before", redactor.append("before-to"))
+        assertEquals("", redactor.append("ken"))
+        assertEquals("<redacted>after", redactor.finish().let { it + "after" })
+    }
+
+    @Test
+    fun boundedOutputKeepsOnlyTheTailOfOneVeryLargeChunk() {
+        val output = BoundedBuildOutput(8)
+        output.append("x".repeat(200_000) + "TAIL")
+        val snapshot = output.snapshot()
+        assertEquals("xxxxTAIL", snapshot.text)
+        assertTrue(snapshot.truncated)
+    }
+
+    @Test
+    fun boundedOutputDoesNotMarkAnExactCapacityWriteAsTruncated() {
+        val output = BoundedBuildOutput(4)
+        output.append("1234")
+        assertEquals("1234", output.snapshot().text)
+        assertFalse(output.snapshot().truncated)
+    }
+
+    @Test
+    fun boundedOutputPreservesSupplementaryCharactersAtTheTailBoundary() {
+        val output = BoundedBuildOutput(2)
+        output.append("123456😀x")
+        assertEquals("😀x", output.snapshot().text)
+        assertEquals(3, output.snapshot().text.length)
+        assertTrue(output.snapshot().truncated)
+    }
+
+    @Test
+    fun boundedOutputReturnsDetachedSnapshotsAndKeepsTruncationSticky() {
+        val output = BoundedBuildOutput(3)
+        output.append("abc")
+        val first = output.snapshot()
+        output.append("d")
+        val second = output.snapshot()
+
+        assertEquals("abc", first.text)
+        assertFalse(first.truncated)
+        assertEquals("bcd", second.text)
+        assertTrue(second.truncated)
+    }
+
+    @Test
+    fun boundedOutputRemainsBoundedDuringConcurrentAppends() {
+        val output = BoundedBuildOutput(64)
+        val workers = List(4) {
+            Thread {
+                repeat(500) { output.append("item") }
+            }.apply { start() }
+        }
+        workers.forEach { it.join() }
+
+        val snapshot = output.snapshot()
+        assertTrue(snapshot.text.length <= 65)
+        assertTrue(snapshot.truncated)
+    }
+
     private fun profile(
         root: File,
         command: List<String>,
