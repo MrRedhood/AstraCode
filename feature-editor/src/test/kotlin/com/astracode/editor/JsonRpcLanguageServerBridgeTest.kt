@@ -78,7 +78,7 @@ class JsonRpcLanguageServerBridgeTest {
             bridge.changeDocument(uri, 2, listOf(EditorTextChange(2, 3, "x")))
         }
         assertFailsWith<IllegalArgumentException> {
-            bridge.changeDocument(uri, 2, listOf(EditorTextChange(1, 6, "x")))
+            bridge.changeDocument(uri, 2, listOf(EditorTextChange(1, 7, "x")))
         }
         bridge.changeDocument(uri, 2, listOf(EditorTextChange(1, 5, "X")))
         assertEquals(2, map(map(endpoint.notifications.last().params)["textDocument"])["version"])
