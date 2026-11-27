@@ -43,6 +43,29 @@ class EditorBuffer(
         return table.replace(startByte, endByte, replacement)
     }
 
+    /**
+     * Performs the UTF-16-to-UTF-8 conversion once, checks the resulting size,
+     * and only then mutates the Piece Table. A null result means the edit was
+     * rejected and the original document was left untouched.
+     */
+    fun replaceTextRangeWithinLimit(
+        textStartIndex: Int,
+        textEndIndex: Int,
+        replacement: String,
+        maximumDocumentByteLength: Long,
+    ): String? {
+        require(maximumDocumentByteLength >= 0L)
+        require(textStartIndex >= 0 && textEndIndex >= textStartIndex)
+        val snapshot = text()
+        val startByte = Utf8OffsetMapper.byteOffsetForTextIndex(snapshot, textStartIndex)
+        val endByte = Utf8OffsetMapper.byteOffsetForTextIndex(snapshot, textEndIndex)
+        val nextLength = byteLength.toLong() - (endByte - startByte).toLong() +
+            replacement.toByteArray(Charsets.UTF_8).size.toLong()
+        if (nextLength > maximumDocumentByteLength) return null
+        table.replace(startByte, endByte, replacement)
+        return text()
+    }
+
     fun lineOfOffset(byteOffset: Int): Int = table.lineOfOffset(byteOffset)
 
     fun byteOffsetForTextIndex(textIndex: Int): Int =

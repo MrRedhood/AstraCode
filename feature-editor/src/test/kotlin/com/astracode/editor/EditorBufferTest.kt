@@ -33,6 +33,20 @@ class EditorBufferTest {
     }
 
     @Test
+    fun boundedRangeEditsRejectOversizedDocumentsWithoutMutation() {
+        val buffer = EditorBuffer("Aह😀B")
+        val previousBytes = buffer.byteLength
+
+        assertEquals(null, buffer.replaceTextRangeWithinLimit(1, 2, "longer", previousBytes.toLong()))
+        assertEquals("Aह😀B", buffer.text())
+        assertEquals(previousBytes, buffer.byteLength)
+
+        assertEquals("A😀B", buffer.replaceTextRangeWithinLimit(1, 2, "", 5L))
+        assertEquals("A😀B", buffer.text())
+        assertEquals(6, buffer.byteLength)
+    }
+
+    @Test
     fun rejectsWidgetRangesThatSplitSurrogatePairs() {
         val buffer = EditorBuffer("A😀B")
         assertFailsWith<IllegalArgumentException> {

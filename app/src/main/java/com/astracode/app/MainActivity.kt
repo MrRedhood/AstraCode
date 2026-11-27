@@ -2361,24 +2361,13 @@ private fun FileManagementScreen(
 
         val buffer = editorBuffers.getOrPut(path) { EditorBuffer(currentTab.text) }
         if (buffer.text() != currentTab.text) buffer.applyTextFieldSnapshot(currentTab.text)
-        val startByte: Int
-        val endByte: Int
-        try {
-            startByte = buffer.byteOffsetForTextIndex(startTextIndex)
-            endByte = buffer.byteOffsetForTextIndex(endTextIndex)
-        } catch (_: IllegalArgumentException) {
-            notify("An edit cannot split a Unicode character.")
-            return null
-        }
-
         val otherBufferBytes = editorTabs.asSequence()
             .filterNot { it.path == path }
             .sumOf(::editorTabBufferBytes)
-        val nextByteLength = buffer.byteLength.toLong() - (endByte - startByte).toLong() +
-            replacement.toByteArray(Charsets.UTF_8).size.toLong()
-        val requestedBytes = otherBufferBytes + nextByteLength +
-            currentTab.savedText.toByteArray(Charsets.UTF_8).size.toLong()
-        if (requestedBytes > MAX_OPEN_EDITOR_BUFFER_BYTES) {
+        val savedTextBytes = currentTab.savedText.toByteArray(Charsets.UTF_8).size.toLong()
+        val maximumDocumentBytes = MAX_OPEN_EDITOR_BUFFER_BYTES.toLong() -
+            otherBufferBytes - savedTextBytes
+        if (maximumDocumentBytes < 0L) {
             notify("Editor memory limit reached. Save and close another tab before adding more text.")
             return null
         }
@@ -2391,8 +2380,12 @@ private fun FileManagementScreen(
         autosaveRetryAt = autosaveRetryAt - path
 
         return runCatching {
-            buffer.replaceTextRange(startTextIndex, endTextIndex, replacement)
-            buffer.text()
+            buffer.replaceTextRangeWithinLimit(
+                startTextIndex,
+                endTextIndex,
+                replacement,
+                maximumDocumentBytes,
+            )
         }.getOrElse { error ->
             notify(error.message ?: "The editor rejected an invalid text range.")
             null
