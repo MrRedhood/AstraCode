@@ -4205,6 +4205,13 @@ private fun FileManagementScreen(
                             onLspAction = { findReferences ->
                                 if (findReferences) requestLspReferences() else requestLspDefinition()
                             },
+                            lspCompletionSuggestions = if (
+                                selectedDocument == null && panelPath == lspDocumentPath
+                            ) {
+                                lspCompletionSuggestions
+                            } else {
+                                emptyList()
+                            },
                             onSave = ::saveFile,
                             fontSizeSp = editorFontSize,
                             wordWrapEnabled = editorWordWrap,
@@ -8092,6 +8099,7 @@ private fun EditorPanel(
     onHistoryAction: (Boolean) -> String?,
     onCaretChanged: (Int) -> Unit,
     onLspAction: (Boolean) -> Unit,
+    lspCompletionSuggestions: List<String> = emptyList(),
     onSave: () -> Unit,
     fontSizeSp: Int = 14,
     wordWrapEnabled: Boolean = true,
@@ -8454,11 +8462,14 @@ private fun EditorPanel(
             if (completionPrefixRangeAtRender == null) {
                 emptyList()
             } else {
-                (lspCompletionSuggestions + codeCompletionSuggestions(
-                    sourceText = completionValueAtRender.text,
-                    path = path,
-                    caretOffset = completionValueAtRender.selection.end,
-                )).distinct().take(16)
+                mergeCodeCompletionSuggestions(
+                    languageServerSuggestions = lspCompletionSuggestions,
+                    localSuggestions = codeCompletionSuggestions(
+                        sourceText = completionValueAtRender.text,
+                        path = path,
+                        caretOffset = completionValueAtRender.selection.end,
+                    ),
+                )
             }
         }
         CodeCompletionRow(
