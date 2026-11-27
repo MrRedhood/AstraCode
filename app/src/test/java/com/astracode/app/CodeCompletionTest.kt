@@ -240,7 +240,9 @@ class CodeCompletionTest {
     fun kotlinCompletionsIncludeCoroutineAndModernLanguageSymbols() {
         val source = "val value = susp"
         assertTrue(codeCompletionSuggestions(source, "Main.kt", source.length).contains("suspend"))
-        assertTrue(codeCompletionSuggestions(source, "Main.kt", source.length).contains("supervisorScope"))
+
+        val scopeSource = "val scope = super"
+        assertTrue(codeCompletionSuggestions(scopeSource, "Main.kt", scopeSource.length).contains("supervisorScope"))
     }
 
     @Test
@@ -263,7 +265,7 @@ class CodeCompletionTest {
 
     @Test
     fun rustCompletionsIncludeOwnershipAndStandardLibrarySymbols() {
-        val source = "let result: Res"
+        val source = "let value: Res"
         assertTrue(codeCompletionSuggestions(source, "main.rs", source.length).contains("Result"))
     }
 
