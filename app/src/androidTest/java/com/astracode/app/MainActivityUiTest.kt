@@ -1637,9 +1637,9 @@ class MainActivityUiTest {
         composeRule.onNodeWithTag("editor-hamburger-drawer").assertIsDisplayed()
         composeRule.onNodeWithText("LSP").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
-            runCatching { composeRule.onNodeWithText("Language services").assertIsDisplayed() }.isSuccess
+            runCatching { composeRule.onNodeWithText("LANGUAGE SERVICES").assertIsDisplayed() }.isSuccess
         }
-        composeRule.onNodeWithText("Language services").performClick()
+        composeRule.onNodeWithText("LANGUAGE SERVICES").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithText("Configure").assertIsDisplayed() }.isSuccess
         }

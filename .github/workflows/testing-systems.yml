@@ -24,6 +24,13 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Validate repository tooling
+        run: |
+          python3 --version
+          python3 tools/codegen/generate_language_completions.py --check
+          python3 tools/ci/validate_repository.py
+          python3 -m unittest discover -s tools -t . -p 'test_*.py' -v
+
       - name: Set up JDK 21
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
         with:
