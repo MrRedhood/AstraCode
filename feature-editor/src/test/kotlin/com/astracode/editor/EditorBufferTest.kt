@@ -3,6 +3,7 @@ package com.astracode.editor
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 class EditorBufferTest {
     @Test
@@ -30,6 +31,17 @@ class EditorBufferTest {
         assertEquals("😀", buffer.replaceTextRange(3, 5, "🌍"))
         assertEquals("Aनम🌍B", buffer.text())
         assertEquals(buffer.text().toByteArray(Charsets.UTF_8).size, buffer.byteLength)
+    }
+
+    @Test
+    fun exposesUndoAndRedoForPieceTableBackedEditor() {
+        val buffer = EditorBuffer("A😀B")
+        buffer.replaceTextRange(1, 3, "ह")
+        assertEquals("AहB", buffer.text())
+        assertTrue(buffer.undo())
+        assertEquals("A😀B", buffer.text())
+        assertTrue(buffer.redo())
+        assertEquals("AहB", buffer.text())
     }
 
     @Test

@@ -2396,6 +2396,43 @@ private fun FileManagementScreen(
         }
     }
 
+
+    fun updateCurrentEditorHistory(pathAtEdit: String, redo: Boolean): String? {
+        if (selectedDocument != null || replacingOldestTab || pathAtEdit != openedFile) return null
+        val path = pathAtEdit
+        val currentTab = editorTabs.firstOrNull { it.path == path } ?: return null
+        val buffer = editorBuffers[path] ?: return null
+        if (buffer.text() != currentTab.text) return null
+        if (redo && !buffer.canRedo) return null
+        if (!redo && !buffer.canUndo) return null
+
+        val changed = if (redo) buffer.redo() else buffer.undo()
+        if (!changed) return null
+        val restoredText = buffer.text()
+        val otherBufferBytes = editorTabs.asSequence()
+            .filterNot { it.path == path }
+            .sumOf(::editorTabBufferBytes)
+        val requestedBytes = otherBufferBytes +
+            restoredText.toByteArray(Charsets.UTF_8).size.toLong() +
+            currentTab.savedText.toByteArray(Charsets.UTF_8).size.toLong()
+        if (requestedBytes > MAX_OPEN_EDITOR_BUFFER_BYTES) {
+            if (redo) buffer.undo() else buffer.redo()
+            notify("Undo/redo blocked by the editor memory limit. Save and close another tab first.")
+            return null
+        }
+
+        val now = SystemClock.elapsedRealtime()
+        if (currentTab.text == currentTab.savedText || firstDirtyAt[path] == null || path in autosaveRetryAt) {
+            firstDirtyAt = firstDirtyAt + (path to now)
+        }
+        lastEditedAt = lastEditedAt + (path to now)
+        autosaveRetryAt = autosaveRetryAt - path
+        editorTabs = editorTabs.map { tab ->
+            if (tab.path == path) tab.copy(text = restoredText) else tab
+        }
+        return restoredText
+    }
+
     fun closeEditorTab(path: String) {
         val oldIndex = editorTabs.indexOfFirst { it.path == path }
         if (oldIndex < 0) return
@@ -3744,6 +3781,14 @@ private fun FileManagementScreen(
                                 } else {
                                     null
                                 }
+                            },
+                            onHistoryAction = { redo ->
+                                val sameDocument = if (panelDocumentId != null) {
+                                    selectedDocument?.id == panelDocumentId
+                                } else {
+                                    selectedDocument == null && openedFile == panelPath
+                                }
+                                if (sameDocument) updateCurrentEditorHistory(panelPath, redo) else null
                             },
                             onSave = ::saveFile,
                             fontSizeSp = editorFontSize,
@@ -7497,6 +7542,7 @@ private fun EditorPanel(
     onCloseTab: (String) -> Unit = {},
     onTextChange: (String) -> Boolean,
     onTextEdit: (Int, Int, String) -> String?,
+    onHistoryAction: (Boolean) -> String?,
     onSave: () -> Unit,
     fontSizeSp: Int = 14,
     wordWrapEnabled: Boolean = true,
@@ -7873,6 +7919,7 @@ private fun EditorPanel(
                 value = editorFieldValue,
                 path = path,
                 onTextEdit = onTextEdit,
+                onHistoryAction = onHistoryAction,
                 onValueChange = { newValue ->
                     if (onTextChange(newValue.text)) {
                         editorFieldValue = newValue

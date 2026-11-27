@@ -247,6 +247,7 @@ internal fun VirtualizedCodeEditor(
     path: String,
     onValueChange: (TextFieldValue) -> Boolean,
     onTextEdit: (Int, Int, String) -> String?,
+    onHistoryAction: (Boolean) -> String?,
     readOnly: Boolean,
     wordWrapEnabled: Boolean,
     focusRequester: FocusRequester,
@@ -452,6 +453,7 @@ internal fun VirtualizedCodeEditor(
                                         clipboardManager = clipboardManager,
                                         readOnly = readOnly,
                                         onValueChange = { next -> onValueChange(next) },
+                                        onHistoryAction = onHistoryAction,
                                         onTextEdit = { next, editStart, oldEnd, replacement ->
                                             val updatedText = onTextEdit(editStart, oldEnd, replacement)
                                             if (updatedText != null) {
@@ -502,6 +504,7 @@ private fun handleVirtualEditorKey(
     readOnly: Boolean,
     onValueChange: (TextFieldValue) -> Unit,
     onTextEdit: (TextFieldValue, Int, Int, String) -> Unit,
+    onHistoryAction: (Boolean) -> String?,
 ): Boolean {
     if (event.type != KeyEventType.KeyDown) return false
     val source = value.text
@@ -527,6 +530,17 @@ private fun handleVirtualEditorKey(
         return true
     }
     if (readOnly) return false
+    if (event.isCtrlPressed && (event.key == Key.Z || event.key == Key.Y)) {
+        val redo = event.key == Key.Y || event.isShiftPressed
+        val restoredText = onHistoryAction(redo) ?: return false
+        val nextSelection = TextRange(
+            selection.start.coerceIn(0, restoredText.length),
+            selection.end.coerceIn(0, restoredText.length),
+        )
+        lineIndex.update(restoredText)
+        onValueChange(value.copy(text = restoredText, selection = nextSelection, composition = null))
+        return true
+    }
     if (event.isCtrlPressed && event.key == Key.X && !collapsed) {
         val start = selection.min.coerceIn(0, source.length)
         val end = selection.max.coerceIn(start, source.length)
