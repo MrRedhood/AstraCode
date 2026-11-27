@@ -113,6 +113,24 @@ class JsonRpcLanguageServerBridge internal constructor(
         }
     }
 
+    override fun replaceDocument(uri: String, version: Int, text: String) {
+        ensureOpen()
+        val state = documents[uri] ?: throw IllegalArgumentException("Document is not open: " + uri)
+        synchronized(state.lock) {
+            require(version > state.version) { "Document versions must increase" }
+            val updatedBuffer = EditorBuffer(text)
+            sendNotification(
+                "textDocument/didChange",
+                mapOf(
+                    "textDocument" to mapOf("uri" to uri, "version" to version),
+                    "contentChanges" to listOf(mapOf("text" to text)),
+                ),
+            )
+            state.buffer = updatedBuffer
+            state.version = version
+        }
+    }
+
     override fun closeDocument(uri: String) {
         ensureOpen()
         val state = documents.remove(uri) ?: return

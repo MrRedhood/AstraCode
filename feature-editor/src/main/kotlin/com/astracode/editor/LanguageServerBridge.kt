@@ -34,6 +34,7 @@ data class EditorDiagnostic(
 interface LanguageServerBridge : AutoCloseable {
     fun openDocument(document: EditorDocument)
     fun changeDocument(uri: String, version: Int, changes: List<EditorTextChange>)
+    fun replaceDocument(uri: String, version: Int, text: String)
     fun closeDocument(uri: String)
     fun requestCompletion(uri: String, offset: Int, version: Int, callback: (Result<List<String>>) -> Unit)
     fun requestHover(uri: String, offset: Int, version: Int, callback: (Result<String?>) -> Unit)

@@ -177,6 +177,30 @@ class JsonRpcLanguageServerBridgeTest {
     }
 
     @Test
+    fun fullDocumentReplacementAdvancesVersionAndSynchronizesUtf8Content() {
+        val endpoint = FakeEndpoint()
+        val bridge = endpoint.bridge()
+        val uri = "file:///workspace/Main.kt"
+        bridge.openDocument(EditorDocument(uri, "kotlin", 1, "Aह😀B"))
+
+        bridge.replaceDocument(uri, 2, "fun main() = println(\"नमस्ते 😀\")")
+        assertEquals("textDocument/didChange", endpoint.notifications.last().method)
+        val params = map(endpoint.notifications.last().params)
+        assertEquals(2, map(params["textDocument"])["version"])
+        val change = (params["contentChanges"] as List<*>).single()
+        assertEquals("fun main() = println(\"नमस्ते 😀\")", map(change)["text"])
+        assertTrue(!map(change).containsKey("range"))
+
+        var hover: Result<String?>? = null
+        bridge.requestHover(uri, "fun main() = println(\"नमस्ते 😀\")".toByteArray(Charsets.UTF_8).size, 2) {
+            hover = it
+        }
+        endpoint.requests.last().future.complete(mapOf("contents" to "full-sync-ok"))
+        assertEquals("full-sync-ok", hover?.getOrThrow())
+        bridge.close()
+    }
+
+    @Test
     fun staleRequestVersionsFailBeforeSendingRequests() {
         val endpoint = FakeEndpoint()
         val bridge = endpoint.bridge()
