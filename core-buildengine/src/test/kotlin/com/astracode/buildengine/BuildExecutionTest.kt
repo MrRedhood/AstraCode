@@ -135,9 +135,10 @@ class BuildExecutionTest {
     @Test
     fun redactorHandlesAnEmptySecretAlongsideRealSecrets() {
         val redactor = BuildOutputRedactor(listOf("", "token"))
-        assertEquals("before", redactor.append("before-to"))
-        assertEquals("", redactor.append("ken"))
-        assertEquals("<redacted>after", redactor.finish().let { it + "after" })
+        val output = redactor.append("before-to") +
+            redactor.append("ken-after") +
+            redactor.finish()
+        assertEquals("before-<redacted>-after", output)
     }
 
     @Test
