@@ -98,6 +98,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
@@ -7987,6 +7994,30 @@ private fun EditorPanel(
                         else Modifier.horizontalScroll(editorHorizontalScrollState),
                     )
                     .focusRequester(editorFocusRequester)
+                    .onPreviewKeyEvent { event ->
+                        if (event.type != KeyEventType.KeyDown || !event.isCtrlPressed) {
+                            false
+                        } else if (event.key == Key.Z || event.key == Key.Y) {
+                            val redo = event.key == Key.Y || event.isShiftPressed
+                            val restoredText = onHistoryAction(redo)
+                            if (restoredText == null) {
+                                false
+                            } else {
+                                val selection = TextRange(
+                                    editorFieldValue.selection.start.coerceIn(0, restoredText.length),
+                                    editorFieldValue.selection.end.coerceIn(0, restoredText.length),
+                                )
+                                editorFieldValue = TextFieldValue(
+                                    text = restoredText,
+                                    selection = selection,
+                                )
+                                editorToolMessage = if (redo) "Redid edit." else "Undid edit."
+                                true
+                            }
+                        } else {
+                            false
+                        }
+                    }
                     .testTag("file-editor-input"),
                 decorationBox = { innerTextField ->
                     OutlinedTextFieldDefaults.DecorationBox(
