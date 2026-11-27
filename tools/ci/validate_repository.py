@@ -10,7 +10,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 IGNORED_PARTS = {".git", ".gradle", ".idea", ".venv", "__pycache__", "build", "node_modules"}
 MODULE_PATTERN = re.compile(r"""["'](:[A-Za-z][A-Za-z0-9_-]*)["']""")
 PROJECT_DEPENDENCY_PATTERN = re.compile(r"""project\(\s*["'](:[A-Za-z][A-Za-z0-9_-]*)["']\s*\)""")
-ACTION_PATTERN = re.compile(r"^\s*uses:\s*([^\s#]+)", re.MULTILINE)
+ACTION_PATTERN = re.compile(r"^\s*(?:-\s*)?uses:\s*([^\s#]+)", re.MULTILINE)
 PINNED_ACTION_PATTERN = re.compile(r".+@[0-9a-fA-F]{40}\Z")
 
 
