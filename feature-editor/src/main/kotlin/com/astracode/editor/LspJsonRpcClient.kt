@@ -2,7 +2,10 @@ package com.astracode.editor
 
 import java.io.Closeable
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CompletionException
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -19,7 +22,13 @@ class LspJsonRpcClient(
         throw LspJsonRpcError(-32601, "Method not found: " + method)
     },
     private val onProtocolError: (Throwable) -> Unit = {},
+    private val requestTimeoutMillis: Long = DEFAULT_REQUEST_TIMEOUT_MILLIS,
 ) : Closeable {
+    init {
+        require(requestTimeoutMillis in 1L..MAX_REQUEST_TIMEOUT_MILLIS) {
+            "Request timeout must be between 1 ms and 5 minutes"
+        }
+    }
     private val nextRequestId = AtomicLong(1L)
     private val closed = AtomicBoolean(false)
     private val pendingLock = Any()
@@ -38,7 +47,13 @@ class LspJsonRpcClient(
             check(id > 0L) { "JSON-RPC request ID space exhausted" }
             check(pending.putIfAbsent(id, future) == null) { "Duplicate JSON-RPC request ID" }
         }
-        future.whenComplete { _, _ -> pending.remove(id, future) }
+        future.whenComplete { _, error ->
+            pending.remove(id, future)
+            val cause = (error as? CompletionException)?.cause ?: error
+            if (future.isCancelled || cause is TimeoutException) {
+                sendCancellation(id)
+            }
+        }
 
         val message = linkedMapOf<String, Any?>(
             "jsonrpc" to JSON_RPC_VERSION,
@@ -49,6 +64,7 @@ class LspJsonRpcClient(
 
         try {
             sendMessage(LspJsonCodec.encode(message))
+            future.orTimeout(requestTimeoutMillis, TimeUnit.MILLISECONDS)
         } catch (error: Throwable) {
             pending.remove(id, future)
             future.completeExceptionally(error)
@@ -135,6 +151,20 @@ class LspJsonRpcClient(
         }
     }
 
+    private fun sendCancellation(id: Long) {
+        runCatching {
+            sendMessage(
+                LspJsonCodec.encode(
+                    mapOf(
+                        "jsonrpc" to JSON_RPC_VERSION,
+                        "method" to "$/cancelRequest",
+                        "params" to mapOf("id" to id),
+                    ),
+                ),
+            )
+        }
+    }
+
     private fun sendResponse(id: Any, body: Map<String, Any?>) {
         val message = linkedMapOf<String, Any?>(
             "jsonrpc" to JSON_RPC_VERSION,
@@ -164,5 +194,7 @@ class LspJsonRpcClient(
     private companion object {
         const val JSON_RPC_VERSION = "2.0"
         const val MAX_PENDING_REQUESTS = 128
+        const val DEFAULT_REQUEST_TIMEOUT_MILLIS = 60_000L
+        const val MAX_REQUEST_TIMEOUT_MILLIS = 5 * 60_000L
     }
 }

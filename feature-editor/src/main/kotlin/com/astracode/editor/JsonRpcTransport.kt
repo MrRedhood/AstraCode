@@ -6,6 +6,9 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.io.IOException
 import java.nio.charset.StandardCharsets
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
+import java.nio.charset.CharacterCodingException
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -29,7 +32,7 @@ object JsonRpcFrameCodec {
         val length = headers.entries.firstOrNull {
             it.key.equals("Content-Length", ignoreCase = true)
         }?.value?.toIntOrNull() ?: throw IOException("LSP message has no valid Content-Length header")
-        if (length !in 0..maximumMessageBytes) {
+        if (length !in 1..maximumMessageBytes) {
             throw IOException("LSP message length exceeds the configured limit")
         }
 
@@ -41,7 +44,15 @@ object JsonRpcFrameCodec {
             if (count == 0) continue
             offset += count
         }
-        return String(bytes, StandardCharsets.UTF_8)
+        return try {
+            StandardCharsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(bytes))
+                .toString()
+        } catch (error: CharacterCodingException) {
+            throw IOException("LSP message body is not valid UTF-8", error)
+        }
     }
 
     fun writeMessage(

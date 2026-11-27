@@ -58,6 +58,20 @@ class JsonRpcTransportTest {
     }
 
     @Test
+    fun rejectsEmptyAndMalformedUtf8MessageBodies() {
+        assertFailsWith<IOException> {
+            JsonRpcFrameCodec.readMessage(
+                ByteArrayInputStream("Content-Length: 0\\r\\n\\r\\n".toByteArray(Charsets.US_ASCII)),
+            )
+        }
+        val header = "Content-Length: 1\\r\\n\\r\\n".toByteArray(Charsets.US_ASCII)
+        val malformedFrame = header + byteArrayOf(0xFF.toByte())
+        assertFailsWith<IOException> {
+            JsonRpcFrameCodec.readMessage(ByteArrayInputStream(malformedFrame))
+        }
+    }
+
+    @Test
     fun rejectsTruncatedBodyAndMalformedHeaders() {
         assertFailsWith<EOFException> {
             JsonRpcFrameCodec.readMessage(

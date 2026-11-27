@@ -1,6 +1,9 @@
 package com.astracode.editor
 
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -105,17 +108,40 @@ class LspJsonRpcClientTest {
     }
 
     @Test
-    fun cancellationRemovesPendingRequestAndUnknownLateResponseIsIgnored() {
+    fun cancellationRemovesPendingRequestAndNotifiesTheServer() {
         val sent = mutableListOf<String>()
         val client = LspJsonRpcClient(sendMessage = sent::add)
         val pending: CompletableFuture<Any?> = client.request("textDocument/hover")
         pending.cancel(true)
         assertEquals(0, client.pendingRequestCount)
 
+        val cancellation = LspJsonCodec.decodeObject(sent.last())
+        assertEquals("$/cancelRequest", cancellation["method"])
+        assertEquals(1L, (cancellation["params"] as Map<*, *>)["id"])
+
         client.acceptMessage(
             LspJsonCodec.encode(mapOf("jsonrpc" to "2.0", "id" to 1L, "result" to "late")),
         )
         assertEquals(0, client.pendingRequestCount)
+        client.close()
+    }
+
+    @Test
+    fun timedOutRequestsAreRemovedAndCancelledOnTheServer() {
+        val sent = mutableListOf<String>()
+        val client = LspJsonRpcClient(
+            sendMessage = sent::add,
+            requestTimeoutMillis = 40L,
+        )
+        val pending = client.request("textDocument/definition")
+        val failure = assertFailsWith<ExecutionException> {
+            pending.get(1, TimeUnit.SECONDS)
+        }
+        assertTrue(failure.cause is TimeoutException)
+        assertEquals(0, client.pendingRequestCount)
+        val cancellation = LspJsonCodec.decodeObject(sent.last())
+        assertEquals("$/cancelRequest", cancellation["method"])
+        assertEquals(1L, (cancellation["params"] as Map<*, *>)["id"])
         client.close()
     }
 
