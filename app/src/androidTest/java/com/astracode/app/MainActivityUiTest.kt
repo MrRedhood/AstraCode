@@ -1617,6 +1617,43 @@ class MainActivityUiTest {
         assertEquals("fun main() = Unit\n", String(Files.readAllBytes(sample), Charsets.UTF_8))
     }
     @Test
+    fun localLanguageServerProfileCanBeConfiguredFromEditorDrawer() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val workspace = File(context.filesDir, "workspace")
+        workspace.mkdirs()
+        val sample = File(workspace, "Main.kt")
+        sample.writeText("fun main() = Unit\n")
+        recreateToFiles()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("entry-Main.kt").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("entry-Main.kt").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("file-editor-input").assertIsDisplayed() }.isSuccess
+        }
+
+        composeRule.onNodeWithTag("open-editor-drawer-button").performClick()
+        composeRule.onNodeWithTag("editor-hamburger-drawer").assertIsDisplayed()
+        composeRule.onNodeWithText("LSP").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithText("Language services").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithText("Language services").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithText("Configure").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithText("Configure").performClick()
+        composeRule.onNodeWithTag("lsp-command-args").performTextInput("[\"/system/bin/sh\",\"-c\",\"exit 0\"]")
+        composeRule.onNodeWithTag("lsp-config-save").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithText("Configured").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithText("Configured").assertIsDisplayed()
+        assertTrue(sample.isFile)
+    }
+
+    @Test
     fun editorHamburgerDrawerUsesLiveBuffersAndKeepsWorkspaceExplorerAvailable() {
         composeRule.onNodeWithTag("workspace-create-menu-button").performClick()
         composeRule.onNodeWithTag("new-file-button").performClick()
