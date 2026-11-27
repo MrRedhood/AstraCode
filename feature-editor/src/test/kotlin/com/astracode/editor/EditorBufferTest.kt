@@ -41,7 +41,7 @@ class EditorBufferTest {
         assertEquals("Aह😀B", buffer.text())
         assertEquals(previousBytes, buffer.byteLength)
 
-        assertEquals("A😀B", buffer.replaceTextRangeWithinLimit(1, 2, "", 5L))
+        assertEquals("A😀B", buffer.replaceTextRangeWithinLimit(1, 2, "", 6L))
         assertEquals("A😀B", buffer.text())
         assertEquals(6, buffer.byteLength)
     }
