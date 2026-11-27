@@ -63,6 +63,26 @@ class LspInitializationTest {
     }
 
     @Test
+    fun initializeResultMustExplicitlyNegotiateUtf8() {
+        val negotiated = LspPositionEncodingNegotiator.negotiateInitializeResult(
+            mapOf("capabilities" to mapOf("positionEncoding" to "utf-8")),
+        )
+        assertEquals("utf-8", negotiated.positionEncoding)
+        assertFailsWith<LspPositionEncodingException> {
+            LspPositionEncodingNegotiator.negotiateInitializeResult(
+                mapOf("capabilities" to emptyMap<String, Any?>()),
+            )
+        }
+    }
+
+    @Test
+    fun initializeResultMustContainServerCapabilities() {
+        assertFailsWith<LspPositionEncodingException> {
+            LspPositionEncodingNegotiator.negotiateInitializeResult(emptyMap<String, Any?>())
+        }
+    }
+
+    @Test
     fun clientCannotAdvertiseAnAdditionalFallbackEncoding() {
         assertFailsWith<IllegalArgumentException> {
             LspGeneralClientCapabilities(listOf("utf-8", "utf-16"))

@@ -86,4 +86,13 @@ object LspPositionEncodingNegotiator {
         }
         return LspNegotiatedCapabilities(LspPositionCodec.POSITION_ENCODING)
     }
+
+    fun negotiateInitializeResult(result: Any?): LspNegotiatedCapabilities {
+        val response = result as? Map<*, *>
+            ?: throw LspPositionEncodingException("Language server initialize response has no result object")
+        val capabilities = response["capabilities"] as? Map<*, *>
+            ?: throw LspPositionEncodingException("Language server initialize response has no server capabilities")
+        val encoding = capabilities["positionEncoding"] as? String
+        return negotiate(LspServerCapabilities(positionEncoding = encoding))
+    }
 }

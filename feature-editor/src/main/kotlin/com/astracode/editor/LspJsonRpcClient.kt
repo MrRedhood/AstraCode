@@ -1,0 +1,165 @@
+package com.astracode.editor
+
+import java.io.Closeable
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicBoolean
+
+data class LspJsonRpcError(
+    val code: Int,
+    override val message: String,
+    val data: Any? = null,
+) : RuntimeException(message)
+
+class LspJsonRpcClient(
+    private val sendMessage: (String) -> Unit,
+    private val onNotification: (String, Map<String, Any?>) -> Unit = { _, _ -> },
+    private val onServerRequest: (String, Map<String, Any?>) -> Any? = { method, _ ->
+        throw LspJsonRpcError(-32601, "Method not found: " + method)
+    },
+    private val onProtocolError: (Throwable) -> Unit = {},
+) : Closeable {
+    private val nextRequestId = AtomicLong(1L)
+    private val closed = AtomicBoolean(false)
+    private val pending = ConcurrentHashMap<Long, CompletableFuture<Any?>>()
+
+    val pendingRequestCount: Int get() = pending.size
+
+    fun request(method: String, params: Any? = null): CompletableFuture<Any?> {
+        require(method.isNotBlank()) { "JSON-RPC method is required" }
+        check(!closed.get()) { "JSON-RPC client is closed" }
+        require(pending.size < MAX_PENDING_REQUESTS) { "Too many pending LSP requests" }
+
+        val id = nextRequestId.getAndIncrement()
+        check(id > 0L) { "JSON-RPC request ID space exhausted" }
+        val future = CompletableFuture<Any?>()
+        check(pending.putIfAbsent(id, future) == null) { "Duplicate JSON-RPC request ID" }
+        future.whenComplete { _, _ -> pending.remove(id, future) }
+
+        val message = linkedMapOf<String, Any?>(
+            "jsonrpc" to JSON_RPC_VERSION,
+            "id" to id,
+            "method" to method,
+        )
+        if (params != null) message["params"] = params
+
+        try {
+            sendMessage(LspJsonCodec.encode(message))
+        } catch (error: Throwable) {
+            pending.remove(id, future)
+            future.completeExceptionally(error)
+        }
+        return future
+    }
+
+    fun notify(method: String, params: Any? = null) {
+        require(method.isNotBlank()) { "JSON-RPC method is required" }
+        check(!closed.get()) { "JSON-RPC client is closed" }
+        val message = linkedMapOf<String, Any?>(
+            "jsonrpc" to JSON_RPC_VERSION,
+            "method" to method,
+        )
+        if (params != null) message["params"] = params
+        sendMessage(LspJsonCodec.encode(message))
+    }
+
+    /** Called by the JSON-RPC transport for each complete UTF-8 framed message. */
+    fun acceptMessage(json: String) {
+        if (closed.get()) return
+        try {
+            val message = LspJsonCodec.decodeObject(json)
+            require(message["jsonrpc"] == JSON_RPC_VERSION) { "Unsupported JSON-RPC version" }
+            val method = message["method"] as? String
+            if (method != null) {
+                val params = message["params"].asObjectOrEmpty()
+                if (message.containsKey("id")) {
+                    handleServerRequest(message["id"], method, params)
+                } else {
+                    onNotification(method, params)
+                }
+                return
+            }
+
+            val id = (message["id"] as? Number)?.toLong()
+                ?: throw IllegalArgumentException("JSON-RPC response has no numeric request ID")
+            val future = pending[id] ?: return
+            val errorObject = message["error"] as? Map<*, *>
+            if (errorObject != null) {
+                val code = (errorObject["code"] as? Number)?.toInt()
+                    ?: throw IllegalArgumentException("JSON-RPC error has no numeric code")
+                val errorMessage = errorObject["message"] as? String
+                    ?: throw IllegalArgumentException("JSON-RPC error has no message")
+                future.complete(
+                    LspJsonRpcError(code, errorMessage, errorObject["data"]),
+                )
+            } else if (message.containsKey("result")) {
+                future.complete(message["result"])
+            } else {
+                throw IllegalArgumentException("JSON-RPC response has neither result nor error")
+            }
+        } catch (error: Throwable) {
+            runCatching { onProtocolError(error) }
+        }
+    }
+
+    private fun handleServerRequest(
+        id: Any?,
+        method: String,
+        params: Map<String, Any?>,
+    ) {
+        require(id is String || id is Number) { "JSON-RPC server request has an invalid ID" }
+        try {
+            val result = onServerRequest(method, params)
+            sendResponse(id, mapOf("result" to result))
+        } catch (error: LspJsonRpcError) {
+            val body = linkedMapOf<String, Any?>(
+                "code" to error.code,
+                "message" to error.message,
+            )
+            if (error.data != null) body["data"] = error.data
+            sendResponse(id, mapOf("error" to body))
+        } catch (error: Throwable) {
+            sendResponse(
+                id,
+                mapOf(
+                    "error" to mapOf(
+                        "code" to -32603,
+                        "message" to (error.message ?: "Internal JSON-RPC error"),
+                    ),
+                ),
+            )
+        }
+    }
+
+    private fun sendResponse(id: Any, body: Map<String, Any?>) {
+        val message = linkedMapOf<String, Any?>(
+            "jsonrpc" to JSON_RPC_VERSION,
+            "id" to id,
+        )
+        message.putAll(body)
+        sendMessage(LspJsonCodec.encode(message))
+    }
+
+    fun failAll(cause: Throwable) {
+        if (!closed.compareAndSet(false, true)) return
+        pending.values.toList().forEach { it.completeExceptionally(cause) }
+        pending.clear()
+    }
+
+    override fun close() {
+        failAll(IllegalStateException("JSON-RPC client closed"))
+    }
+
+    private fun Any?.asObjectOrEmpty(): Map<String, Any?> {
+        if (this == null) return emptyMap()
+        @Suppress("UNCHECKED_CAST")
+        return this as? Map<String, Any?>
+            ?: throw IllegalArgumentException("JSON-RPC params must be an object")
+    }
+
+    private companion object {
+        const val JSON_RPC_VERSION = "2.0"
+        const val MAX_PENDING_REQUESTS = 128
+    }
+}
