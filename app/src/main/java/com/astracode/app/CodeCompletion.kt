@@ -175,6 +175,34 @@ internal fun codeCompletionSuggestions(
     return result.values.take(limit.coerceAtMost(16))
 }
 
+/**
+ * Combines server and offline completions, prioritizing the language server.
+ *
+ * Labels are de-duplicated without regard to case because providers can return
+ * the same completion with different capitalization.
+ */
+internal fun mergeCodeCompletionSuggestions(
+    languageServerSuggestions: List<String>,
+    localSuggestions: List<String>,
+    limit: Int = 16,
+): List<String> {
+    if (limit <= 0) return emptyList()
+
+    val maximum = limit.coerceAtMost(16)
+    val seen = HashSet<String>()
+    val merged = ArrayList<String>(maximum)
+
+    for (suggestion in languageServerSuggestions + localSuggestions) {
+        if (suggestion.isBlank()) continue
+        if (!seen.add(suggestion.lowercase(Locale.ROOT))) continue
+
+        merged += suggestion
+        if (merged.size == maximum) break
+    }
+
+    return merged
+}
+
 /** Applies a suggestion to a prefix range captured when the suggestion row was rendered. */
 internal fun applyCodeCompletionAtRange(
     value: TextFieldValue,
