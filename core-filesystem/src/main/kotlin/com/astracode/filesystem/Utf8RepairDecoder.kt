@@ -5,7 +5,13 @@ package com.astracode.filesystem
  * It keeps partial sequences across windows and replaces malformed input with
  * U+FFFD. A leading UTF-8 BOM is consumed by default.
  */
-class Utf8RepairDecoder(private val ignoreBom: Boolean = false) {
+class Utf8RepairDecoder(
+    private val ignoreBom: Boolean = false,
+    private val maxRepairSpans: Int = DEFAULT_MAX_REPAIR_SPANS,
+) {
+    init {
+        require(maxRepairSpans >= 0) { "maxRepairSpans must be zero or greater" }
+    }
     private var codePoint = 0
     private var bytesNeeded = 0
     private var bytesSeen = 0
@@ -18,6 +24,8 @@ class Utf8RepairDecoder(private val ignoreBom: Boolean = false) {
     private var finished = false
 
     private val repairs = mutableListOf<RepairedSpan>()
+    var repairedSpansTruncated: Boolean = false
+        private set
     var hadLeadingBom: Boolean = false
         private set
 
@@ -120,11 +128,15 @@ class Utf8RepairDecoder(private val ignoreBom: Boolean = false) {
     }
 
     private fun emitReplacement(sourceOffset: Long, sourceLength: Int, output: StringBuilder) {
-        repairs += RepairedSpan(
-            documentByteOffset = totalDocumentByteLength,
-            sourceByteOffset = sourceOffset,
-            sourceByteLength = sourceLength,
-        )
+        if (repairs.size < maxRepairSpans) {
+            repairs += RepairedSpan(
+                documentByteOffset = totalDocumentByteLength,
+                sourceByteOffset = sourceOffset,
+                sourceByteLength = sourceLength,
+            )
+        } else {
+            repairedSpansTruncated = true
+        }
         hasProducedOutput = true
         output.append('\uFFFD')
         totalDocumentByteLength += REPLACEMENT_UTF8_LENGTH
@@ -148,6 +160,7 @@ class Utf8RepairDecoder(private val ignoreBom: Boolean = false) {
 
     private companion object {
         const val REPLACEMENT_UTF8_LENGTH = 3L
+        const val DEFAULT_MAX_REPAIR_SPANS = 100_000
     }
 }
 

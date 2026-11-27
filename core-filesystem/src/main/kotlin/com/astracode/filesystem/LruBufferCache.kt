@@ -2,12 +2,18 @@ package com.astracode.filesystem
 
 import java.util.LinkedHashMap
 
-/** A small, thread-safe least-recently-used cache with a hard entry limit. */
-class LruBufferCache<K : Any, V : Any>(val capacity: Int) {
+/** A thread-safe least-recently-used cache bounded by both entry count and weight. */
+class LruBufferCache<K : Any, V : Any>(
+    val capacity: Int,
+    val maxWeight: Long = Long.MAX_VALUE,
+    private val weigher: (V) -> Long = { 1L },
+) {
     private val entries = LinkedHashMap<K, V>(16, 0.75f, true)
+    private var storedWeight = 0L
 
     init {
         require(capacity >= 0) { "capacity must be zero or greater" }
+        require(maxWeight >= 0L) { "maxWeight must be zero or greater" }
     }
 
     @Synchronized
@@ -15,31 +21,61 @@ class LruBufferCache<K : Any, V : Any>(val capacity: Int) {
 
     @Synchronized
     fun put(key: K, value: V) {
-        if (capacity == 0) return
-        entries[key] = value
-        while (entries.size > capacity) {
-            val eldestKey = entries.entries.iterator().next().key
-            entries.remove(eldestKey)
+        val weight = weigher(value)
+        require(weight >= 0L) { "Cached values must have a non-negative weight" }
+        entries.remove(key)?.let { previous ->
+            storedWeight -= weigher(previous)
         }
+        if (capacity == 0 || maxWeight == 0L || weight > maxWeight) return
+
+        while (entries.isNotEmpty() &&
+            (entries.size >= capacity || weight > maxWeight - storedWeight)
+        ) {
+            evictEldest()
+        }
+        entries[key] = value
+        storedWeight += weight
     }
 
     @Synchronized
-    fun remove(key: K): V? = entries.remove(key)
+    fun remove(key: K): V? {
+        val removed = entries.remove(key) ?: return null
+        storedWeight -= weigher(removed)
+        return removed
+    }
 
     @Synchronized
     fun removeIf(predicate: (K) -> Boolean) {
-        val iterator = entries.keys.iterator()
+        val iterator = entries.entries.iterator()
         while (iterator.hasNext()) {
-            if (predicate(iterator.next())) iterator.remove()
+            val entry = iterator.next()
+            if (predicate(entry.key)) {
+                storedWeight -= weigher(entry.value)
+                iterator.remove()
+            }
         }
     }
 
     @Synchronized
-    fun clear() = entries.clear()
+    fun clear() {
+        entries.clear()
+        storedWeight = 0L
+    }
 
     @Synchronized
     fun size(): Int = entries.size
 
     @Synchronized
+    fun currentWeight(): Long = storedWeight
+
+    @Synchronized
     fun keysMostRecentlyUsedFirst(): List<K> = entries.keys.toList().asReversed()
+
+    private fun evictEldest() {
+        val iterator = entries.entries.iterator()
+        if (!iterator.hasNext()) return
+        val eldest = iterator.next()
+        storedWeight -= weigher(eldest.value)
+        iterator.remove()
+    }
 }

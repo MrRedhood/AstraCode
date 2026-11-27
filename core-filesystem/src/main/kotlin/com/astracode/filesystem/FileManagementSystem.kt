@@ -30,7 +30,14 @@ class FileManagementSystem(
     private val options: FileSystemOptions = FileSystemOptions(),
 ) : WorkspaceStorage {
     private val root: Path
-    private val textCache = LruBufferCache<String, CachedText>(options.cacheCapacity)
+    private val textCache = LruBufferCache<String, CachedText>(
+        capacity = options.cacheCapacity,
+        maxWeight = options.maxCachedTextBytes,
+    ) { cached ->
+        cached.snapshot.text.length.toLong() * 2L +
+            cached.snapshot.repairedSpans.size.toLong() * 32L +
+            cached.snapshot.path.length.toLong() * 2L
+    }
     private val listeners = CopyOnWriteArrayList<(FileChangeEvent) -> Unit>()
     @Volatile private var closed = false
 
@@ -127,7 +134,7 @@ class FileManagementSystem(
                 textCache.remove(path)
             }
 
-            val decoder = Utf8RepairDecoder()
+            val decoder = Utf8RepairDecoder(maxRepairSpans = options.maxRepairSpans)
             val text = StringBuilder(minOf(before.size, 64L * 1024L).toInt())
             val window = ByteArray(readBufferSize)
             var bytesRead = 0L
@@ -154,6 +161,7 @@ class FileManagementSystem(
                     modifiedAt = after.lastModified.toInstant(),
                     hadLeadingBom = decoder.hadLeadingBom,
                     repairedSpans = decoder.repairedSpans,
+                    repairedSpansTruncated = decoder.repairedSpansTruncated,
                 )
                 textCache.put(path, CachedText(after, snapshot))
                 return snapshot

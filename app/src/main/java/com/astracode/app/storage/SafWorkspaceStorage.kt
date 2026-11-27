@@ -118,7 +118,7 @@ class SafWorkspaceStorage(
             throw FileTooLargeException(path, reportedSize, options.maxFileBytes)
         }
 
-        val decoder = Utf8RepairDecoder()
+        val decoder = Utf8RepairDecoder(maxRepairSpans = options.maxRepairSpans)
         val text = StringBuilder(minOf(reportedSize, 64L * 1024L).toInt())
         val window = ByteArray(options.defaultReadBufferSize)
         var bytesRead = 0L
@@ -145,6 +145,7 @@ class SafWorkspaceStorage(
             modifiedAt = Instant.ofEpochMilli(document.lastModified().coerceAtLeast(0L)),
             hadLeadingBom = decoder.hadLeadingBom,
             repairedSpans = decoder.repairedSpans,
+            repairedSpansTruncated = decoder.repairedSpansTruncated,
         )
     }
 
@@ -189,9 +190,10 @@ class SafWorkspaceStorage(
             throw IOException("Not a regular file: $path")
         }
         if (!document.canRead()) throw SecurityException("Cannot read file: $path")
+        val maximumArrayBytes = minOf(options.maxFileBytes, Int.MAX_VALUE.toLong())
         val reportedSize = document.length().coerceAtLeast(0L)
-        if (reportedSize > options.maxFileBytes) {
-            throw FileTooLargeException(path, reportedSize, options.maxFileBytes)
+        if (reportedSize > maximumArrayBytes) {
+            throw FileTooLargeException(path, reportedSize, maximumArrayBytes)
         }
         val input = resolver.openInputStream(document.uri)
             ?: throw IOException("The storage provider could not open '$path' for reading.")
@@ -204,8 +206,8 @@ class SafWorkspaceStorage(
                 if (count < 0) break
                 if (count == 0) continue
                 copied += count
-                if (copied > options.maxFileBytes) {
-                    throw FileTooLargeException(path, copied, options.maxFileBytes)
+                if (copied > maximumArrayBytes) {
+                    throw FileTooLargeException(path, copied, maximumArrayBytes)
                 }
                 output.write(buffer, 0, count)
             }
@@ -326,7 +328,8 @@ class SafWorkspaceStorage(
     private fun readDocumentBytes(uri: Uri, path: String): ByteArray {
         val input = resolver.openInputStream(uri)
             ?: throw IOException("The storage provider could not open '$path' for recovery.")
-        val output = ByteArrayOutputStream()
+        val maximumArrayBytes = minOf(options.maxFileBytes, Int.MAX_VALUE.toLong())
+        val output = ByteArrayOutputStream(minOf(maximumArrayBytes, 64L * 1024L).toInt())
         val buffer = ByteArray(options.defaultReadBufferSize)
         var copied = 0L
         input.use { stream ->
@@ -335,8 +338,8 @@ class SafWorkspaceStorage(
                 if (count < 0) break
                 if (count == 0) continue
                 copied += count
-                if (copied > options.maxFileBytes) {
-                    throw FileTooLargeException(path, copied, options.maxFileBytes)
+                if (copied > maximumArrayBytes) {
+                    throw FileTooLargeException(path, copied, maximumArrayBytes)
                 }
                 output.write(buffer, 0, count)
             }
@@ -375,9 +378,29 @@ class SafWorkspaceStorage(
     }
 
     private fun verifyDocumentBytes(uri: Uri, expected: ByteArray) {
-        val input = resolver.openInputStream(uri) ?: throw IOException("The storage provider could not read back a written document.")
-        val actual = input.use { it.readBytes() }
-        if (!actual.contentEquals(expected)) throw IOException("The storage provider returned bytes different from the content written.")
+        val input = resolver.openInputStream(uri)
+            ?: throw IOException("The storage provider could not read back a written document.")
+        val buffer = ByteArray(options.defaultReadBufferSize)
+        var offset = 0
+        input.use { stream ->
+            while (true) {
+                val count = stream.read(buffer)
+                if (count < 0) break
+                if (count == 0) continue
+                if (count > expected.size - offset) {
+                    throw IOException("The storage provider returned more bytes than the content written.")
+                }
+                for (index in 0 until count) {
+                    if (buffer[index] != expected[offset + index]) {
+                        throw IOException("The storage provider returned bytes different from the content written.")
+                    }
+                }
+                offset += count
+            }
+        }
+        if (offset != expected.size) {
+            throw IOException("The storage provider returned fewer bytes than the content written.")
+        }
     }
 
     override fun move(

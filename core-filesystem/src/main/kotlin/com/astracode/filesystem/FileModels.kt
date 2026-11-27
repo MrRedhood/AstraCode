@@ -24,8 +24,10 @@ data class TextFileSnapshot(
     val modifiedAt: Instant,
     val hadLeadingBom: Boolean,
     val repairedSpans: List<RepairedSpan>,
+    /** True when the diagnostic span list reached its configured safety limit. */
+    val repairedSpansTruncated: Boolean = false,
 ) {
-    val wasRepaired: Boolean get() = repairedSpans.isNotEmpty()
+    val wasRepaired: Boolean get() = repairedSpans.isNotEmpty() || repairedSpansTruncated
 }
 
 data class TextFileWriteResult(
@@ -50,12 +52,18 @@ data class FileSystemOptions(
     val defaultReadBufferSize: Int = 8 * 1024,
     /** Number of extra reads allowed if a file changes during a read. */
     val concurrentReadRetries: Int = 2,
+    /** Approximate UTF-16 text cache budget; zero disables text caching. */
+    val maxCachedTextBytes: Long = 8L * 1024L * 1024L,
+    /** Maximum malformed UTF-8 source spans retained for editor diagnostics. */
+    val maxRepairSpans: Int = 100_000,
 ) {
     init {
         require(maxFileBytes > 0) { "maxFileBytes must be greater than zero" }
         require(cacheCapacity >= 0) { "cacheCapacity must be zero or greater" }
         require(defaultReadBufferSize > 0) { "defaultReadBufferSize must be greater than zero" }
         require(concurrentReadRetries >= 0) { "concurrentReadRetries must be zero or greater" }
+        require(maxCachedTextBytes >= 0L) { "maxCachedTextBytes must be zero or greater" }
+        require(maxRepairSpans >= 0) { "maxRepairSpans must be zero or greater" }
     }
 }
 

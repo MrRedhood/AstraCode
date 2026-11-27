@@ -58,6 +58,19 @@ class Utf8RepairDecoderTest {
     }
 
     @Test
+    fun repairSpanStorageIsCappedWithoutDroppingReplacementCharacters() {
+        val decoder = Utf8RepairDecoder(maxRepairSpans = 2)
+        val output = decoder.decode(
+            byteArrayOf(0x80.toByte(), 0x81.toByte(), 0x82.toByte()),
+            endOfInput = true,
+        )
+
+        assertEquals("\uFFFD\uFFFD\uFFFD", output)
+        assertEquals(2, decoder.repairedSpans.size)
+        assertTrue(decoder.repairedSpansTruncated)
+    }
+
+    @Test
     fun repairOffsetAfterMultibytePrefixIsMeasuredInUtf8Bytes() {
         val bytes = "ह".toByteArray(Charsets.UTF_8) +
             byteArrayOf(0xE2.toByte(), 0x82.toByte(), 'b'.code.toByte())
