@@ -99,10 +99,16 @@ class BuildRuntimeRegistry(
         val canonicalHome = runCatching { home.canonicalFile }.getOrDefault(home.absoluteFile)
         val release = readReleaseFile(File(canonicalHome, "release"))
         val executable = File(canonicalHome, if (isWindows()) "bin/java.exe" else "bin/java")
+        val declaredArchitecture = release.getProperty("OS_ARCH")
+            ?.trim()
+            ?.trim('"')
+            ?.takeIf { it.isNotBlank() }
+            ?: release.getProperty("JAVA_ARCH")
+                ?.trim()
+                ?.trim('"')
+                ?.takeIf { it.isNotBlank() }
         val architecture = BuildRuntimeArchitecture.from(
-            release.getProperty("OS_ARCH")
-                ?: release.getProperty("JAVA_ARCH")
-                ?: inferArchitectureFromDirectory(canonicalHome.name),
+            declaredArchitecture ?: inferArchitectureFromDirectory(canonicalHome.name),
         )
         val state = when {
             !executable.isFile || !executable.canExecute() -> BuildRuntimeState.INVALID

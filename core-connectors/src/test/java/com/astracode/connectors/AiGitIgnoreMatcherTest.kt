@@ -75,6 +75,16 @@ class AiGitIgnoreMatcherTest {
     }
 
     @Test
+    fun supportsEscapedLeadingCommentAndNegationMarkers() {
+        val matcher = AiGitIgnoreMatcher(
+            listOf(AiGitIgnoreFile("", "\\#literal.txt\n\\!literal.txt")),
+        )
+        assertTrue(matcher.isIgnored("#literal.txt"))
+        assertTrue(matcher.isIgnored("!literal.txt"))
+        assertFalse(matcher.isIgnored("ordinary.txt"))
+    }
+
+    @Test
     fun ignoresInvalidAbsoluteOrBackslashPaths() {
         val matcher = AiGitIgnoreMatcher(emptyList())
         assertTrue(matcher.isIgnored("../outside.kt"))

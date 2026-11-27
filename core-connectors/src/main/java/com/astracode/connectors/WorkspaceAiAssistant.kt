@@ -652,7 +652,7 @@ class WorkspaceAiAssistant(context: Context) {
                         schema,
                         withUsagePricing(onEvent, fallback.capabilities.pricing),
                     )
-                    return parseAgentTasks(output)
+                    return parseAgentTasks(output, files.map { it.path }.toSet())
                 } catch (fallbackError: AiProviderRequestException) {
                     lastFallbackError = fallbackError
                     onEvent(AiStreamEvent.Status(

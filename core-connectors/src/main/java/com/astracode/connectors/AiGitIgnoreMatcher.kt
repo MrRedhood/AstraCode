@@ -55,7 +55,7 @@ class AiGitIgnoreMatcher(ignoreFiles: List<AiGitIgnoreFile>) {
             .mapNotNull { rawLine ->
                 var value = rawLine.trim()
                 if (value.isBlank()) return@mapNotNull null
-                if (value.startsWith("\\\\#") || value.startsWith("\\\\!")) {
+                if (value.startsWith("\\#") || value.startsWith("\\!")) {
                     value = value.substring(1)
                 } else if (value.startsWith("#")) {
                     return@mapNotNull null
@@ -120,11 +120,11 @@ class AiGitIgnoreMatcher(ignoreFiles: List<AiGitIgnoreFile>) {
                         output.append(glob.substring(index, closing + 1))
                         index = closing
                     } else {
-                        output.append("\\\\[")
+                        output.append("\\[")
                     }
                 }
                 else -> {
-                    if (character in REGEX_SPECIAL_CHARACTERS) output.append('\\\\')
+                    if (character in REGEX_SPECIAL_CHARACTERS) output.append('\\')
                     output.append(character)
                 }
             }
@@ -135,6 +135,6 @@ class AiGitIgnoreMatcher(ignoreFiles: List<AiGitIgnoreFile>) {
 
     private companion object {
         const val MAX_RULE_LINES = 2_000
-        val REGEX_SPECIAL_CHARACTERS = setOf('.', '+', '(', ')', '{', '}', '^', '$', '|', '\\\\')
+        val REGEX_SPECIAL_CHARACTERS = setOf('.', '+', '(', ')', '{', '}', '^', '$', '|', '\\')
     }
 }

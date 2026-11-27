@@ -137,17 +137,24 @@ class AiStreamAccumulator(private val provider: AiProvider) {
                 arguments = args,
             )
         }
+        // Snapshot mutable accumulator fields before null checks. Kotlin cannot
+        // smart-cast mutable properties because another stream event may update them.
+        val inputTokenCount = inputTokens
+        val outputTokenCount = outputTokens
+        val totalTokenCount = totalTokens
+        val cachedInputTokenCount = cachedInputTokens
         val usage = if (
-            inputTokens == null && outputTokens == null && totalTokens == null && cachedInputTokens == null
+            inputTokenCount == null && outputTokenCount == null &&
+            totalTokenCount == null && cachedInputTokenCount == null
         ) null else AiTokenUsage(
-            inputTokens = inputTokens,
-            outputTokens = outputTokens,
-            totalTokens = totalTokens ?: if (inputTokens != null && outputTokens != null) {
-                inputTokens + outputTokens
+            inputTokens = inputTokenCount,
+            outputTokens = outputTokenCount,
+            totalTokens = totalTokenCount ?: if (inputTokenCount != null && outputTokenCount != null) {
+                inputTokenCount + outputTokenCount
             } else {
                 null
             },
-            cachedInputTokens = cachedInputTokens,
+            cachedInputTokens = cachedInputTokenCount,
         )
         return AiStreamResult(
             text.toString(),

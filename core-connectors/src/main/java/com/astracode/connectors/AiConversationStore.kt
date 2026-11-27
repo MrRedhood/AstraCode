@@ -242,7 +242,7 @@ class AiConversationStore(context: Context) : SQLiteOpenHelper(
                     ORDER BY created_at DESC, id DESC LIMIT ?
                 )
                 """.trimIndent(),
-                arrayOf(threadId, threadId, MAX_MESSAGES_PER_THREAD),
+                arrayOf<Any>(threadId, threadId, MAX_MESSAGES_PER_THREAD),
             )
             db.setTransactionSuccessful()
         } finally {
