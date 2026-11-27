@@ -1,5 +1,7 @@
 package com.astracode.editor
 
+import java.net.URI
+
 /**
  * The LSP 3.17 client capability block sent in initialize.params.capabilities.
  * AstraCode intentionally offers only UTF-8 because its document offsets are
@@ -75,7 +77,11 @@ data class LspInitializeParams(
 ) {
     init {
         require(processId == null || processId > 0L)
-        require(rootUri == null || rootUri.startsWith("file://"))
+        require(rootUri == null || runCatching {
+            val uri = URI(rootUri)
+            uri.isAbsolute && uri.scheme.equals("file", ignoreCase = true) &&
+                uri.rawQuery == null && uri.rawFragment == null
+        }.getOrDefault(false)) { "Workspace root must be an absolute file URI" }
         require(clientName.isNotBlank())
     }
 

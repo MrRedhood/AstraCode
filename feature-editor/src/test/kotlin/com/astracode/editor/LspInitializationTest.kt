@@ -40,6 +40,15 @@ class LspInitializationTest {
     }
 
     @Test
+    fun acceptsCanonicalAndSingleSlashFileUrisForAndroidFilePaths() {
+        LspInitializeParams(processId = null, rootUri = "file:/data/user/0/app/files/workspace")
+        LspInitializeParams(processId = null, rootUri = "file:///data/user/0/app/files/workspace")
+        assertFailsWith<IllegalArgumentException> {
+            LspInitializeParams(processId = null, rootUri = "https://example.com/workspace")
+        }
+    }
+
+    @Test
     fun serverExplicitlySelectingUtf8NegotiatesSuccessfully() {
         val negotiated = LspPositionEncodingNegotiator.negotiate(
             LspServerCapabilities(positionEncoding = "utf-8"),
