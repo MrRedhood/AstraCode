@@ -165,8 +165,13 @@ class JsonRpcProcessTransport private constructor(
                     onMessage(message)
                 }
             }
-            if (!closed.get() && process.isAlive) {
-                throw IOException("Language server closed its output stream unexpectedly")
+            if (!closed.get()) {
+                val reason = if (process.isAlive) {
+                    "closed its output stream while still running"
+                } else {
+                    "exited with code " + process.exitValue()
+                }
+                throw IOException("Language server " + reason + " before shutdown completed")
             }
         } catch (error: Throwable) {
             if (!closed.get()) runCatching { onFailure(error) }

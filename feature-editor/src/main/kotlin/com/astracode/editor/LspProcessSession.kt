@@ -6,6 +6,7 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CompletionException
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.AtomicBoolean
 
 enum class LspProcessSessionState {
     CREATED,
@@ -29,6 +30,7 @@ class LspProcessSession private constructor(
     private val notificationListeners: CopyOnWriteArrayList<(String, Map<String, Any?>) -> Unit>,
 ) : Closeable {
     private val stateLock = Any()
+    private val failureReported = AtomicBoolean(false)
 
     @Volatile
     var state: LspProcessSessionState = LspProcessSessionState.CREATED
@@ -61,9 +63,7 @@ class LspProcessSession private constructor(
             }
             .whenComplete { _, error ->
                 if (error != null) {
-                    state = LspProcessSessionState.FAILED
-                    val cause = (error as? CompletionException)?.cause ?: error
-                    runCatching { onFailure(cause) }
+                    markFailed(unwrap(error))
                     close()
                 }
             }
@@ -102,12 +102,49 @@ class LspProcessSession private constructor(
         }
         return rpc.request("shutdown")
             .handle { _, error ->
+                if (error != null) {
+                    val cause = unwrap(error)
+                    markFailed(cause)
+                    close()
+                    throw CompletionException(cause)
+                }
                 runCatching { rpc.notify("exit") }
                 close()
-                if (error != null) throw CompletionException(error)
                 Unit
             }
     }
+
+    private fun handleTransportFailure(error: Throwable) {
+        val shutdownInProgress = synchronized(stateLock) {
+            state == LspProcessSessionState.SHUTTING_DOWN
+        }
+        if (shutdownInProgress) {
+            // A process may close stdout after the shutdown response and exit
+            // while the client is sending the protocol exit notification.
+            rpc.failAll(error)
+        } else {
+            markFailed(error)
+        }
+    }
+
+    private fun markFailed(error: Throwable) {
+        val changed = synchronized(stateLock) {
+            if (state == LspProcessSessionState.CLOSED || state == LspProcessSessionState.FAILED) {
+                false
+            } else {
+                state = LspProcessSessionState.FAILED
+                true
+            }
+        }
+        if (!changed) return
+        rpc.failAll(error)
+        if (failureReported.compareAndSet(false, true)) {
+            runCatching { onFailure(error) }
+        }
+    }
+
+    private fun unwrap(error: Throwable): Throwable =
+        if (error is CompletionException && error.cause != null) error.cause!! else error
 
     override fun close() {
         synchronized(stateLock) {
@@ -132,6 +169,9 @@ class LspProcessSession private constructor(
             onFailure: (Throwable) -> Unit = {},
         ): LspProcessSession {
             val transportReference = AtomicReference<JsonRpcProcessTransport?>()
+            val sessionReference = AtomicReference<LspProcessSession?>()
+            val startupLock = Any()
+            var earlyTransportFailure: Throwable? = null
             val notificationListeners = CopyOnWriteArrayList<(String, Map<String, Any?>) -> Unit>()
             notificationListeners += onNotification
             val rpc = LspJsonRpcClient(
@@ -156,12 +196,22 @@ class LspProcessSession private constructor(
                 maximumMessageBytes = maximumMessageBytes,
                 onMessage = rpc::acceptMessage,
                 onFailure = { error ->
-                    rpc.failAll(error)
-                    onFailure(error)
+                    val activeSession = synchronized(startupLock) {
+                        val current = sessionReference.get()
+                        if (current == null) earlyTransportFailure = error
+                        current
+                    }
+                    activeSession?.handleTransportFailure(error)
                 },
             )
             transportReference.set(transport)
-            return LspProcessSession(transport, rpc, onFailure, notificationListeners)
+            val session = LspProcessSession(transport, rpc, onFailure, notificationListeners)
+            val startupFailure = synchronized(startupLock) {
+                sessionReference.set(session)
+                earlyTransportFailure
+            }
+            startupFailure?.let(session::handleTransportFailure)
+            return session
         }
     }
 }
