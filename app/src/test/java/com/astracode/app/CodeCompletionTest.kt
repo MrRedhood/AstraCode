@@ -194,4 +194,45 @@ class CodeCompletionTest {
         assertTrue(codeCompletionSuggestions("pri", "notes.txt", 3).isEmpty())
         assertTrue(codeCompletionSuggestions("some wor", "README.md", 8).isEmpty())
     }
+
+    @Test
+    fun serverSuggestionsArePrioritizedWhenMergedWithOfflineSuggestions() {
+        assertEquals(
+            listOf("println", "print", "private"),
+            mergeCodeCompletionSuggestions(
+                languageServerSuggestions = listOf("println", "print"),
+                localSuggestions = listOf("print", "private"),
+            ),
+        )
+    }
+
+    @Test
+    fun mergedSuggestionsDropBlankLabelsAndCaseInsensitiveDuplicates() {
+        assertEquals(
+            listOf("println", "print", "private"),
+            mergeCodeCompletionSuggestions(
+                languageServerSuggestions = listOf("", "println", "Println", "print"),
+                localSuggestions = listOf("PRINT", "private", "Private"),
+            ),
+        )
+    }
+
+    @Test
+    fun mergedSuggestionsRespectTheRequestedLimitAndGlobalMaximum() {
+        val suggestions = (1..20).map { "symbol$it" }
+
+        assertEquals(
+            listOf("symbol1", "symbol2", "symbol3"),
+            mergeCodeCompletionSuggestions(emptyList(), suggestions, limit = 3),
+        )
+        assertEquals(
+            16,
+            mergeCodeCompletionSuggestions(emptyList(), suggestions, limit = 20).size,
+        )
+        assertEquals(
+            emptyList<String>(),
+            mergeCodeCompletionSuggestions(suggestions, emptyList(), limit = 0),
+        )
+    }
+
 }
