@@ -8013,6 +8013,20 @@ private fun EditorPanel(
     var languageSymbolReference by remember(path) { mutableStateOf<LanguageSymbolReference?>(null) }
     val editorFocusRequester = remember(path) { FocusRequester() }
     var previousVirtualizedEditorMode by remember(path) { mutableStateOf(useVirtualizedEditor) }
+    fun commitEditorValue(nextValue: TextFieldValue): Boolean {
+        if (nextValue.text == editorFieldValue.text) {
+            editorFieldValue = nextValue
+            return true
+        }
+        val edit = minimalEditorTextEdit(editorFieldValue.text, nextValue.text) ?: run {
+            editorFieldValue = nextValue
+            return true
+        }
+        val updatedText = onTextEdit(edit.start, edit.end, edit.replacement) ?: return false
+        editorFieldValue = nextValue.copy(text = updatedText)
+        return true
+    }
+
     LaunchedEffect(useVirtualizedEditor) {
         if (previousVirtualizedEditorMode != useVirtualizedEditor) {
             withFrameNanos { }
@@ -8201,8 +8215,7 @@ private fun EditorPanel(
                         onClick = {
                             val (updated, didReplace) = replaceOneMatch(editorFieldValue, findQuery, replacementText)
                             if (didReplace) {
-                                if (onTextChange(updated.text)) {
-                                    editorFieldValue = updated
+                                if (commitEditorValue(updated)) {
                                     editorToolMessage = "Replaced one occurrence."
                                     editorFocusRequester.requestFocus()
                                 } else {
@@ -8232,8 +8245,7 @@ private fun EditorPanel(
                             } else {
                                 val (updated, count) = replaceAllMatches(editorFieldValue, findQuery, replacementText)
                                 if (count > 0) {
-                                    if (onTextChange(updated.text)) {
-                                        editorFieldValue = updated
+                                    if (commitEditorValue(updated)) {
                                         editorToolMessage = "Replaced ${count} occurrence(s)."
                                     } else {
                                         editorFieldValue = TextFieldValue(
@@ -8349,8 +8361,7 @@ private fun EditorPanel(
                     applyCodeCompletionAtRange(completionValueAtRender, suggestion, range, path)
                 }
                 if (completedValue != null) {
-                    if (onTextChange(completedValue.text)) {
-                        editorFieldValue = completedValue
+                    if (commitEditorValue(completedValue)) {
                         editorToolMessage = "Completed: $suggestion"
                         runCatching { editorFocusRequester.requestFocus() }
                     } else {
@@ -8528,9 +8539,8 @@ private fun EditorPanel(
                     } else {
                         val outcome = applyEditorTool(action, currentValue, path)
                         outcome.clipboardText?.let { clipboardManager.setText(AnnotatedString(it)) }
-                        val accepted = outcome.value.text == currentValue.text || onTextChange(outcome.value.text)
+                        val accepted = commitEditorValue(outcome.value)
                         if (accepted) {
-                            editorFieldValue = outcome.value
                             editorToolMessage = outcome.message
                         } else {
                             editorToolMessage = if (readOnly) {
