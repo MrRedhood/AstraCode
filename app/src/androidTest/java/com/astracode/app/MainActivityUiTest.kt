@@ -1641,8 +1641,10 @@ class MainActivityUiTest {
         }
         composeRule.onNodeWithText("LANGUAGE SERVICES", substring = true).performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
-            runCatching { composeRule.onNodeWithText("Configure").assertIsDisplayed() }.isSuccess
+            runCatching { composeRule.onAllNodesWithText("Configure").assertCountEquals(1) }.isSuccess
         }
+        composeRule.onNodeWithText("Configure").performScrollTo()
+        composeRule.onNodeWithText("Configure").assertIsDisplayed()
         composeRule.onNodeWithText("Configure").performClick()
         composeRule.onNodeWithTag("lsp-command-args").performTextInput("[\"/system/bin/sh\",\"-c\",\"exit 0\"]")
         composeRule.onNodeWithTag("lsp-config-save").performClick()
