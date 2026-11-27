@@ -91,6 +91,7 @@ class LspWorkspaceManager(
     private val configurationsById: Map<String, LanguageServerConfiguration>
     private val configurationsByExtension: Map<String, LanguageServerConfiguration>
     private val connections = ConcurrentHashMap<String, CompletableFuture<ServerHandle>>()
+    private val activeSessions = ConcurrentHashMap<String, LspProcessSession>()
 
     @Volatile
     private var closed = false
@@ -199,24 +200,29 @@ class LspWorkspaceManager(
     }
 
     fun closeServer(serverId: String): CompletableFuture<Unit> {
-        val connection = synchronized(lock) { connections.remove(serverId) }
-            ?: return CompletableFuture.completedFuture(Unit)
+        val connection: CompletableFuture<ServerHandle>?
+        val session: LspProcessSession?
+        synchronized(lock) {
+            connection = connections.remove(serverId)
+            session = activeSessions.remove(serverId)
+        }
+        if (connection == null && session == null) {
+            return CompletableFuture.completedFuture(Unit)
+        }
+        connection?.whenComplete { handle, _ -> handle?.bridge?.close() }
         val result = CompletableFuture<Unit>()
-        connection.whenComplete { handle, error ->
-            if (handle == null || error != null) {
+        if (session == null) {
+            result.complete(Unit)
+            return result
+        }
+        if (session.state == LspProcessSessionState.READY) {
+            session.shutdown().whenComplete { _, _ ->
+                session.close()
                 result.complete(Unit)
-            } else {
-                handle.bridge.close()
-                if (handle.session.state == LspProcessSessionState.READY) {
-                    handle.session.shutdown().whenComplete { _, shutdownError ->
-                        if (shutdownError != null) handle.session.close()
-                        result.complete(Unit)
-                    }
-                } else {
-                    handle.session.close()
-                    result.complete(Unit)
-                }
             }
+        } else {
+            session.close()
+            result.complete(Unit)
         }
         return result
     }
@@ -239,14 +245,18 @@ class LspWorkspaceManager(
         }
 
         val result = CompletableFuture<ServerHandle>()
+        activeSessions[configuration.id] = session
         val initialize = LspInitializeParams(
             processId = null,
             rootUri = root.toURI().toString(),
         )
         session.initialize(initialize).whenComplete { _, error ->
-            if (error != null) {
+            activeSessions.remove(configuration.id, session)
+            if (error != null || session.state != LspProcessSessionState.READY) {
                 session.close()
-                result.completeExceptionally(unwrap(error))
+                result.completeExceptionally(
+                    error?.let(::unwrap) ?: IllegalStateException("Language-server manager closed during initialization"),
+                )
             } else {
                 result.complete(ServerHandle(session, JsonRpcLanguageServerBridge(session)))
             }
@@ -255,13 +265,19 @@ class LspWorkspaceManager(
     }
 
     override fun close() {
-        val active = synchronized(lock) {
+        val active: List<CompletableFuture<ServerHandle>>
+        val sessions: List<LspProcessSession>
+        synchronized(lock) {
             if (closed) return
             closed = true
-            connections.values.toList().also { connections.clear() }
+            active = connections.values.toList()
+            connections.clear()
+            sessions = activeSessions.values.toList()
+            activeSessions.clear()
         }
+        sessions.forEach(LspProcessSession::close)
         active.forEach { future ->
-            future.whenComplete { handle, _ -> handle?.close() }
+            future.whenComplete { handle, _ -> handle?.bridge?.close() }
         }
     }
 

@@ -112,6 +112,27 @@ class LspWorkspaceManagerTest {
     }
 
     @Test
+    fun managerCloseStopsServerWhileInitializeIsPending() {
+        val root = Files.createTempDirectory("astracode-lsp-pending-init").toFile()
+        try {
+            val configuration = LanguageServerConfiguration(
+                id = "slow-server",
+                languageIds = setOf("kotlin"),
+                fileExtensions = setOf("kt"),
+                command = listOf("sh", "-c", "sleep 30"),
+            )
+            val manager = LspWorkspaceManager(root, listOf(configuration))
+            val pending = manager.connect("slow-server")
+            manager.close()
+            assertFailsWith<java.util.concurrent.ExecutionException> {
+                pending.get(2, TimeUnit.SECONDS)
+            }
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun rejectsAmbiguousExtensionsAndUnsafeWorkingDirectories() {
         val root = Files.createTempDirectory("astracode-lsp-config").toFile()
         try {
