@@ -170,5 +170,7 @@ class LspJsonRpcClientTest {
         assertFailsWith<IllegalArgumentException> { client.request("overflow") }
         client.close()
         assertFailsWith<IllegalStateException> { client.notify("after-close") }
+        assertFailsWith<IllegalStateException> { client.request("after-close") }
+        assertEquals(0, client.pendingRequestCount)
     }
 }

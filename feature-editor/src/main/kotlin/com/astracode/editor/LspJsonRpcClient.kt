@@ -38,10 +38,10 @@ class LspJsonRpcClient(
 
     fun request(method: String, params: Any? = null): CompletableFuture<Any?> {
         require(method.isNotBlank()) { "JSON-RPC method is required" }
-        check(!closed.get()) { "JSON-RPC client is closed" }
         val future = CompletableFuture<Any?>()
         val id: Long
         synchronized(pendingLock) {
+            check(!closed.get()) { "JSON-RPC client is closed" }
             require(pending.size < MAX_PENDING_REQUESTS) { "Too many pending LSP requests" }
             id = nextRequestId.getAndIncrement()
             check(id > 0L) { "JSON-RPC request ID space exhausted" }
@@ -175,9 +175,11 @@ class LspJsonRpcClient(
     }
 
     fun failAll(cause: Throwable) {
-        if (!closed.compareAndSet(false, true)) return
-        pending.values.toList().forEach { it.completeExceptionally(cause) }
-        pending.clear()
+        val requestsToFail = synchronized(pendingLock) {
+            if (!closed.compareAndSet(false, true)) return
+            pending.values.toList().also { pending.clear() }
+        }
+        requestsToFail.forEach { it.completeExceptionally(cause) }
     }
 
     override fun close() {
