@@ -3,7 +3,6 @@ package com.astracode.editor
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -31,7 +30,7 @@ class LspJsonCodecTest {
     @Test
     fun parsesEscapedCharactersAndUnicodeEscapes() {
         val decoded = LspJsonCodec.decodeObject(
-            """{"text":"quote: \\" slash: \\\\ newline: \\n unicode: \\u0939"}""",
+            """{"text":"quote: \" slash: \\ newline: \n unicode: \u0939"}""",
         )
         assertEquals("quote: \" slash: \\ newline: \n unicode: ह", decoded["text"])
     }
@@ -48,7 +47,7 @@ class LspJsonCodecTest {
             LspJsonCodec.decodeObject("""{"id":1} trailing""")
         }
         assertFailsWith<IllegalArgumentException> {
-            LspJsonCodec.decodeObject("""{"text":"bad \\q escape"}""")
+            LspJsonCodec.decodeObject("""{"text":"bad \q escape"}""")
         }
     }
 

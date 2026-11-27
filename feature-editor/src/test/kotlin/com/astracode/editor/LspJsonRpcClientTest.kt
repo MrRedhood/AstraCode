@@ -4,8 +4,6 @@ import java.util.concurrent.CompletableFuture
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertIs
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class LspJsonRpcClientTest {
@@ -62,7 +60,9 @@ class LspJsonRpcClientTest {
                 ),
             ),
         )
-        val error = assertFailsWith<LspJsonRpcError> { response.join() }
+        val failure = runCatching { response.join() }.exceptionOrNull()
+        val error = failure?.cause as? LspJsonRpcError
+            ?: throw AssertionError("Expected LspJsonRpcError as the completion cause", failure)
         assertEquals(-32601, error.code)
         client.close()
     }
