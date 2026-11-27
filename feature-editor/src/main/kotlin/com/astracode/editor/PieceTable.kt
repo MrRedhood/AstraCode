@@ -142,9 +142,19 @@ class PieceTable(
     fun lineOfOffset(byteOffset: Int): Int {
         require(byteOffset in 0..documentLength) { "Byte offset is outside the document" }
         require(isBoundary(byteOffset)) { "Byte offset splits a UTF-8 character" }
+
+        // Walk each physical piece once. Calling get(index) for every byte would
+        // rescan the piece list repeatedly and become very slow after many edits.
         var line = 0
-        for (index in 0 until byteOffset) {
-            if (get(index) == NEWLINE_BYTE) line++
+        var logicalOffset = 0
+        for (piece in pieces) {
+            if (logicalOffset >= byteOffset) break
+            val bytesToScan = minOf(piece.length, byteOffset - logicalOffset)
+            val sourceStart = piece.start
+            for (index in 0 until bytesToScan) {
+                if (byteAt(piece.source, sourceStart + index) == NEWLINE_BYTE) line++
+            }
+            logicalOffset += piece.length
         }
         return line
     }
