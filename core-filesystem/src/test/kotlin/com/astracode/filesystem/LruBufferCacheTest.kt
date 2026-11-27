@@ -17,6 +17,48 @@ class LruBufferCacheTest {
     }
 
     @Test
+    fun `weighted cache evicts least recently used entries to stay within budget`() {
+        val cache = LruBufferCache<String, String>(capacity = 4, maxWeight = 5L) { it.length.toLong() }
+        cache.put("a", "abc")
+        cache.put("b", "de")
+        assertEquals(5L, cache.currentWeight())
+
+        assertEquals("abc", cache["a"])
+        cache.put("c", "xy")
+
+        assertNull(cache["b"])
+        assertEquals("abc", cache["a"])
+        assertEquals("xy", cache["c"])
+        assertEquals(5L, cache.currentWeight())
+    }
+
+    @Test
+    fun `oversized entries are ignored without evicting useful cached values`() {
+        val cache = LruBufferCache<String, String>(capacity = 4, maxWeight = 3L) { it.length.toLong() }
+        cache.put("small", "ok")
+        cache.put("large", "too large")
+
+        assertEquals("ok", cache["small"])
+        assertNull(cache["large"])
+        assertEquals(2L, cache.currentWeight())
+    }
+
+    @Test
+    fun `replacement removal and clear keep cached weight accurate`() {
+        val cache = LruBufferCache<String, String>(capacity = 4, maxWeight = 8L) { it.length.toLong() }
+        cache.put("one", "abc")
+        cache.put("one", "x")
+        cache.put("two", "yz")
+        assertEquals(3L, cache.currentWeight())
+
+        cache.removeIf { it == "one" }
+        assertEquals(2L, cache.currentWeight())
+        cache.clear()
+        assertEquals(0L, cache.currentWeight())
+        assertEquals(0, cache.size())
+    }
+
+    @Test
     fun `zero capacity disables caching`() {
         val cache = LruBufferCache<String, String>(0)
         cache.put("a", "A")
