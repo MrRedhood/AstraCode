@@ -29,7 +29,7 @@ class JsonRpcLanguageServerBridge internal constructor(
     private val documents = ConcurrentHashMap<String, OpenDocumentState>()
     private val diagnosticsListener =
         AtomicReference<(List<EditorDiagnostic>) -> Unit>({})
-    private val notificationSubscription = subscribeNotifications(::handleNotification)
+    private val notificationSubscription = subscribeNotifications(::acceptNotification)
 
     constructor(session: LspProcessSession) : this(
         requestMessage = session::request,
@@ -198,7 +198,7 @@ class JsonRpcLanguageServerBridge internal constructor(
                 .orEmpty()
                 .mapNotNull { parseDiagnostic(uri, it, bytes) }
         }
-        callbackSafely(diagnosticsListener.get(), Result.success(diagnostics))
+        runCatching { diagnosticsListener.get().invoke(diagnostics) }
     }
 
     private fun positionFor(uri: String, offset: Int, version: Int): LspPosition {
