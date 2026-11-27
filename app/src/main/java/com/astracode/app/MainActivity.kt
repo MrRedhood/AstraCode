@@ -1150,6 +1150,7 @@ private fun FileManagementScreen(
     var editorCaretTextIndex by remember(storage) { mutableStateOf(0) }
     var lspReferenceLocations by remember(storage) { mutableStateOf(emptyList<String>()) }
     var showLspReferencesDialog by remember(storage) { mutableStateOf(false) }
+    var pendingLspNavigation by remember(storage) { mutableStateOf<Pair<String, Int>?>(null) }
     val lspSyncMutex = remember(storage) { Mutex() }
     val snackbarHostState = remember { SnackbarHostState() }
     val editorSaveMutex = remember(storage) { Mutex() }
@@ -2518,8 +2519,7 @@ private fun FileManagementScreen(
         val relativePath = localRoot.toPath().relativize(targetFile.toPath()).toString()
             .replace(File.separatorChar, '/')
         showEditorDrawer = false
-        goToLineRequest = targetLine
-        if (openedFile != relativePath) openWorkspaceEditorPath(relativePath)
+        pendingLspNavigation = relativePath to targetLine
     }
 
     fun requestLspDefinition() {
@@ -3430,6 +3430,13 @@ private fun FileManagementScreen(
         } else {
             openFile(path)
         }
+    }
+
+    LaunchedEffect(pendingLspNavigation) {
+        val target = pendingLspNavigation ?: return@LaunchedEffect
+        pendingLspNavigation = null
+        goToLineRequest = target.second
+        if (openedFile != target.first) openWorkspaceEditorPath(target.first)
     }
 
     fun saveFile() {
