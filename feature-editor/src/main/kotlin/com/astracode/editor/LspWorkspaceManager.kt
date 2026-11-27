@@ -2,6 +2,7 @@ package com.astracode.editor
 
 import java.io.Closeable
 import java.io.File
+import java.net.URI
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 
@@ -45,13 +46,6 @@ data class LanguageServerConfiguration(
         require(environment.all { (key, value) ->
             ENVIRONMENT_KEY.matches(key) && '\u0000' !in value && value.length <= MAX_ENVIRONMENT_VALUE_CHARS
         }) { "Language-server environment contains an invalid entry" }
-    }
-
-    internal fun matchesFileName(fileName: String): Boolean {
-        val leaf = fileName.substringAfterLast('/').substringAfterLast('\\')
-        val dot = leaf.lastIndexOf('.')
-        if (dot <= 0 || dot == leaf.lastIndex) return false
-        return leaf.substring(dot + 1).lowercase() in fileExtensions.map(String::lowercase)
     }
 
     private companion object {
@@ -162,6 +156,46 @@ class LspWorkspaceManager(
             }
             return created.thenApply { it.bridge }
         }
+    }
+
+    /** Builds an LSP document only for a file contained in this workspace. */
+    fun createDocument(
+        file: File,
+        languageId: String,
+        version: Int,
+        text: String,
+    ): EditorDocument {
+        val canonicalFile = file.canonicalFile
+        require(canonicalFile.toPath().startsWith(root.toPath()) && canonicalFile != root) {
+            "Language-server documents must be inside the workspace"
+        }
+        val configuration = configurationForFile(canonicalFile.name)
+            ?: throw IllegalArgumentException("No language server is configured for this file")
+        require(languageId in configuration.languageIds) {
+            "Language-server configuration ${configuration.id} does not support language ID ${languageId}"
+        }
+        return EditorDocument(
+            uri = canonicalFile.toURI().toString(),
+            languageId = languageId,
+            version = version,
+            text = text,
+        )
+    }
+
+    /** Reuses the configured server for an already validated workspace document. */
+    fun connectForDocument(document: EditorDocument): CompletableFuture<LanguageServerBridge> {
+        val documentFile = runCatching { File(URI(document.uri)).canonicalFile }.getOrElse {
+            return failedFuture(IllegalArgumentException("Language-server documents must use a valid file URI", it))
+        }
+        if (!documentFile.toPath().startsWith(root.toPath()) || documentFile == root) {
+            return failedFuture(IllegalArgumentException("Language-server documents must be inside the workspace"))
+        }
+        val configuration = configurationForFile(documentFile.name)
+            ?: return failedFuture(IllegalArgumentException("No language server is configured for this document"))
+        if (document.languageId !in configuration.languageIds) {
+            return failedFuture(IllegalArgumentException("Language server does not support ${document.languageId}"))
+        }
+        return connect(configuration.id)
     }
 
     fun closeServer(serverId: String): CompletableFuture<Unit> {

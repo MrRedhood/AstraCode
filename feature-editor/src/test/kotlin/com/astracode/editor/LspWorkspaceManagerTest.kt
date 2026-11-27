@@ -30,6 +30,33 @@ class LspWorkspaceManagerTest {
     }
 
     @Test
+    fun createsFileUrisOnlyForWorkspaceFilesAndSupportedLanguages() {
+        val root = Files.createTempDirectory("astracode-lsp-document").toFile()
+        try {
+            val configuration = LanguageServerConfiguration(
+                id = "kotlin",
+                languageIds = setOf("kotlin"),
+                fileExtensions = setOf("kt"),
+                command = listOf("kotlin-language-server"),
+            )
+            val manager = LspWorkspaceManager(root, listOf(configuration))
+            val source = java.io.File(root, "src/Main.kt")
+            val document = manager.createDocument(source, "kotlin", 3, "fun main() = Unit")
+            assertEquals(source.canonicalFile.toURI().toString(), document.uri)
+            assertEquals(3, document.version)
+            assertFailsWith<IllegalArgumentException> {
+                manager.createDocument(source, "java", 1, "class Main")
+            }
+            assertFailsWith<IllegalArgumentException> {
+                manager.createDocument(java.io.File(root.parentFile, "Outside.kt"), "kotlin", 1, "")
+            }
+            manager.close()
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun rejectsAmbiguousExtensionsAndUnsafeWorkingDirectories() {
         val root = Files.createTempDirectory("astracode-lsp-config").toFile()
         try {
