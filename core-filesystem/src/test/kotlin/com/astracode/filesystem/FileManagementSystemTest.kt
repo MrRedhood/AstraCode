@@ -69,6 +69,20 @@ class FileManagementSystemTest {
     }
 
     @Test
+    fun `read buffer allocations are capped before opening files`() {
+        val excessiveBuffer = FileSystemOptions.MAX_READ_BUFFER_SIZE_BYTES + 1
+        assertFailsWith<IllegalArgumentException> {
+            FileSystemOptions(defaultReadBufferSize = excessiveBuffer)
+        }
+
+        FileManagementSystem(temporaryDirectory.resolve("workspace")).use { fileSystem ->
+            assertFailsWith<IllegalArgumentException> {
+                fileSystem.readText("missing.txt", excessiveBuffer)
+            }
+        }
+    }
+
+    @Test
     fun `malformed UTF8 is repaired then saved as canonical UTF8`() {
         val workspace = temporaryDirectory.resolve("workspace")
         Files.createDirectories(workspace)

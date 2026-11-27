@@ -60,10 +60,17 @@ data class FileSystemOptions(
     init {
         require(maxFileBytes > 0) { "maxFileBytes must be greater than zero" }
         require(cacheCapacity >= 0) { "cacheCapacity must be zero or greater" }
-        require(defaultReadBufferSize > 0) { "defaultReadBufferSize must be greater than zero" }
+        require(defaultReadBufferSize in 1..MAX_READ_BUFFER_SIZE_BYTES) {
+            "defaultReadBufferSize must be between 1 and $MAX_READ_BUFFER_SIZE_BYTES bytes"
+        }
         require(concurrentReadRetries >= 0) { "concurrentReadRetries must be zero or greater" }
         require(maxCachedTextBytes >= 0L) { "maxCachedTextBytes must be zero or greater" }
         require(maxRepairSpans >= 0) { "maxRepairSpans must be zero or greater" }
+    }
+
+    companion object {
+        /** Hard ceiling for a single I/O read buffer to prevent accidental huge allocations. */
+        const val MAX_READ_BUFFER_SIZE_BYTES = 1024 * 1024
     }
 }
 

@@ -116,7 +116,9 @@ class FileManagementSystem(
         readBufferSize: Int,
     ): TextFileSnapshot {
         ensureOpen()
-        require(readBufferSize > 0) { "readBufferSize must be greater than zero" }
+        require(readBufferSize in 1..FileSystemOptions.MAX_READ_BUFFER_SIZE_BYTES) {
+            "readBufferSize must be between 1 and ${FileSystemOptions.MAX_READ_BUFFER_SIZE_BYTES} bytes"
+        }
         val target = resolve(relativePath)
         if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)) {
             throw IOException("Not a regular file: $relativePath")
