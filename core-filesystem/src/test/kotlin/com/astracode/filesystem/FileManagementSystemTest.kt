@@ -144,7 +144,26 @@ class FileManagementSystemTest {
         Files.writeString(workspace.resolve("large.txt"), "12345")
         FileManagementSystem(workspace, FileSystemOptions(maxFileBytes = 4)).use { fileSystem ->
             assertFailsWith<FileTooLargeException> { fileSystem.readText("large.txt") }
+            assertFailsWith<FileTooLargeException> { fileSystem.readBytes("large.txt") }
             assertFailsWith<FileTooLargeException> { fileSystem.writeText("new.txt", "12345") }
+        }
+    }
+
+    @Test
+    fun `move respects the replaceExisting setting`() {
+        FileManagementSystem(temporaryDirectory.resolve("workspace")).use { fileSystem ->
+            fileSystem.writeText("source.txt", "source")
+            fileSystem.writeText("target.txt", "target")
+
+            assertFailsWith<IOException> {
+                fileSystem.move("source.txt", "target.txt", replaceExisting = false)
+            }
+            assertEquals("source", fileSystem.readText("source.txt").text)
+            assertEquals("target", fileSystem.readText("target.txt").text)
+
+            fileSystem.move("source.txt", "target.txt", replaceExisting = true)
+            assertFalse(fileSystem.exists("source.txt"))
+            assertEquals("source", fileSystem.readText("target.txt").text)
         }
     }
 

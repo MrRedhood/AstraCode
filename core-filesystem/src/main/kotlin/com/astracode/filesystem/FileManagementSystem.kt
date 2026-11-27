@@ -228,15 +228,47 @@ class FileManagementSystem(
             throw IOException("Not a regular file: $path")
         }
         checkContainedAndNoSymlinks(target)
-        val size = Files.size(target)
-        if (size > options.maxFileBytes) {
-            throw FileTooLargeException(path, size, options.maxFileBytes)
+
+        val maximumArrayBytes = minOf(options.maxFileBytes, Int.MAX_VALUE.toLong())
+        repeat(options.concurrentReadRetries + 1) { attempt ->
+            val before = fingerprint(target)
+            if (before.size > maximumArrayBytes) {
+                throw FileTooLargeException(path, before.size, maximumArrayBytes)
+            }
+
+            // ByteArray is Int-indexed, so reject sizes that cannot be represented.
+            val expectedSize = before.size
+            val bytes = ByteArray(expectedSize.toInt())
+            val window = ByteArray(options.defaultReadBufferSize)
+            var bytesRead = 0L
+            var exceededInitialSize = false
+            Files.newInputStream(target, StandardOpenOption.READ).use { input ->
+                while (true) {
+                    val count = input.read(window)
+                    if (count < 0) break
+                    if (count == 0) continue
+                    val nextBytesRead = bytesRead + count
+                    if (nextBytesRead > maximumArrayBytes) {
+                        throw FileTooLargeException(path, nextBytesRead, maximumArrayBytes)
+                    }
+                    if (nextBytesRead > expectedSize) {
+                        exceededInitialSize = true
+                        break
+                    }
+                    System.arraycopy(window, 0, bytes, bytesRead.toInt(), count)
+                    bytesRead = nextBytesRead
+                }
+            }
+
+            val after = fingerprint(target)
+            if (!exceededInitialSize && before == after && bytesRead == after.size) {
+                return bytes
+            }
+            if (attempt == options.concurrentReadRetries) {
+                throw ConcurrentFileModificationException(path)
+            }
         }
-        val bytes = Files.readAllBytes(target)
-        if (bytes.size.toLong() > options.maxFileBytes) {
-            throw FileTooLargeException(path, bytes.size.toLong(), options.maxFileBytes)
-        }
-        return bytes
+        throw ConcurrentFileModificationException(path)
     }
 
     override fun writeBytes(relativePath: String, bytes: ByteArray) {
@@ -292,13 +324,14 @@ class FileManagementSystem(
         if (!replaceExisting && Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
             throw IOException("Target already exists: $targetName")
         }
-        val optionsForMove = if (replaceExisting) {
-            arrayOf(StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-        } else {
-            arrayOf(StandardCopyOption.ATOMIC_MOVE)
-        }
         try {
-            Files.move(source, target, *optionsForMove)
+            if (replaceExisting) {
+                Files.move(source, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            } else {
+                // ATOMIC_MOVE may replace an existing target in a provider-specific way,
+                // even without REPLACE_EXISTING. The plain move preserves no-overwrite semantics.
+                Files.move(source, target)
+            }
         } catch (unsupported: AtomicMoveNotSupportedException) {
             throw AtomicFileOperationNotSupportedException(targetName, unsupported)
         }
