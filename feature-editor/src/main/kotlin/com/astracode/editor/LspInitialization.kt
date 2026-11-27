@@ -24,6 +24,59 @@ data class LspClientCapabilities(
 ) {
     fun toWireMap(): Map<String, Any> = mapOf(
         "general" to general.toWireMap(),
+        "textDocument" to mapOf(
+            "synchronization" to mapOf(
+                "dynamicRegistration" to false,
+                "willSave" to false,
+                "willSaveWaitUntil" to false,
+                "didSave" to false,
+            ),
+            "completion" to mapOf(
+                "dynamicRegistration" to false,
+                "contextSupport" to true,
+                "completionItem" to mapOf(
+                    "snippetSupport" to false,
+                    "commitCharactersSupport" to true,
+                    "documentationFormat" to listOf("markdown", "plaintext"),
+                    "deprecatedSupport" to true,
+                    "preselectSupport" to true,
+                    "insertReplaceSupport" to false,
+                    "labelDetailsSupport" to true,
+                ),
+            ),
+            "hover" to mapOf(
+                "dynamicRegistration" to false,
+                "contentFormat" to listOf("markdown", "plaintext"),
+            ),
+            "definition" to mapOf(
+                "dynamicRegistration" to false,
+                "linkSupport" to true,
+            ),
+            "references" to mapOf("dynamicRegistration" to false),
+            "rename" to mapOf(
+                "dynamicRegistration" to false,
+                "prepareSupport" to true,
+            ),
+            "publishDiagnostics" to mapOf(
+                "relatedInformation" to true,
+                "versionSupport" to true,
+                "codeDescriptionSupport" to true,
+                "dataSupport" to true,
+                "tagSupport" to mapOf("valueSet" to listOf(1, 2)),
+            ),
+        ),
+        "workspace" to mapOf(
+            "applyEdit" to false,
+            "workspaceEdit" to mapOf(
+                "documentChanges" to true,
+                "resourceOperations" to emptyList<String>(),
+                "failureHandling" to "abort",
+                "normalizesLineEndings" to true,
+                "changeAnnotationSupport" to mapOf("groupsOnLabel" to true),
+            ),
+            "workspaceFolders" to true,
+        ),
+        "window" to mapOf("workDoneProgress" to true),
     )
 }
 

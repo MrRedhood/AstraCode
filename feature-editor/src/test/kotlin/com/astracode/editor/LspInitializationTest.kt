@@ -16,6 +16,16 @@ class LspInitializationTest {
         val general = capabilities["general"] as Map<*, *>
 
         assertEquals(listOf("utf-8"), general["positionEncodings"])
+        val textDocument = capabilities["textDocument"] as Map<*, *>
+        assertTrue(textDocument.containsKey("completion"))
+        assertTrue(textDocument.containsKey("hover"))
+        assertTrue(textDocument.containsKey("definition"))
+        assertTrue(textDocument.containsKey("references"))
+        assertTrue(textDocument.containsKey("rename"))
+        assertTrue(textDocument.containsKey("publishDiagnostics"))
+        val workspace = capabilities["workspace"] as Map<*, *>
+        assertEquals(false, workspace["applyEdit"])
+        assertEquals(true, (workspace["workspaceEdit"] as Map<*, *>)["documentChanges"])
         assertEquals(1234L, request.processId)
         assertTrue(request.toWireMap().containsKey("clientInfo"))
     }
