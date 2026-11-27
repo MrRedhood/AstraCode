@@ -2336,6 +2336,73 @@ private fun FileManagementScreen(
         }
         return true
     }
+
+    fun updateCurrentEditorRange(
+        pathAtEdit: String,
+        startTextIndex: Int,
+        endTextIndex: Int,
+        replacement: String,
+    ): String? {
+        val document = selectedDocument
+        if (document != null) {
+            if (pathAtEdit != document.name || startTextIndex < 0 ||
+                endTextIndex < startTextIndex || endTextIndex > standaloneEditorText.length
+            ) return null
+            return runCatching {
+                standaloneEditorText.replaceRange(startTextIndex, endTextIndex, replacement)
+            }.getOrNull()?.also { standaloneEditorText = it }
+        }
+        if (replacingOldestTab || pathAtEdit != openedFile) return null
+        val path = pathAtEdit
+        val currentTab = editorTabs.firstOrNull { it.path == path } ?: return null
+        if (startTextIndex < 0 || endTextIndex < startTextIndex || endTextIndex > currentTab.text.length) {
+            return null
+        }
+
+        val buffer = editorBuffers.getOrPut(path) { EditorBuffer(currentTab.text) }
+        if (buffer.text() != currentTab.text) buffer.applyTextFieldSnapshot(currentTab.text)
+        val startByte: Int
+        val endByte: Int
+        try {
+            startByte = buffer.byteOffsetForTextIndex(startTextIndex)
+            endByte = buffer.byteOffsetForTextIndex(endTextIndex)
+        } catch (_: IllegalArgumentException) {
+            notify("An edit cannot split a Unicode character.")
+            return null
+        }
+
+        val otherBufferBytes = editorTabs.asSequence()
+            .filterNot { it.path == path }
+            .sumOf(::editorTabBufferBytes)
+        val nextByteLength = buffer.byteLength.toLong() - (endByte - startByte).toLong() +
+            replacement.toByteArray(Charsets.UTF_8).size.toLong()
+        val requestedBytes = otherBufferBytes + nextByteLength +
+            currentTab.savedText.toByteArray(Charsets.UTF_8).size.toLong()
+        if (requestedBytes > MAX_OPEN_EDITOR_BUFFER_BYTES) {
+            notify("Editor memory limit reached. Save and close another tab before adding more text.")
+            return null
+        }
+
+        val now = SystemClock.elapsedRealtime()
+        if (currentTab.text == currentTab.savedText || firstDirtyAt[path] == null || path in autosaveRetryAt) {
+            firstDirtyAt = firstDirtyAt + (path to now)
+        }
+        lastEditedAt = lastEditedAt + (path to now)
+        autosaveRetryAt = autosaveRetryAt - path
+
+        return runCatching {
+            buffer.replaceTextRange(startTextIndex, endTextIndex, replacement)
+            buffer.text()
+        }.getOrElse { error ->
+            notify(error.message ?: "The editor rejected an invalid text range.")
+            null
+        }?.also { bufferedText ->
+            editorTabs = editorTabs.map { tab ->
+                if (tab.path == path) tab.copy(text = bufferedText) else tab
+            }
+        }
+    }
+
     fun closeEditorTab(path: String) {
         val oldIndex = editorTabs.indexOfFirst { it.path == path }
         if (oldIndex < 0) return
@@ -3672,6 +3739,18 @@ private fun FileManagementScreen(
                                     selectedDocument == null && openedFile == panelPath
                                 }
                                 if (sameDocument) updateCurrentEditorText(panelPath, newText) else false
+                            },
+                            onTextEdit = { start, end, replacement ->
+                                val sameDocument = if (panelDocumentId != null) {
+                                    selectedDocument?.id == panelDocumentId
+                                } else {
+                                    selectedDocument == null && openedFile == panelPath
+                                }
+                                if (sameDocument) {
+                                    updateCurrentEditorRange(panelPath, start, end, replacement)
+                                } else {
+                                    null
+                                }
                             },
                             onSave = ::saveFile,
                             fontSizeSp = editorFontSize,
@@ -7424,6 +7503,7 @@ private fun EditorPanel(
     onSelectTab: (String) -> Unit = {},
     onCloseTab: (String) -> Unit = {},
     onTextChange: (String) -> Boolean,
+    onTextEdit: (Int, Int, String) -> String?,
     onSave: () -> Unit,
     fontSizeSp: Int = 14,
     wordWrapEnabled: Boolean = true,
@@ -7799,6 +7879,7 @@ private fun EditorPanel(
                 VirtualizedCodeEditor(
                 value = editorFieldValue,
                 path = path,
+                onTextEdit = onTextEdit,
                 onValueChange = { newValue ->
                     if (onTextChange(newValue.text)) {
                         editorFieldValue = newValue

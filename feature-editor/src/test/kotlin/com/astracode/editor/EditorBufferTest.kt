@@ -22,6 +22,26 @@ class EditorBufferTest {
     }
 
     @Test
+    fun appliesWidgetRangeEditsThroughUtf8ByteOffsets() {
+        val buffer = EditorBuffer("Aह😀B")
+
+        assertEquals("ह", buffer.replaceTextRange(1, 2, "नम"))
+        assertEquals("Aनम😀B", buffer.text())
+        assertEquals("😀", buffer.replaceTextRange(3, 5, "🌍"))
+        assertEquals("Aनम🌍B", buffer.text())
+        assertEquals(buffer.text().toByteArray(Charsets.UTF_8).size, buffer.byteLength)
+    }
+
+    @Test
+    fun rejectsWidgetRangesThatSplitSurrogatePairs() {
+        val buffer = EditorBuffer("A😀B")
+        assertFailsWith<IllegalArgumentException> {
+            buffer.replaceTextRange(2, 3, "x")
+        }
+        assertEquals("A😀B", buffer.text())
+    }
+
+    @Test
     fun mapsTextWidgetIndicesToAndFromUtf8LspPositions() {
         val buffer = EditorBuffer("Aह😀\nB")
         assertEquals(LspPosition(0, 8), buffer.lspPositionForTextIndex(4))

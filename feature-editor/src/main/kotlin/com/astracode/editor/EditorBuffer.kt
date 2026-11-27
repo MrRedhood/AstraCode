@@ -29,6 +29,20 @@ class EditorBuffer(
     fun substring(startByteOffset: Int, endByteOffset: Int): String =
         table.substring(startByteOffset, endByteOffset)
     fun applyTextFieldSnapshot(text: String) = table.replaceDocumentText(text)
+
+    /**
+     * Applies one small edit received from Android/Compose text controls.
+     * The public range uses Kotlin String (UTF-16) indices; the Piece Table
+     * receives only validated UTF-8 byte offsets.
+     */
+    fun replaceTextRange(textStartIndex: Int, textEndIndex: Int, replacement: String): String {
+        require(textStartIndex >= 0 && textEndIndex >= textStartIndex)
+        val snapshot = text()
+        val startByte = Utf8OffsetMapper.byteOffsetForTextIndex(snapshot, textStartIndex)
+        val endByte = Utf8OffsetMapper.byteOffsetForTextIndex(snapshot, textEndIndex)
+        return table.replace(startByte, endByte, replacement)
+    }
+
     fun lineOfOffset(byteOffset: Int): Int = table.lineOfOffset(byteOffset)
 
     fun byteOffsetForTextIndex(textIndex: Int): Int =

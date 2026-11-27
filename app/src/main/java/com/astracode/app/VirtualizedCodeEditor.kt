@@ -246,6 +246,7 @@ internal fun VirtualizedCodeEditor(
     value: TextFieldValue,
     path: String,
     onValueChange: (TextFieldValue) -> Boolean,
+    onTextEdit: (Int, Int, String) -> String?,
     readOnly: Boolean,
     wordWrapEnabled: Boolean,
     focusRequester: FocusRequester,
@@ -382,25 +383,21 @@ internal fun VirtualizedCodeEditor(
                                     onValueChange(value.copy(selection = nextSelection, composition = nextComposition))
                                 } else {
                                     val crossesLines = selection.min < lineStart || selection.max > lineEnd
-                                    val nextSource: String
                                     val nextSelection: TextRange
                                     val nextComposition: TextRange?
                                     val editStart: Int
                                     val oldEditEnd: Int
-                                    val newEditEnd: Int
+                                    val insertedText: String
                                     if (crossesLines) {
-                                        val inserted = insertedTextFromLineChange(lineText, changedText)
+                                        insertedText = insertedTextFromLineChange(lineText, changedText)
                                         editStart = selection.min.coerceIn(0, source.length)
                                         oldEditEnd = selection.max.coerceIn(editStart, source.length)
-                                        nextSource = source.replaceRange(editStart, oldEditEnd, inserted)
-                                        newEditEnd = editStart + inserted.length
-                                        nextSelection = TextRange(newEditEnd)
+                                        nextSelection = TextRange(editStart + insertedText.length)
                                         nextComposition = null
                                     } else {
-                                        nextSource = source.replaceRange(lineStart, lineEnd, changedText)
+                                        insertedText = changedText
                                         editStart = lineStart
                                         oldEditEnd = lineEnd
-                                        newEditEnd = lineStart + changedText.length
                                         nextSelection = TextRange(
                                             lineStart + changedLineValue.selection.start,
                                             lineStart + changedLineValue.selection.end,
@@ -409,13 +406,20 @@ internal fun VirtualizedCodeEditor(
                                             TextRange(lineStart + it.start, lineStart + it.end)
                                         }
                                     }
+                                    val updatedText = onTextEdit(editStart, oldEditEnd, insertedText)
+                                        ?: return@BasicTextField
                                     val nextValue = TextFieldValue(
-                                        nextSource,
+                                        updatedText,
                                         selection = nextSelection,
                                         composition = nextComposition,
                                     )
                                     if (onValueChange(nextValue)) {
-                                        lineIndex.update(nextSource, editStart, oldEditEnd, newEditEnd)
+                                        lineIndex.update(
+                                            updatedText,
+                                            editStart,
+                                            oldEditEnd,
+                                            editStart + insertedText.length,
+                                        )
                                     }
                                 }
                             },
@@ -447,11 +451,17 @@ internal fun VirtualizedCodeEditor(
                                         lineIndex = lineIndex,
                                         clipboardManager = clipboardManager,
                                         readOnly = readOnly,
-                                        onValueChange = { next, editStart, oldEnd, newEnd ->
-                                            if (onValueChange(next)) {
-                                                if (next.text !== source) {
-                                                    lineIndex.update(next.text, editStart, oldEnd, newEnd)
-                                                }
+                                        onValueChange = { next -> onValueChange(next) },
+                                        onTextEdit = { next, editStart, oldEnd, replacement ->
+                                            val updatedText = onTextEdit(editStart, oldEnd, replacement)
+                                            if (updatedText != null) {
+                                                lineIndex.update(
+                                                    updatedText,
+                                                    editStart,
+                                                    oldEnd,
+                                                    editStart + replacement.length,
+                                                )
+                                                onValueChange(next.copy(text = updatedText))
                                             }
                                         },
                                     )
@@ -490,7 +500,8 @@ private fun handleVirtualEditorKey(
     lineIndex: VirtualLineIndex,
     clipboardManager: ClipboardManager,
     readOnly: Boolean,
-    onValueChange: (TextFieldValue, Int, Int, Int) -> Unit,
+    onValueChange: (TextFieldValue) -> Unit,
+    onTextEdit: (TextFieldValue, Int, Int, String) -> Unit,
 ): Boolean {
     if (event.type != KeyEventType.KeyDown) return false
     val source = value.text
@@ -498,13 +509,17 @@ private fun handleVirtualEditorKey(
     val collapsed = selection.collapsed
     val caret = selection.end.coerceIn(0, source.length)
 
-    if (event.isCtrlPressed && event.key == Key.A) {
-        onValueChange(
-            value.copy(selection = TextRange(0, source.length), composition = null),
-            0,
-            0,
-            0,
+    fun applyEdit(start: Int, end: Int, replacement: String, nextSelection: TextRange) {
+        onTextEdit(
+            value.copy(selection = nextSelection, composition = null),
+            start,
+            end,
+            replacement,
         )
+    }
+
+    if (event.isCtrlPressed && event.key == Key.A) {
+        onValueChange(value.copy(selection = TextRange(0, source.length), composition = null))
         return true
     }
     if (event.isCtrlPressed && event.key == Key.C && !collapsed) {
@@ -516,54 +531,33 @@ private fun handleVirtualEditorKey(
         val start = selection.min.coerceIn(0, source.length)
         val end = selection.max.coerceIn(start, source.length)
         clipboardManager.setText(AnnotatedString(source.substring(start, end)))
-        val updated = source.replaceRange(start, end, "")
-        onValueChange(TextFieldValue(updated, selection = TextRange(start)), start, end, start)
+        applyEdit(start, end, "", TextRange(start))
         return true
     }
     if (event.isCtrlPressed && event.key == Key.V) {
         val pasted = clipboardManager.getText()?.text ?: return false
         val start = selection.min.coerceIn(0, source.length)
         val end = selection.max.coerceIn(start, source.length)
-        val updated = source.replaceRange(start, end, pasted)
-        val newEnd = start + pasted.length
-        onValueChange(TextFieldValue(updated, selection = TextRange(newEnd)), start, end, newEnd)
+        applyEdit(start, end, pasted, TextRange(start + pasted.length))
         return true
     }
 
     if (event.key == Key.Tab) {
         val start = selection.min.coerceIn(0, source.length)
         val end = selection.max.coerceIn(start, source.length)
-        val updated = source.replaceRange(start, end, "    ")
-        onValueChange(
-            TextFieldValue(updated, selection = TextRange(start + 4)),
-            start,
-            end,
-            start + 4,
-        )
+        applyEdit(start, end, "    ", TextRange(start + 4))
         return true
     }
 
     if (collapsed && event.key == Key.Backspace && caret == lineStart && lineNumber > 0) {
         val previousLineEnd = lineIndex.lineEnd(lineNumber - 1)
-        val updated = source.replaceRange(previousLineEnd, lineStart, "")
-        onValueChange(
-            TextFieldValue(updated, selection = TextRange(previousLineEnd)),
-            previousLineEnd,
-            lineStart,
-            previousLineEnd,
-        )
+        applyEdit(previousLineEnd, lineStart, "", TextRange(previousLineEnd))
         return true
     }
 
     if (collapsed && event.key == Key.Delete && caret == lineEnd && lineNumber < lineIndex.lineCount - 1) {
         val nextLineStart = lineIndex.lineStart(lineNumber + 1)
-        val updated = source.replaceRange(lineEnd, nextLineStart, "")
-        onValueChange(
-            TextFieldValue(updated, selection = TextRange(lineEnd)),
-            lineEnd,
-            nextLineStart,
-            lineEnd,
-        )
+        applyEdit(lineEnd, nextLineStart, "", TextRange(lineEnd))
         return true
     }
 
@@ -578,12 +572,7 @@ private fun handleVirtualEditorKey(
         } else {
             TextRange(targetCaret)
         }
-        onValueChange(
-            value.copy(selection = nextSelection, composition = null),
-            targetCaret,
-            targetCaret,
-            targetCaret,
-        )
+        onValueChange(value.copy(selection = nextSelection, composition = null))
         return true
     }
 
@@ -594,7 +583,7 @@ private fun handleVirtualEditorKey(
         } else {
             TextRange(target)
         }
-        onValueChange(value.copy(selection = targetSelection, composition = null), target, target, target)
+        onValueChange(value.copy(selection = targetSelection, composition = null))
         return true
     }
 
@@ -607,7 +596,7 @@ private fun handleVirtualEditorKey(
         } else {
             TextRange(target)
         }
-        onValueChange(value.copy(selection = targetSelection, composition = null), target, target, target)
+        onValueChange(value.copy(selection = targetSelection, composition = null))
         return true
     }
 
@@ -617,12 +606,7 @@ private fun handleVirtualEditorKey(
         val targetStart = lineIndex.lineStart(targetLine)
         val targetEnd = lineIndex.lineEnd(targetLine)
         val targetCaret = targetStart + (caret - lineStart).coerceIn(0, targetEnd - targetStart)
-        onValueChange(
-            value.copy(selection = TextRange(selection.start, targetCaret), composition = null),
-            targetCaret,
-            targetCaret,
-            targetCaret,
-        )
+        onValueChange(value.copy(selection = TextRange(selection.start, targetCaret), composition = null))
         return true
     }
 
