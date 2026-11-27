@@ -113,4 +113,33 @@ class PieceTableTest {
         assertEquals(1, table.pieceCount)
         assertEquals("ह😀".toByteArray(UTF_8).size, table.byteLength)
     }
+
+    @Test
+    fun lineOffsetsRemainCorrectAcrossManyPiecesAndUnicodeText() {
+        val table = PieceTable("alphaomega")
+        table.insert(5, "\n")
+        table.insert(6, "β\n")
+        table.insert(0, "head\n")
+        table.insert(table.byteLength, "\nlast")
+
+        assertEquals("head\nalpha\nβ\nomega\nlast", table.toString())
+        val bytes = table.toByteArray()
+        for (offset in 0..bytes.size) {
+            val isBoundary = offset == bytes.size || (bytes[offset].toInt() and 0xC0) != 0x80
+            if (isBoundary) {
+                val expected = bytes.take(offset).count { it == 0x0A.toByte() }
+                assertEquals(expected, table.lineOfOffset(offset), "Unexpected line at byte offset $offset")
+            }
+        }
+    }
+
+    @Test
+    fun lineOffsetValidationRejectsNegativePastEndAndSplitUtf8Positions() {
+        val table = PieceTable("Aह\nB")
+        assertFailsWith<IllegalArgumentException> { table.lineOfOffset(-1) }
+        assertFailsWith<IllegalArgumentException> { table.lineOfOffset(table.byteLength + 1) }
+        assertFailsWith<IllegalArgumentException> { table.lineOfOffset(2) }
+        assertEquals(1, table.lineOfOffset(table.byteLength))
+    }
+
 }
