@@ -348,13 +348,29 @@ class BuildProcessRunner {
  * A suffix is retained until the next chunk so a partial secret is never emitted.
  */
 internal class BuildOutputRedactor(secrets: List<String>) {
-    private val values = secrets.filter { it.isNotEmpty() }.distinct()
+    // Longest-first prevents a shorter prefix secret from exposing the tail of a longer one.
+    private val values = secrets.filter { it.isNotEmpty() }
+        .distinct()
+        .sortedByDescending { it.length }
     private val carryLength = values.maxOfOrNull { it.length } ?: 1
     private val pending = StringBuilder()
 
     fun append(chunk: String): String {
         if (chunk.isNotEmpty()) pending.append(chunk)
-        val safeSourceLength = (pending.length - carryLength + 1).coerceAtLeast(0)
+        var safeSourceLength = (pending.length - carryLength + 1).coerceAtLeast(0)
+
+        // InputStreamReader may split a supplementary Unicode character between reads.
+        // Keep its high surrogate until the matching low surrogate arrives.
+        if (
+            safeSourceLength > 0 &&
+            Character.isHighSurrogate(pending[safeSourceLength - 1]) &&
+            (
+                safeSourceLength == pending.length ||
+                    Character.isLowSurrogate(pending[safeSourceLength])
+                )
+        ) {
+            safeSourceLength--
+        }
         return emitSafePrefix(safeSourceLength)
     }
 
@@ -398,9 +414,20 @@ class BoundedBuildOutput(private val maximumCharacters: Int) {
     fun append(value: String) {
         if (value.isEmpty()) return
         synchronized(lock) {
+            if (value.length >= maximumCharacters) {
+                val discardedExisting = content.isNotEmpty()
+                val start = safeTailStart(value, value.length - maximumCharacters)
+                content.setLength(0)
+                content.append(value, start, value.length)
+                if (discardedExisting || value.length > maximumCharacters) {
+                    hasTruncated = true
+                }
+                return
+            }
+
             content.append(value)
             if (content.length > maximumCharacters) {
-                val removeCount = content.length - maximumCharacters
+                val removeCount = safeTailStart(content, content.length - maximumCharacters)
                 content.delete(0, removeCount)
                 hasTruncated = true
             }
@@ -410,6 +437,20 @@ class BoundedBuildOutput(private val maximumCharacters: Int) {
     fun snapshot(): BoundedBuildOutputSnapshot = synchronized(lock) {
         BoundedBuildOutputSnapshot(content.toString(), hasTruncated)
     }
+
+    // Prefer retaining a complete surrogate pair over splitting a visible character.
+    // This can keep at most one extra UTF-16 code unit in the tail.
+    private fun safeTailStart(value: CharSequence, proposedStart: Int): Int =
+        if (
+            proposedStart > 0 &&
+            proposedStart < value.length &&
+            Character.isLowSurrogate(value[proposedStart]) &&
+            Character.isHighSurrogate(value[proposedStart - 1])
+        ) {
+            proposedStart - 1
+        } else {
+            proposedStart
+        }
 }
 
 data class BuildTaskHandle(
