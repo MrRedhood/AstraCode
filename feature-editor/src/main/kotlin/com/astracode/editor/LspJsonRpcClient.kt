@@ -90,7 +90,7 @@ class LspJsonRpcClient(
                     ?: throw IllegalArgumentException("JSON-RPC error has no numeric code")
                 val errorMessage = errorObject["message"] as? String
                     ?: throw IllegalArgumentException("JSON-RPC error has no message")
-                future.complete(
+                future.completeExceptionally(
                     LspJsonRpcError(code, errorMessage, errorObject["data"]),
                 )
             } else if (message.containsKey("result")) {
