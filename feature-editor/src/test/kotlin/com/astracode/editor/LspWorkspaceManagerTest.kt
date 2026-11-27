@@ -6,6 +6,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import java.util.concurrent.TimeUnit
 
 class LspWorkspaceManagerTest {
     @Test
@@ -50,6 +51,34 @@ class LspWorkspaceManagerTest {
             assertFailsWith<IllegalArgumentException> {
                 manager.createDocument(java.io.File(root.parentFile, "Outside.kt"), "kotlin", 1, "")
             }
+            manager.close()
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun launchesUtf8ServerOpensDocumentAndShutsDownCleanly() {
+        val root = Files.createTempDirectory("astracode-lsp-process").toFile()
+        try {
+            val script = "import json, sys\nwhile True:\n    headers = {}\n    while True:\n        line = sys.stdin.buffer.readline()\n        if not line:\n            sys.exit(0)\n        if line in (b'\\\\r\\\\n', b'\\\\n'):\n            break\n        name, value = line.decode('ascii').split(':', 1)\n        headers[name.strip().lower()] = value.strip()\n    length = int(headers['content-length'])\n    message = json.loads(sys.stdin.buffer.read(length).decode('utf-8'))\n    method = message.get('method')\n    response = None\n    if method == 'initialize':\n        response = {'jsonrpc': '2.0', 'id': message['id'], 'result': {'capabilities': {'positionEncoding': 'utf-8'}}}\n    elif method == 'shutdown':\n        response = {'jsonrpc': '2.0', 'id': message['id'], 'result': None}\n    elif method == 'exit':\n        break\n    if response is not None:\n        payload = json.dumps(response, separators=(',', ':')).encode('utf-8')\n        sys.stdout.buffer.write(('Content-Length: %d\\\\r\\\\n\\\\r\\\\n' % len(payload)).encode('ascii') + payload)\n        sys.stdout.buffer.flush()"
+            val configuration = LanguageServerConfiguration(
+                id = "fake-kotlin",
+                languageIds = setOf("kotlin"),
+                fileExtensions = setOf("kt"),
+                command = listOf("python3", "-c", script),
+            )
+            val manager = LspWorkspaceManager(root, listOf(configuration))
+            val document = manager.createDocument(
+                java.io.File(root, "Main.kt"),
+                "kotlin",
+                1,
+                "fun main() = Unit",
+            )
+
+            val bridge = manager.connectForDocument(document).get(5, TimeUnit.SECONDS)
+            bridge.openDocument(document)
+            manager.closeServer("fake-kotlin").get(5, TimeUnit.SECONDS)
             manager.close()
         } finally {
             root.deleteRecursively()
