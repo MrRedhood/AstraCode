@@ -2526,18 +2526,21 @@ private fun FileManagementScreen(
         val bridge = lspBridge
         val uri = lspDocumentUri
         val path = lspDocumentPath
-        val tab = editorTabs.firstOrNull { it.path == path }
-        if (bridge == null || uri == null || path == null || tab == null || openedFile != path) {
+        if (bridge == null || uri == null || path == null || openedFile != path) {
             notify("Connect a language server to the currently open local file first.")
             return
         }
         scope.launch {
             lspSyncMutex.lock()
             try {
+                val currentText = editorTabs.firstOrNull { it.path == path }?.text
+                    ?: throw IllegalStateException("The connected editor tab is no longer open.")
                 val version = lspDocumentVersion
+                val caretIndex = editorCaretTextIndex.coerceIn(0, currentText.length)
                 val byteOffset = withContext(Dispatchers.IO) {
-                    EditorBuffer(tab.text).byteOffsetForTextIndex(editorCaretTextIndex.coerceIn(0, tab.text.length))
+                    EditorBuffer(currentText).byteOffsetForTextIndex(caretIndex)
                 }
+                if (lspBridge !== bridge || lspDocumentVersion != version || openedFile != path) return@launch
                 bridge.requestDefinition(uri, byteOffset, version) { result ->
                     scope.launch {
                         result.onSuccess { locations ->
@@ -2561,18 +2564,21 @@ private fun FileManagementScreen(
         val bridge = lspBridge
         val uri = lspDocumentUri
         val path = lspDocumentPath
-        val tab = editorTabs.firstOrNull { it.path == path }
-        if (bridge == null || uri == null || path == null || tab == null || openedFile != path) {
+        if (bridge == null || uri == null || path == null || openedFile != path) {
             notify("Connect a language server to the currently open local file first.")
             return
         }
         scope.launch {
             lspSyncMutex.lock()
             try {
+                val currentText = editorTabs.firstOrNull { it.path == path }?.text
+                    ?: throw IllegalStateException("The connected editor tab is no longer open.")
                 val version = lspDocumentVersion
+                val caretIndex = editorCaretTextIndex.coerceIn(0, currentText.length)
                 val byteOffset = withContext(Dispatchers.IO) {
-                    EditorBuffer(tab.text).byteOffsetForTextIndex(editorCaretTextIndex.coerceIn(0, tab.text.length))
+                    EditorBuffer(currentText).byteOffsetForTextIndex(caretIndex)
                 }
+                if (lspBridge !== bridge || lspDocumentVersion != version || openedFile != path) return@launch
                 bridge.requestReferences(uri, byteOffset, version, includeDeclaration = true) { result ->
                     scope.launch {
                         result.onSuccess { locations ->
