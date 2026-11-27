@@ -3,6 +3,7 @@ package com.astracode.editor
 import java.io.Closeable
 import java.io.File
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CompletionException
 import java.util.concurrent.atomic.AtomicReference
 
@@ -25,6 +26,7 @@ class LspProcessSession private constructor(
     private val transport: JsonRpcProcessTransport,
     private val rpc: LspJsonRpcClient,
     private val onFailure: (Throwable) -> Unit,
+    private val notificationListeners: CopyOnWriteArrayList<(String, Map<String, Any?>) -> Unit>,
 ) : Closeable {
     private val stateLock = Any()
 
@@ -65,6 +67,18 @@ class LspProcessSession private constructor(
                     close()
                 }
             }
+    }
+
+    /**
+     * Adds a listener for server notifications. The listener runs on the
+     * language-server reader thread and should dispatch UI work as needed.
+     */
+    fun addNotificationListener(listener: (String, Map<String, Any?>) -> Unit): Closeable {
+        check(state != LspProcessSessionState.CLOSED && state != LspProcessSessionState.FAILED) {
+            "Language-server session is not accepting notification listeners"
+        }
+        notificationListeners += listener
+        return Closeable { notificationListeners.remove(listener) }
     }
 
     fun request(method: String, params: Any? = null): CompletableFuture<Any?> {
@@ -118,13 +132,19 @@ class LspProcessSession private constructor(
             onFailure: (Throwable) -> Unit = {},
         ): LspProcessSession {
             val transportReference = AtomicReference<JsonRpcProcessTransport?>()
+            val notificationListeners = CopyOnWriteArrayList<(String, Map<String, Any?>) -> Unit>()
+            notificationListeners += onNotification
             val rpc = LspJsonRpcClient(
                 sendMessage = { message ->
                     val activeTransport = transportReference.get()
                         ?: throw IllegalStateException("Language-server transport is not ready")
                     activeTransport.send(message)
                 },
-                onNotification = onNotification,
+                onNotification = { method, params ->
+                    notificationListeners.forEach { listener ->
+                        runCatching { listener(method, params) }
+                    }
+                },
                 onServerRequest = onServerRequest,
                 onProtocolError = onFailure,
             )
@@ -141,7 +161,7 @@ class LspProcessSession private constructor(
                 },
             )
             transportReference.set(transport)
-            return LspProcessSession(transport, rpc, onFailure)
+            return LspProcessSession(transport, rpc, onFailure, notificationListeners)
         }
     }
 }

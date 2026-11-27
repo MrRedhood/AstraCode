@@ -11,6 +11,10 @@ data class EditorDocument(
     val text: String,
 )
 
+/**
+ * One sequential edit in the document's current snapshot. Offsets are UTF-8
+ * byte offsets, matching the Piece Table and the negotiated LSP encoding.
+ */
 data class EditorTextChange(
     val startOffset: Int,
     val endOffset: Int,
