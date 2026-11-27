@@ -23,9 +23,18 @@ class LspInitializationTest {
         assertTrue(textDocument.containsKey("references"))
         assertTrue(textDocument.containsKey("rename"))
         assertTrue(textDocument.containsKey("publishDiagnostics"))
+        val completion = textDocument["completion"] as Map<*, *>
+        assertEquals(false, (completion["completionItem"] as Map<*, *>)["snippetSupport"])
+        val rename = textDocument["rename"] as Map<*, *>
+        assertTrue(!rename.containsKey("prepareSupport"))
+        val diagnostics = textDocument["publishDiagnostics"] as Map<*, *>
+        assertTrue(!diagnostics.containsKey("relatedInformation"))
         val workspace = capabilities["workspace"] as Map<*, *>
         assertEquals(false, workspace["applyEdit"])
-        assertEquals(true, (workspace["workspaceEdit"] as Map<*, *>)["documentChanges"])
+        val workspaceEdit = workspace["workspaceEdit"] as Map<*, *>
+        assertEquals(true, workspaceEdit["documentChanges"])
+        assertTrue(!workspace.containsKey("workspaceFolders"))
+        assertTrue(!capabilities.containsKey("window"))
         assertEquals(1234L, request.processId)
         assertTrue(request.toWireMap().containsKey("clientInfo"))
     }

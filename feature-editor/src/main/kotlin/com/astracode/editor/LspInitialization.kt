@@ -34,15 +34,7 @@ data class LspClientCapabilities(
             "completion" to mapOf(
                 "dynamicRegistration" to false,
                 "contextSupport" to true,
-                "completionItem" to mapOf(
-                    "snippetSupport" to false,
-                    "commitCharactersSupport" to true,
-                    "documentationFormat" to listOf("markdown", "plaintext"),
-                    "deprecatedSupport" to true,
-                    "preselectSupport" to true,
-                    "insertReplaceSupport" to false,
-                    "labelDetailsSupport" to true,
-                ),
+                "completionItem" to mapOf("snippetSupport" to false),
             ),
             "hover" to mapOf(
                 "dynamicRegistration" to false,
@@ -53,16 +45,9 @@ data class LspClientCapabilities(
                 "linkSupport" to true,
             ),
             "references" to mapOf("dynamicRegistration" to false),
-            "rename" to mapOf(
-                "dynamicRegistration" to false,
-                "prepareSupport" to true,
-            ),
+            "rename" to mapOf("dynamicRegistration" to false),
             "publishDiagnostics" to mapOf(
-                "relatedInformation" to true,
                 "versionSupport" to true,
-                "codeDescriptionSupport" to true,
-                "dataSupport" to true,
-                "tagSupport" to mapOf("valueSet" to listOf(1, 2)),
             ),
         ),
         "workspace" to mapOf(
@@ -74,9 +59,7 @@ data class LspClientCapabilities(
                 "normalizesLineEndings" to true,
                 "changeAnnotationSupport" to mapOf("groupsOnLabel" to true),
             ),
-            "workspaceFolders" to true,
         ),
-        "window" to mapOf("workDoneProgress" to true),
     )
 }
 
