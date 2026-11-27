@@ -8399,14 +8399,24 @@ private fun EditorPanel(
             BasicTextField(
                 value = editorFieldValue,
                 onValueChange = { newValue ->
-                    if (onTextChange(newValue.text)) {
+                    if (newValue.text == editorFieldValue.text) {
                         editorFieldValue = newValue
                     } else {
-                        editorFieldValue = TextFieldValue(
-                            text,
-                            selection = TextRange(newValue.selection.end.coerceIn(0, text.length)),
-                        )
-                        editorToolMessage = "Edit blocked by the editor memory limit."
+                        val edit = minimalEditorTextEdit(editorFieldValue.text, newValue.text)
+                        if (edit == null) {
+                            editorFieldValue = newValue
+                        } else {
+                            val updatedText = onTextEdit(edit.start, edit.end, edit.replacement)
+                            if (updatedText != null) {
+                                editorFieldValue = newValue.copy(text = updatedText)
+                            } else {
+                                editorFieldValue = TextFieldValue(
+                                    text,
+                                    selection = TextRange(newValue.selection.end.coerceIn(0, text.length)),
+                                )
+                                editorToolMessage = "Edit blocked by the editor memory limit."
+                            }
+                        }
                     }
                 },
                 readOnly = readOnly,

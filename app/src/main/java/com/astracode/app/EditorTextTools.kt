@@ -7,6 +7,60 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 
+/** One minimal replacement expressed in Android/Kotlin UTF-16 text indices. */
+internal data class EditorTextEdit(
+    val start: Int,
+    val end: Int,
+    val replacement: String,
+)
+
+private fun splitsSurrogatePair(text: String, index: Int): Boolean =
+    index in 1 until text.length &&
+        Character.isHighSurrogate(text[index - 1]) &&
+        Character.isLowSurrogate(text[index])
+
+/**
+ * Finds one replacement that transforms [oldText] into [newText]. The returned
+ * offsets are UTF-16 indices for Android text widgets, but both boundaries are
+ * guaranteed to be Unicode code-point boundaries before the caller converts
+ * them into the Piece Table's UTF-8 byte positions.
+ */
+internal fun minimalEditorTextEdit(oldText: String, newText: String): EditorTextEdit? {
+    if (oldText == newText) return null
+
+    var prefix = 0
+    val sharedLength = minOf(oldText.length, newText.length)
+    while (prefix < sharedLength && oldText[prefix] == newText[prefix]) prefix++
+    while (prefix > 0 &&
+        (splitsSurrogatePair(oldText, prefix) || splitsSurrogatePair(newText, prefix))
+    ) {
+        prefix--
+    }
+
+    var suffix = 0
+    val maximumSuffix = minOf(oldText.length - prefix, newText.length - prefix)
+    while (
+        suffix < maximumSuffix &&
+        oldText[oldText.length - suffix - 1] == newText[newText.length - suffix - 1]
+    ) {
+        suffix++
+    }
+    while (suffix > 0 &&
+        (splitsSurrogatePair(oldText, oldText.length - suffix) ||
+            splitsSurrogatePair(newText, newText.length - suffix))
+    ) {
+        suffix--
+    }
+
+    val oldEnd = oldText.length - suffix
+    val newEnd = newText.length - suffix
+    return EditorTextEdit(
+        start = prefix,
+        end = oldEnd,
+        replacement = newText.substring(prefix, newEnd),
+    )
+}
+
 internal data class CodeFoldRegion(
     val startLine: Int,
     val endLine: Int,

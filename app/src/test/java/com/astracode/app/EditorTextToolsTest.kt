@@ -10,6 +10,59 @@ import org.junit.Test
 
 class EditorTextToolsTest {
     @Test
+    fun minimalEditorTextEditReturnsOnlyChangedUtf16Range() {
+        val edit = minimalEditorTextEdit(
+            "fun main() { println(1) }",
+            "fun main() { println(2) }",
+        )
+        assertEquals(EditorTextEdit(22, 23, "2"), edit)
+    }
+
+    @Test
+    fun minimalEditorTextEditHandlesInsertionAndDeletion() {
+        assertEquals(EditorTextEdit(3, 3, "XYZ"), minimalEditorTextEdit("abc", "abcXYZ"))
+        assertEquals(EditorTextEdit(1, 3, ""), minimalEditorTextEdit("abcd", "ad"))
+    }
+
+    @Test
+    fun minimalEditorTextEditNeverSplitsAnEmojiSurrogatePair() {
+        val oldText = "A😀B"
+        val newText = "A😁B"
+        val edit = minimalEditorTextEdit(oldText, newText)!!
+
+        assertEquals(1, edit.start)
+        assertEquals(3, edit.end)
+        assertEquals("😁", edit.replacement)
+        assertTrue(!splitsSurrogatePair(oldText, edit.start))
+        assertTrue(!splitsSurrogatePair(oldText, edit.end))
+        assertTrue(!splitsSurrogatePair(newText, edit.start))
+        assertTrue(!splitsSurrogatePair(newText, edit.start + edit.replacement.length))
+        assertEquals(newText, oldText.replaceRange(edit.start, edit.end, edit.replacement))
+    }
+
+    @Test
+    fun minimalEditorTextEditWidensSharedSurrogateAtPrefixAndSuffix() {
+        val oldPrefix = "A😀B"
+        val newPrefix = "A😁B"
+        val prefixEdit = minimalEditorTextEdit(oldPrefix, newPrefix)!!
+        assertEquals(1, prefixEdit.start)
+        assertEquals(3, prefixEdit.end)
+        assertEquals(newPrefix, oldPrefix.replaceRange(prefixEdit.start, prefixEdit.end, prefixEdit.replacement))
+
+        val oldSuffix = "A😀B"
+        val newSuffix = "A😂B"
+        val suffixEdit = minimalEditorTextEdit(oldSuffix, newSuffix)!!
+        assertEquals(1, suffixEdit.start)
+        assertEquals(3, suffixEdit.end)
+        assertEquals(newSuffix, oldSuffix.replaceRange(suffixEdit.start, suffixEdit.end, suffixEdit.replacement))
+    }
+
+    @Test
+    fun minimalEditorTextEditReturnsNullWhenTextIsUnchanged() {
+        assertEquals(null, minimalEditorTextEdit("Aह😀B", "Aह😀B"))
+    }
+
+    @Test
     fun lineNumbersOnlyCoverLogicalLinesInTheBuffer() {
         val transformed = lineNumberVisualTransformation().filter(AnnotatedString("alpha\nbeta\n"))
         assertEquals("1 │ ", lineNumberVisualTransformation().filter(AnnotatedString("")).text.text)
