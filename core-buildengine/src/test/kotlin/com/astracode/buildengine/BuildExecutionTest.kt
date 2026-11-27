@@ -127,8 +127,8 @@ class BuildExecutionTest {
     @Test
     fun redactorWithholdsAnIncompleteSupplementaryUnicodeCharacterBetweenChunks() {
         val redactor = BuildOutputRedactor(emptyList())
-        assertEquals("A", redactor.append("A\\uD83D"))
-        assertEquals("😀B", redactor.append("\\uDE00B"))
+        assertEquals("A", redactor.append("A\uD83D"))
+        assertEquals("😀B", redactor.append("\uDE00B"))
         assertEquals("", redactor.finish())
     }
 
