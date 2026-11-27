@@ -81,6 +81,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.snapshotFlow
@@ -130,6 +131,9 @@ import com.astracode.filesystem.WorkspaceStorage
 import com.astracode.filesystem.WorkspaceStorageType
 import com.astracode.filesystem.Utf8RepairDecoder
 import com.astracode.editor.EditorBuffer
+import com.astracode.editor.EditorDiagnostic
+import com.astracode.editor.LanguageServerConfiguration
+import com.astracode.editor.LspWorkspaceManager
 import com.astracode.terminal.TerminalCommandRunner
 import com.astracode.connectors.AiChangeOperation
 import com.astracode.connectors.AiWorkspaceProposal
@@ -198,6 +202,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.TimeUnit
 
 private val Ink = Color(0xFF101311)
 private val Panel = Color(0xFF1C211D)
@@ -1116,6 +1121,33 @@ private fun FileManagementScreen(
     val editorPreferences = remember(context) {
         context.getSharedPreferences("astracode_editor_preferences", Context.MODE_PRIVATE)
     }
+    val lspPreferences = remember(context) {
+        context.getSharedPreferences("astracode_lsp_preferences", Context.MODE_PRIVATE)
+    }
+    var lspLanguageId by remember(activeWorkspaceId) {
+        mutableStateOf(lspPreferences.getString("language_id_$activeWorkspaceId", "kotlin").orEmpty())
+    }
+    var lspExtensions by remember(activeWorkspaceId) {
+        mutableStateOf(lspPreferences.getString("extensions_$activeWorkspaceId", "kt,kts").orEmpty())
+    }
+    var lspCommandArgsJson by remember(activeWorkspaceId) {
+        mutableStateOf(lspPreferences.getString("command_args_$activeWorkspaceId", "").orEmpty())
+    }
+    var lspStatus by remember(storage) {
+        mutableStateOf(if (storage.storageType == WorkspaceStorageType.DOCUMENT_TREE) "Local only" else "Not connected")
+    }
+    var lspErrorMessage by remember(storage) { mutableStateOf<String?>(null) }
+    var lspErrors by remember(storage) { mutableStateOf(0) }
+    var lspWarnings by remember(storage) { mutableStateOf(0) }
+    var lspBusy by remember(storage) { mutableStateOf(false) }
+    var showLspConfigureDialog by remember(storage) { mutableStateOf(false) }
+    var lspConfigureError by remember(storage) { mutableStateOf<String?>(null) }
+    var lspManager by remember(storage) { mutableStateOf<LspWorkspaceManager?>(null) }
+    var lspBridge by remember(storage) { mutableStateOf<com.astracode.editor.LanguageServerBridge?>(null) }
+    var lspDocumentUri by remember(storage) { mutableStateOf<String?>(null) }
+    var lspDocumentPath by remember(storage) { mutableStateOf<String?>(null) }
+    var lspDocumentVersion by remember(storage) { mutableStateOf(1) }
+    val lspSyncMutex = remember(storage) { Mutex() }
     val snackbarHostState = remember { SnackbarHostState() }
     val editorSaveMutex = remember(storage) { Mutex() }
 
@@ -1123,6 +1155,9 @@ private fun FileManagementScreen(
     var openedFile by remember(storage) { mutableStateOf<String?>(null) }
     var editorTabs by remember(storage) { mutableStateOf(emptyList<EditorTab>()) }
     val editorBuffers = remember(storage) { mutableMapOf<String, EditorBuffer>() }
+    DisposableEffect(storage) {
+        onDispose { lspManager?.close() }
+    }
     var showAiAssistant by remember(storage) { mutableStateOf(false) }
     var aiProvider by remember(aiPreferences) {
         mutableStateOf(AiProvider.fromId(aiPreferences.getString("provider", "openai")))
@@ -2301,6 +2336,147 @@ private fun FileManagementScreen(
         }
     }
 
+    fun syncLspDocument(path: String, text: String) {
+        val bridge = lspBridge ?: return
+        val uri = lspDocumentUri ?: return
+        if (path != lspDocumentPath) return
+        scope.launch {
+            lspSyncMutex.lock()
+            try {
+                if (lspBridge !== bridge || lspDocumentUri != uri || lspDocumentPath != path) return@launch
+                val nextVersion = lspDocumentVersion + 1
+                withContext(Dispatchers.IO) {
+                    bridge.replaceDocument(uri, nextVersion, text)
+                }
+                lspDocumentVersion = nextVersion
+            } catch (error: Throwable) {
+                lspStatus = "Error"
+                lspErrorMessage = error.message ?: "Language-server document sync failed."
+                notify("Language-server sync failed: " + lspErrorMessage)
+            } finally {
+                lspSyncMutex.unlock()
+            }
+        }
+    }
+
+    fun disconnectLanguageServer(showMessage: Boolean = true) {
+        val manager = lspManager
+        lspManager = null
+        lspBridge = null
+        lspDocumentUri = null
+        lspDocumentPath = null
+        lspDocumentVersion = 1
+        lspErrors = 0
+        lspWarnings = 0
+        lspErrorMessage = null
+        lspStatus = when {
+            storage.storageType == WorkspaceStorageType.DOCUMENT_TREE -> "Local only"
+            lspCommandArgsJson.isNotBlank() -> "Configured"
+            else -> "Not connected"
+        }
+        if (manager != null) scope.launch(Dispatchers.IO) { manager.close() }
+        if (showMessage) notify("Language server disconnected.")
+    }
+
+    fun connectLanguageServer() {
+        if (lspBusy) return
+        val localStorage = storage as? FileManagementSystem
+        if (localStorage == null || storage.storageType == WorkspaceStorageType.DOCUMENT_TREE) {
+            lspStatus = "Local only"
+            notify("Local language-server processes are unavailable for SAF document-tree workspaces.")
+            return
+        }
+        val path = openedFile
+        if (path.isNullOrBlank() || selectedDocument != null) {
+            notify("Open a file in a local workspace before connecting a language server.")
+            return
+        }
+        val tab = editorTabs.firstOrNull { it.path == path && !it.isLoading }
+        if (tab == null) {
+            notify("Wait for the current file to finish loading.")
+            return
+        }
+        if (lspManager != null) disconnectLanguageServer(showMessage = false)
+
+        val command = runCatching {
+            val json = JSONArray(lspCommandArgsJson)
+            require(json.length() in 1..64) { "Enter a JSON array containing 1 to 64 command arguments." }
+            (0 until json.length()).map { index ->
+                json.get(index) as? String
+                    ?: throw IllegalArgumentException("Every command argument must be a string.")
+            }
+        }.getOrElse { error ->
+            lspStatus = "Not configured"
+            notify(error.message ?: "Invalid language-server command.")
+            return
+        }
+        val languageId = lspLanguageId.trim()
+        val extensions = lspExtensions.split(',').map(String::trim).filter(String::isNotBlank).toSet()
+        val configuration = runCatching {
+            LanguageServerConfiguration(
+                id = "workspace-language-server",
+                languageIds = setOf(languageId),
+                fileExtensions = extensions,
+                command = command,
+                workingDirectoryRelativePath = ".",
+            )
+        }.getOrElse { error ->
+            notify(error.message ?: "Invalid language-server profile.")
+            return
+        }
+        val manager = runCatching {
+            LspWorkspaceManager(localStorage.rootDirectory.toFile(), listOf(configuration))
+        }.getOrElse { error ->
+            notify(error.message ?: "Cannot create the language-server manager.")
+            return
+        }
+        lspManager = manager
+        lspBridge = null
+        lspDocumentUri = null
+        lspDocumentPath = null
+        lspBusy = true
+        lspStatus = "Starting"
+        lspErrorMessage = null
+        scope.launch {
+            try {
+                val document = withContext(Dispatchers.IO) {
+                    manager.createDocument(File(localStorage.rootDirectory.toFile(), path), languageId, 1, tab.text)
+                }
+                val bridge = withContext(Dispatchers.IO) {
+                    manager.connectForDocument(document).get(60, TimeUnit.SECONDS)
+                }
+                bridge.setDiagnosticsListener { diagnostics ->
+                    scope.launch {
+                        lspErrors = diagnostics.count { it.severity == EditorDiagnostic.Severity.ERROR }
+                        lspWarnings = diagnostics.count { it.severity == EditorDiagnostic.Severity.WARNING }
+                    }
+                }
+                withContext(Dispatchers.IO) { bridge.openDocument(document) }
+                if (lspManager !== manager) {
+                    manager.close()
+                    return@launch
+                }
+                lspBridge = bridge
+                lspDocumentUri = document.uri
+                lspDocumentPath = path
+                lspDocumentVersion = document.version
+                lspStatus = "Ready"
+                notify("Language server connected for " + fileName(path) + ".")
+            } catch (error: Throwable) {
+                manager.close()
+                if (lspManager === manager) {
+                    lspManager = null
+                    lspBridge = null
+                    lspStatus = "Error"
+                    lspErrorMessage = error.cause?.message ?: error.message ?: "Language-server startup failed."
+                    notify("Language-server startup failed: " + lspErrorMessage)
+                }
+            } finally {
+                lspBusy = false
+            }
+        }
+    }
+
     fun recordRecentFile(path: String) {
         if (path.isBlank()) return
         val updated = (listOf(path) + recentEditorPaths.filterNot { it == path }).take(10)
@@ -2341,6 +2517,7 @@ private fun FileManagementScreen(
         editorTabs = editorTabs.map { tab ->
             if (tab.path == path) tab.copy(text = bufferedText) else tab
         }
+        syncLspDocument(path, bufferedText)
         return true
     }
 
@@ -2400,6 +2577,7 @@ private fun FileManagementScreen(
             editorTabs = editorTabs.map { tab ->
                 if (tab.path == path) tab.copy(text = bufferedText) else tab
             }
+            syncLspDocument(path, bufferedText)
         }
     }
 
@@ -2437,6 +2615,7 @@ private fun FileManagementScreen(
         editorTabs = editorTabs.map { tab ->
             if (tab.path == path) tab.copy(text = restoredText) else tab
         }
+        syncLspDocument(path, restoredText)
         return restoredText
     }
 
@@ -3656,10 +3835,10 @@ private fun FileManagementScreen(
             "Add a " + aiProvider.displayName + " API key to connect"
         },
         aiFixCode = "",
-        lspName = "Language services",
-        lspStatus = "Not connected",
-        lspErrors = 0,
-        lspWarnings = 0,
+        lspName = lspDocumentPath?.let { "Language services · " + fileName(it) } ?: "Language services",
+        lspStatus = if (storage.storageType == WorkspaceStorageType.DOCUMENT_TREE) "Local only" else lspStatus,
+        lspErrors = lspErrors,
+        lspWarnings = lspWarnings,
         gitAdded = 0,
         gitRemoved = 0,
         gitAvailable = false,
@@ -4241,8 +4420,17 @@ private fun FileManagementScreen(
                             aiMessage = null
                             showAiAssistant = true
                         }
+                        DrawerAction.ConfigureLanguageServer -> {
+                            lspConfigureError = null
+                            showLspConfigureDialog = true
+                        }
+                        DrawerAction.ConnectLanguageServer -> connectLanguageServer()
+                        DrawerAction.DisconnectLanguageServer -> disconnectLanguageServer()
                         DrawerAction.GoToDefinition,
-                        DrawerAction.FindReferences -> notify("Language-server navigation is unavailable until a language server is connected.")
+                        DrawerAction.FindReferences -> notify(
+                            if (lspBridge == null) "Connect a language server first." else
+                                "Navigation requests are being connected to the editor caret.",
+                        )
                         DrawerAction.OpenTerminal -> {
                             showEditorDrawer = false
                             showTerminalPanel = true
@@ -4274,6 +4462,83 @@ private fun FileManagementScreen(
                 showEditorDrawer = false
                 drawerOptionsTargetId = null
             },
+        )
+    }
+
+    if (showLspConfigureDialog) {
+        AlertDialog(
+            onDismissRequest = { showLspConfigureDialog = false },
+            title = { Text("Configure language server") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Enter an installed executable as a JSON array of command arguments. Example: [\"/absolute/path/to/server\"]. AstraCode does not download language servers.",
+                        fontSize = 12.sp,
+                        color = MutedText,
+                    )
+                    OutlinedTextField(
+                        value = lspCommandArgsJson,
+                        onValueChange = { lspCommandArgsJson = it.take(4096); lspConfigureError = null },
+                        modifier = Modifier.fillMaxWidth().testTag("lsp-command-args"),
+                        label = { Text("Command arguments (JSON array)") },
+                        minLines = 2,
+                        maxLines = 4,
+                    )
+                    OutlinedTextField(
+                        value = lspLanguageId,
+                        onValueChange = { lspLanguageId = it.take(64); lspConfigureError = null },
+                        modifier = Modifier.fillMaxWidth().testTag("lsp-language-id"),
+                        label = { Text("Language ID") },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = lspExtensions,
+                        onValueChange = { lspExtensions = it.take(160); lspConfigureError = null },
+                        modifier = Modifier.fillMaxWidth().testTag("lsp-file-extensions"),
+                        label = { Text("File extensions (comma separated)") },
+                        singleLine = true,
+                    )
+                    Text(
+                        "A configured language server runs with AstraCode's app permissions. Only use an executable you trust. Local process launch is unavailable for SAF document-tree workspaces.",
+                        fontSize = 11.sp,
+                        color = MutedText,
+                    )
+                    lspConfigureError?.let { Text(it, color = Danger, fontSize = 12.sp) }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        runCatching {
+                            val json = JSONArray(lspCommandArgsJson)
+                            require(json.length() in 1..64) { "Enter between 1 and 64 command arguments." }
+                            val command = (0 until json.length()).map { json.get(it) as? String
+                                ?: throw IllegalArgumentException("Every command argument must be a string.") }
+                            LanguageServerConfiguration(
+                                id = "workspace-language-server",
+                                languageIds = setOf(lspLanguageId.trim()),
+                                fileExtensions = lspExtensions.split(',').map(String::trim).filter(String::isNotBlank).toSet(),
+                                command = command,
+                            )
+                        }.onSuccess {
+                            if (lspManager != null) disconnectLanguageServer(showMessage = false)
+                            lspPreferences.edit()
+                                .putString("command_args_$activeWorkspaceId", JSONArray(it.command).toString())
+                                .putString("language_id_$activeWorkspaceId", lspLanguageId.trim())
+                                .putString("extensions_$activeWorkspaceId", lspExtensions)
+                                .apply()
+                            lspConfigureError = null
+                            showLspConfigureDialog = false
+                            if (storage.storageType != WorkspaceStorageType.DOCUMENT_TREE) lspStatus = "Configured"
+                            notify("Language-server profile saved.")
+                        }.onFailure { error ->
+                            lspConfigureError = error.message ?: "Invalid language-server profile."
+                        }
+                    },
+                    modifier = Modifier.testTag("lsp-config-save"),
+                ) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { showLspConfigureDialog = false }) { Text("Cancel") } },
         )
     }
 

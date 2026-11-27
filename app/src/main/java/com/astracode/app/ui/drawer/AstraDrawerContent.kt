@@ -871,6 +871,20 @@ private fun LspSection(state: DrawerUiState, onEvent: (DrawerEvent) -> Unit) {
                     onEvent(DrawerEvent.Action(DrawerAction.FindReferences))
                 }
             }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                LspTile("Configure", "Server profile", Modifier.weight(1f)) {
+                    onEvent(DrawerEvent.Action(DrawerAction.ConfigureLanguageServer))
+                }
+                if (state.lspStatus.equals("Ready", ignoreCase = true)) {
+                    LspTile("Disconnect", "Stop process", Modifier.weight(1f)) {
+                        onEvent(DrawerEvent.Action(DrawerAction.DisconnectLanguageServer))
+                    }
+                } else {
+                    LspTile("Connect", "Current file", Modifier.weight(1f)) {
+                        onEvent(DrawerEvent.Action(DrawerAction.ConnectLanguageServer))
+                    }
+                }
+            }
             Row(
                 Modifier
                     .fillMaxWidth()

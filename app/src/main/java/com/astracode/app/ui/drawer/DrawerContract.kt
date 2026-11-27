@@ -16,6 +16,7 @@ enum class DrawerAction {
     RecentFiles, FindInFiles, GoToLine,
     AskAi, FixBorrowChecker, GenerateCode, ExplainCode,
     GoToDefinition, FindReferences,
+    ConfigureLanguageServer, ConnectLanguageServer, DisconnectLanguageServer,
     OpenTerminal, OpenGitChanges, RunTests, OpenConfig, OpenExplorer,
 }
 
