@@ -17,7 +17,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberSaveable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -46,12 +46,12 @@ internal fun FloatingAiAssistantButton(
         // Keep the default position above the app's bottom navigation and Android gesture area.
         val defaultY = (maxY - 116.dp.value).coerceAtLeast(8.dp.value)
 
-        var savedX by rememberSaveable {
+        var savedX by remember {
             mutableStateOf(
                 if (preferences.contains(KEY_X)) preferences.getFloat(KEY_X, defaultX) else defaultX,
             )
         }
-        var savedY by rememberSaveable {
+        var savedY by remember {
             mutableStateOf(
                 if (preferences.contains(KEY_Y)) preferences.getFloat(KEY_Y, defaultY) else defaultY,
             )
