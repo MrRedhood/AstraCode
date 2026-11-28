@@ -135,6 +135,7 @@ internal fun AiChatScreen(
     conversationStore: AiConversationStore,
     preferences: android.content.SharedPreferences,
     onOpenWorkspacePlanner: () -> Unit,
+    onClose: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -161,9 +162,13 @@ internal fun AiChatScreen(
     var hasApiKey by remember(selectedProvider, keyRevision) {
         mutableStateOf(runCatching { assistant.hasApiKey(selectedProvider) }.getOrDefault(false))
     }
+    val connectedProviders = remember(assistant, keyRevision) {
+        AiProvider.entries.filter { provider ->
+            runCatching { assistant.hasApiKey(provider) }.getOrDefault(false)
+        }.toSet()
+    }
     var showModelSheet by remember { mutableStateOf(false) }
     var modelSearch by remember { mutableStateOf("") }
-    var providerFilter by remember { mutableStateOf<AiProvider?>(null) }
     var modelCatalog by remember { mutableStateOf(emptyList<AiModelCapabilities>()) }
     var loadingModels by remember { mutableStateOf(false) }
     var modelError by remember { mutableStateOf<String?>(null) }
@@ -302,8 +307,13 @@ internal fun AiChatScreen(
         }
     }
 
-    LaunchedEffect(showModelSheet, selectedProvider, keyRevision) {
-        if (showModelSheet && modelCatalog.none { it.provider == selectedProvider } && hasApiKey) {
+    LaunchedEffect(showModelSheet, selectedProvider, keyRevision, loadingModels) {
+        if (
+            showModelSheet &&
+            !loadingModels &&
+            modelCatalog.none { it.provider == selectedProvider } &&
+            hasApiKey
+        ) {
             loadModels(selectedProvider)
         }
     }
@@ -454,6 +464,7 @@ internal fun AiChatScreen(
             modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding().navigationBarsPadding().imePadding(),
         ) {
             ChatTopBar(
+                providerName = selectedProvider.displayName,
                 modelName = modelCatalog.firstOrNull {
                     it.provider == selectedProvider && it.modelId == selectedModel
                 }?.displayName ?: selectedModel.ifBlank { "Choose model" },
@@ -465,7 +476,9 @@ internal fun AiChatScreen(
                     }
                 },
                 onSelectModel = { showModelSheet = true },
-                onProfile = { showKeyDialog = true },
+                onSettings = onOpenWorkspacePlanner,
+                onProviderSettings = { showKeyDialog = true },
+                onClose = onClose,
             )
             Divider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.7.dp)
             Row(
@@ -622,27 +635,29 @@ internal fun AiChatScreen(
             selectedProvider = selectedProvider,
             selectedModel = selectedModel,
             search = modelSearch,
-            providerFilter = providerFilter,
             models = modelCatalog,
+            connectedProviders = connectedProviders,
             loading = loadingModels,
             error = modelError,
             onDismiss = { showModelSheet = false },
             onSearch = { modelSearch = it },
-            onFilter = { provider ->
-                providerFilter = provider
-                if (provider != null && provider != selectedProvider) persistProvider(provider)
+            onSelectProvider = { provider ->
+                if (provider != selectedProvider) {
+                    persistProvider(provider)
+                    if (provider !in connectedProviders) {
+                        modelError = "Connect " + provider.displayName + " to load its model list."
+                        showKeyDialog = true
+                    }
+                }
             },
             onSelect = ::selectModel,
-            onLoad = { provider ->
-                persistProvider(provider)
-                loadModels(provider)
-            },
+            onRefresh = { loadModels(selectedProvider) },
             onManualModel = { id ->
                 selectedModel = id
                 preferences.edit().putString("model_" + selectedProvider.id, id).apply()
                 showModelSheet = false
             },
-            onConfigureKey = { showModelSheet = false; showKeyDialog = true },
+            onConfigureKey = { showKeyDialog = true },
         )
     }
 
@@ -703,6 +718,7 @@ internal fun AiChatScreen(
                                 keyRevision++
                                 chatError = "Provider settings saved."
                                 showKeyDialog = false
+                                showModelSheet = true
                             }.onFailure { chatError = it.message ?: "Provider settings could not be saved." }
                         }
                     },
@@ -786,43 +802,85 @@ internal fun AiChatScreen(
 
 @Composable
 private fun ChatTopBar(
+    providerName: String,
     modelName: String,
     onMenu: () -> Unit,
     onSelectModel: () -> Unit,
-    onProfile: () -> Unit,
+    onSettings: () -> Unit,
+    onProviderSettings: () -> Unit,
+    onClose: () -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().height(62.dp).padding(horizontal = 12.dp),
+        modifier = Modifier.fillMaxWidth().height(62.dp).padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        IconButton(onClick = onMenu, modifier = Modifier.size(42.dp)) {
+        IconButton(onClick = onMenu, modifier = Modifier.size(36.dp)) {
             Icon(Icons.Filled.Menu, contentDescription = "Open conversation history", tint = MaterialTheme.colorScheme.onSurface)
         }
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+        Column(
+            modifier = Modifier.width(82.dp),
+            verticalArrangement = Arrangement.spacedBy(1.dp),
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 Box(Modifier.size(7.dp).clip(CircleShape).background(MaterialTheme.colorScheme.onSurface))
-                Text("Chat Stream", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Chat Stream",
+                    color = MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                )
             }
-            Text("Active session", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+            Text(
+                providerName,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
-        Surface(onClick = onSelectModel, color = MaterialTheme.colorScheme.surfaceContainerLow, shape = CircleShape) {
+        Surface(
+            onClick = onSelectModel,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            shape = RoundedCornerShape(13.dp),
+            modifier = Modifier.weight(1f).heightIn(min = 42.dp),
+        ) {
             Row(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
             ) {
-                Icon(Icons.Filled.Psychology, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(17.dp))
-                Text(modelName, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Icon(Icons.Filled.ExpandMore, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                Icon(
+                    Icons.Filled.Psychology,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(17.dp),
+                )
+                Text(
+                    modelName,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    Icons.Filled.ExpandMore,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
+                )
             }
         }
-        IconButton(onClick = onProfile, modifier = Modifier.size(38.dp)) {
-            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary) {
-                Box(Modifier.size(30.dp), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Filled.Person, contentDescription = "Provider settings", tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(18.dp))
-                }
-            }
+        IconButton(onClick = onSettings, modifier = Modifier.size(34.dp)) {
+            Icon(Icons.Filled.Tune, contentDescription = "AI settings", tint = MaterialTheme.colorScheme.onSurface)
+        }
+        IconButton(onClick = onProviderSettings, modifier = Modifier.size(34.dp)) {
+            Icon(Icons.Filled.Person, contentDescription = "Provider connection", tint = MaterialTheme.colorScheme.onSurface)
+        }
+        IconButton(onClick = onClose, modifier = Modifier.size(34.dp).testTag("chat-close-button")) {
+            Icon(Icons.Filled.Close, contentDescription = "Close AI chat", tint = MaterialTheme.colorScheme.onSurface)
         }
     }
 }
@@ -1218,92 +1276,231 @@ private fun ModelPickerSheet(
     selectedProvider: AiProvider,
     selectedModel: String,
     search: String,
-    providerFilter: AiProvider?,
     models: List<AiModelCapabilities>,
+    connectedProviders: Set<AiProvider>,
     loading: Boolean,
     error: String?,
     onDismiss: () -> Unit,
     onSearch: (String) -> Unit,
-    onFilter: (AiProvider?) -> Unit,
+    onSelectProvider: (AiProvider) -> Unit,
     onSelect: (AiModelCapabilities) -> Unit,
-    onLoad: (AiProvider) -> Unit,
+    onRefresh: () -> Unit,
     onManualModel: (String) -> Unit,
     onConfigureKey: () -> Unit,
 ) {
     var manualModel by remember(selectedProvider) { mutableStateOf(selectedModel) }
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surfaceContainerLow, contentColor = MaterialTheme.colorScheme.onSurface) {
-        Column(modifier = Modifier.fillMaxWidth().heightIn(max = 720.dp).padding(horizontal = 15.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    var showManualModel by remember(selectedProvider) { mutableStateOf(false) }
+    val providerConnected = selectedProvider in connectedProviders
+    val filteredModels = models.filter { model ->
+        model.provider == selectedProvider &&
+            (search.isBlank() ||
+                model.displayName.contains(search, true) ||
+                model.modelId.contains(search, true) ||
+                model.capabilitySummary().contains(search, true))
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().heightIn(max = 720.dp).padding(horizontal = 15.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
                     Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.Psychology, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(19.dp))
+                        Icon(Icons.Filled.Psychology, contentDescription = null, modifier = Modifier.size(19.dp))
                     }
                 }
                 Spacer(Modifier.width(9.dp))
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                    Text("Select Model & Provider", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text("Switch the active inference engine", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+                    Text("AI model", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text("Choose a provider, then choose its model", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
                 }
                 IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
-                    Icon(Icons.Filled.Close, contentDescription = "Close model selector", tint = MaterialTheme.colorScheme.onSurface)
+                    Icon(Icons.Filled.Close, contentDescription = "Close model selector")
                 }
             }
-            OutlinedTextField(value = search, onValueChange = onSearch, modifier = Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text("Search models and capabilities…", color = MaterialTheme.colorScheme.outline) }, leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }, trailingIcon = { Icon(Icons.Filled.Tune, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }, colors = darkChatFieldColors())
-            Row(modifier = Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(selected = providerFilter == null, onClick = { onFilter(null) }, label = { Text("All providers") })
+
+            Text("PROVIDER", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
                 AiProvider.entries.forEach { provider ->
-                    FilterChip(selected = providerFilter == provider, onClick = { onFilter(provider) }, label = { Text(provider.displayName) })
+                    val connected = provider in connectedProviders
+                    FilterChip(
+                        selected = selectedProvider == provider,
+                        onClick = { onSelectProvider(provider) },
+                        modifier = Modifier.testTag("ai-provider-${provider.id}"),
+                        label = { Text(provider.displayName + if (connected) " ✓" else "") },
+                    )
                 }
             }
-            if (error != null) Text(error, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(13.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Box(
+                        Modifier.size(8.dp).clip(CircleShape)
+                            .background(if (providerConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline),
+                    )
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                        Text(
+                            if (providerConnected) "Connected" else "Not connected",
+                            color = MaterialTheme.colorScheme.onSurface,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            selectedProvider.displayName,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                    TextButton(onClick = onConfigureKey) {
+                        Text(if (providerConnected) "Manage" else "Connect")
+                    }
+                }
+            }
+
+            OutlinedTextField(
+                value = search,
+                onValueChange = onSearch,
+                modifier = Modifier.fillMaxWidth().testTag("ai-model-search"),
+                singleLine = true,
+                placeholder = { Text("Search this provider's models") },
+                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                colors = darkChatFieldColors(),
+            )
+
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("AVAILABLE MODELS", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
-                if (loading) CircularProgressIndicator(modifier = Modifier.size(17.dp), color = MaterialTheme.colorScheme.onSurface, strokeWidth = 2.dp)
-                TextButton(onClick = { onLoad(providerFilter ?: selectedProvider) }, enabled = !loading) { Text("Refresh") }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Text("MODELS", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
+                    Text(
+                        if (selectedModel.isBlank()) "No model selected" else "Current: " + selectedModel,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (loading) CircularProgressIndicator(modifier = Modifier.size(17.dp), strokeWidth = 2.dp)
+                TextButton(onClick = onRefresh, enabled = providerConnected && !loading) {
+                    Text(if (models.any { it.provider == selectedProvider }) "Refresh" else "Load models")
+                }
             }
-            val filteredModels = models.filter { model ->
-                (providerFilter == null || providerFilter == model.provider) &&
-                    (search.isBlank() || model.displayName.contains(search, true) || model.modelId.contains(search, true) || model.capabilitySummary().contains(search, true))
+
+            when {
+                !providerConnected -> {
+                    Text(
+                        "Connect this provider to load its model list. Your key is stored in the app's protected credential store.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                filteredModels.isEmpty() && !loading -> {
+                    Text(
+                        if (models.any { it.provider == selectedProvider }) {
+                            "No models match this search. Try another name or refresh the list."
+                        } else {
+                            "No model list loaded yet. Tap Load models, or enter a model ID below."
+                        },
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
             }
-            if (filteredModels.isEmpty() && !loading) {
-                Text("No cached models match this filter. Refresh the provider catalogue or enter a model ID below.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            if (error != null) {
+                Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
-            LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
                 items(filteredModels, key = { it.provider.id + ":" + it.modelId }) { model ->
-                    val selected = model.provider == selectedProvider && model.modelId == selectedModel
-                    Surface(onClick = { onSelect(model) }, color = if (selected) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(15.dp), border = androidx.compose.foundation.BorderStroke(if (selected) 1.dp else 0.5.dp, if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outlineVariant)) {
-                        Column(modifier = Modifier.fillMaxWidth().padding(11.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(model.displayName, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                                    Text(model.provider.displayName + " · " + model.modelId, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    val selected = model.modelId == selectedModel && model.provider == selectedProvider
+                    Surface(
+                        onClick = { onSelect(model) },
+                        color = if (selected) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surface,
+                        shape = RoundedCornerShape(12.dp),
+                        border = androidx.compose.foundation.BorderStroke(
+                            if (selected) 1.dp else 0.5.dp,
+                            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                        ),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(model.displayName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    model.modelId,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                    model.contextWindowTokens?.let { ModelBadge(formatCount(it) + " context") }
+                                    when (model.supportsStreaming) {
+                                        AiCapabilitySupport.SUPPORTED -> ModelBadge("Streaming")
+                                        AiCapabilitySupport.UNSUPPORTED -> ModelBadge("No streaming")
+                                        else -> Unit
+                                    }
+                                    if (model.supportsToolCalling == AiCapabilitySupport.SUPPORTED) ModelBadge("Tools")
                                 }
-                                if (selected) Icon(Icons.Filled.CheckCircle, contentDescription = "Selected model", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
                             }
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                model.contextWindowTokens?.let { ModelBadge(formatCount(it) + " context") }
-                                model.maxOutputTokens?.let { ModelBadge(formatCount(it) + " max output") }
-                                when (model.supportsStreaming) {
-                                    AiCapabilitySupport.SUPPORTED -> ModelBadge("Streaming")
-                                    AiCapabilitySupport.UNSUPPORTED -> ModelBadge("No streaming")
-                                    else -> Unit
-                                }
-                                if (model.supportsToolCalling == AiCapabilitySupport.SUPPORTED) ModelBadge("Tools")
+                            if (selected) {
+                                Icon(Icons.Filled.CheckCircle, contentDescription = "Selected model", tint = MaterialTheme.colorScheme.primary)
+                            } else {
+                                Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
                 }
             }
-            Text("Manual model ID", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(value = manualModel, onValueChange = { manualModel = it.take(256) }, modifier = Modifier.weight(1f), singleLine = true, placeholder = { Text("Enter a provider model ID") }, colors = darkChatFieldColors())
-                Button(onClick = { onManualModel(manualModel.trim()) }, enabled = manualModel.isNotBlank(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.onSurface, contentColor = MaterialTheme.colorScheme.background)) { Text("Use") }
+
+            TextButton(
+                onClick = { showManualModel = !showManualModel },
+                modifier = Modifier.fillMaxWidth().testTag("ai-manual-model-toggle"),
+            ) {
+                Text(if (showManualModel) "Hide custom model ID" else "Use a custom model ID")
             }
-            Button(onClick = onConfigureKey, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh, contentColor = MaterialTheme.colorScheme.onSurface)) {
-                Icon(Icons.Filled.Tune, contentDescription = null, modifier = Modifier.size(17.dp))
-                Spacer(Modifier.width(7.dp))
-                Text("Configure API key & endpoint")
+            if (showManualModel) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = manualModel,
+                        onValueChange = { manualModel = it.take(256) },
+                        modifier = Modifier.weight(1f).testTag("ai-manual-model-input"),
+                        singleLine = true,
+                        label = { Text("Model ID") },
+                        placeholder = { Text("Paste the exact model ID") },
+                        colors = darkChatFieldColors(),
+                    )
+                    Button(
+                        onClick = { onManualModel(manualModel.trim()) },
+                        enabled = manualModel.isNotBlank(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.onSurface,
+                            contentColor = MaterialTheme.colorScheme.background,
+                        ),
+                    ) { Text("Use") }
+                }
             }
+            Spacer(Modifier.height(8.dp))
         }
     }
 }

@@ -44,7 +44,8 @@ class AiChatScreenUiTest {
 
             composeRule.onNodeWithText("Models").performClick()
             composeRule.onNodeWithText("Select Model & Provider").assertIsDisplayed()
-            composeRule.onNodeWithText("Manual model ID").assertExists()
+            composeRule.onNodeWithTag("ai-manual-model-toggle").performClick()
+            composeRule.onNodeWithText("Model ID").assertExists()
 
             composeRule.onNodeWithContentDescription("Close model selector").assertExists()
             composeRule.onNodeWithContentDescription("Close model selector").performClick()
