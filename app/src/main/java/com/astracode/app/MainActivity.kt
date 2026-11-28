@@ -4029,17 +4029,6 @@ private fun FileManagementScreen(
         projectTypeLabel = openedFile?.let { fileBadgeForPath(it).label } ?: "WORKSPACE",
         buffers = drawerBuffers,
         unsavedCount = dirtyWorkspaceBufferCount,
-        aiModelLabel = if (aiHasApiKey) {
-            aiProvider.displayName + " · " + aiModel.ifBlank { "Choose model" }
-        } else {
-            "Not connected"
-        },
-        aiFixLabel = if (aiHasApiKey) {
-            "Ready to propose workspace file changes"
-        } else {
-            "Add a " + aiProvider.displayName + " API key to connect"
-        },
-        aiFixCode = "",
         lspName = lspDocumentPath?.let { "Language services · " + fileName(it) } ?: "Language services",
         lspStatus = if (storage.storageType == WorkspaceStorageType.DOCUMENT_TREE) "Local only" else lspStatus,
         lspErrors = lspErrors,
@@ -4675,23 +4664,6 @@ private fun FileManagementScreen(
                                 if (found == null) notify("No supported project configuration file was found in this workspace.")
                                 else openWorkspaceEditorPath(found)
                             }
-                        }
-                        DrawerAction.AskAi,
-                        DrawerAction.FixBorrowChecker,
-                        DrawerAction.GenerateCode,
-                        DrawerAction.ExplainCode -> {
-                            showEditorDrawer = false
-                            aiProposal = null
-                            aiDeleteAcknowledged = false
-                            aiPrompt = when (event.action) {
-                                DrawerAction.FixBorrowChecker -> "Find and fix the borrow-checker or compiler errors in this project."
-                                DrawerAction.GenerateCode -> "Help me implement the feature I describe."
-                                DrawerAction.ExplainCode -> "Explain the currently open file and its role in this project."
-                                else -> ""
-                            }
-                            aiMessage = null
-                            aiChatTransformOrigin = TransformOrigin(0.92f, 0.88f)
-                            showAiChat = true
                         }
                         DrawerAction.ConfigureLanguageServer -> {
                             lspConfigureError = null
