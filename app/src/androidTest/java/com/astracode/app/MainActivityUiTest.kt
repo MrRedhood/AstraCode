@@ -4,7 +4,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsProperties
 
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertTextEquals
@@ -1483,7 +1482,7 @@ class MainActivityUiTest {
         composeRule.onNodeWithTag("workspace-tree-workspace-delete-confirm").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             !createdRoot.exists() &&
-                runCatching { composeRule.onNodeWithTag(workspaceTag).assertDoesNotExist() }.isSuccess
+                runCatching { composeRule.onAllNodesWithTag(workspaceTag).assertCountEquals(0) }.isSuccess
         }
         assertTrue("The deleted named workspace should be removed from storage", !createdRoot.exists())
     }
@@ -1695,7 +1694,7 @@ class MainActivityUiTest {
         composeRule.onNodeWithTag("ai-floating-button").assertIsDisplayed()
 
         composeRule.onNodeWithContentDescription("Open editor drawer").performClick()
-        composeRule.onNodeWithText("AI Copilot & Assist").assertDoesNotExist()
+        composeRule.onAllNodesWithText("AI Copilot & Assist").assertCountEquals(0)
         composeRule.onAllNodesWithTag("ai-floating-button").assertCountEquals(0)
         composeRule.onNodeWithContentDescription("Close drawer").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
