@@ -3917,7 +3917,9 @@ private fun FileManagementScreen(
         contextMenuEntry != null || treeContextEntry != null || changePathEntry != null || operationEntry != null || syncEntry != null ||
         treeWorkspaceContextEntry != null || showCreateWorkspaceDialog || renameWorkspaceEntry != null ||
         pendingDeleteWorkspaceEntry != null || showDiscardDialog || showEditorTabDiscardDialog ||
-        showWorkspaceManager || showSavedDocuments || showWorkspaceSafety || bulkActionKind != null || bulkActionInProgress ||
+        showWorkspaceManager || showSavedDocuments || showWorkspaceSafety ||
+        inspectorEntry != null || showLspHoverDialog || showLspReferencesDialog || showLspConfigureDialog ||
+        bulkActionKind != null || bulkActionInProgress ||
         showAiWorkspacePlanner || showAiChat || showTerminalPanel || showBuildPanel
     val canNavigateBack = inspectorEntry != null || openedFile != null || selectedDocument != null ||
         activeMainScreen != Screen.Editor || screenBackStack.isNotEmpty() || currentDirectory.isNotEmpty() || selectionMode

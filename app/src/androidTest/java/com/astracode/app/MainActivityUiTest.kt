@@ -773,9 +773,16 @@ class MainActivityUiTest {
         }
         composeRule.onNodeWithContentDescription("Inspect metadata-sample.txt").performClick()
         composeRule.onNodeWithText("QUICK INSPECTOR").assertIsDisplayed()
+        composeRule.onAllNodesWithTag("ai-floating-button").assertCountEquals(0)
         composeRule.onNodeWithText("Format").fetchSemanticsNode()
         composeRule.onNodeWithText("Created").fetchSemanticsNode()
         composeRule.onNodeWithText("Modified").fetchSemanticsNode()
+
+        composeRule.onNodeWithText("Open item").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("file-editor-input").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("ai-floating-button").assertIsDisplayed()
     }
 
     @Test
