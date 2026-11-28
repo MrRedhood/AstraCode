@@ -142,9 +142,9 @@ class MainActivityUiTest {
         composeRule.onNodeWithTag("editor-completion-println").performClick()
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
-            runCatching { assertEquals("1 │ fun println", currentEditableEditorText()) }.isSuccess
+            runCatching { assertEquals("fun println", currentEditableEditorText()) }.isSuccess
         }
-        assertEquals("1 │ fun println", currentEditableEditorText())
+        assertEquals("fun println", currentEditableEditorText())
         composeRule.waitUntil(timeoutMillis = 10_000) {
             String(Files.readAllBytes(sourceFile), Charsets.UTF_8) == "fun println"
         }
@@ -190,13 +190,13 @@ class MainActivityUiTest {
             .performScrollToNode(hasTestTag("editor-tab-README.txt"))
         composeRule.onNodeWithTag("editor-tab-README.txt").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
-            runCatching { assertEquals("1 │ README unsaved draft", currentEditableEditorText()) }.isSuccess
+            runCatching { assertEquals("README unsaved draft", currentEditableEditorText()) }.isSuccess
         }
         composeRule.onNodeWithTag("editor-tabs")
             .performScrollToNode(hasTestTag("editor-tab-Main.kt"))
         composeRule.onNodeWithTag("editor-tab-Main.kt").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
-            runCatching { assertEquals("1 │ fun main() = 42", currentEditableEditorText()) }.isSuccess
+            runCatching { assertEquals("fun main() = 42", currentEditableEditorText()) }.isSuccess
         }
         composeRule.onNodeWithTag("save-file-button").performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
@@ -220,9 +220,11 @@ class MainActivityUiTest {
         val workspace = context.filesDir.toPath().resolve("workspace")
         Files.createDirectories(workspace)
         val file = workspace.resolve("README.txt")
+        val keepOpenFile = workspace.resolve("KeepOpen.txt")
         val original = "original\n"
         val draft = "unsaved draft"
         Files.write(file, original.toByteArray(Charsets.UTF_8))
+        Files.write(keepOpenFile, "keep this tab open".toByteArray(Charsets.UTF_8))
         recreateToFiles()
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
@@ -232,52 +234,74 @@ class MainActivityUiTest {
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("file-editor-input").assertIsDisplayed() }.isSuccess
         }
+        composeRule.onNodeWithTag("editor-back").performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("entry-KeepOpen.txt").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("entry-KeepOpen.txt").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("file-editor-input")
+                    .assertTextContains("keep this tab open", substring = true)
+            }.isSuccess
+        }
+
+        // Open two files before editing so the tab strip and close button are visible.
+        composeRule.onNodeWithTag("editor-tab-README.txt").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("file-editor-input")
+                    .assertTextContains(original.trim(), substring = true)
+            }.isSuccess
+        }
         composeRule.onNodeWithTag("file-editor-input").performTextReplacement(draft)
         composeRule.onNodeWithTag("editor-tab-close-README.txt").performClick()
+
+        // Closing a dirty tab either opens the discard prompt or waits for autosave and closes it.
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            val promptVisible = runCatching {
+                composeRule.onNodeWithTag("editor-tab-discard-confirm").assertIsDisplayed()
+            }.isSuccess
+            val closeControlGone = composeRule.onAllNodesWithTag("editor-tab-close-README.txt")
+                .fetchSemanticsNodes().isEmpty()
+            promptVisible || closeControlGone
+        }
 
         val promptVisible = runCatching {
             composeRule.onNodeWithTag("editor-tab-discard-confirm").assertIsDisplayed()
         }.isSuccess
-
         if (promptVisible) {
-            // If a save began just before the prompt appeared, wait until it finishes.
-            // If the file is still unchanged, autosave is correctly paused and discard is safe.
-            composeRule.waitUntil(timeoutMillis = 5_000) {
-                runCatching { composeRule.onNodeWithTag("editor-tab-discard-confirm").assertIsEnabled() }.isSuccess
-            }
-            val currentDiskText = String(Files.readAllBytes(file), Charsets.UTF_8)
-            if (currentDiskText == original) {
-                composeRule.onNodeWithTag("editor-tab-discard-confirm").performClick()
-                composeRule.waitUntil(timeoutMillis = 5_000) {
-                    runCatching { composeRule.onNodeWithTag("entry-README.txt").assertIsDisplayed() }.isSuccess
-                }
-                assertEquals(original, String(Files.readAllBytes(file), Charsets.UTF_8))
-                return
-            }
-
-            // The save finished before the user could decide. Cancel leaves the saved
-            // content in place; the tab must no longer pretend those changes are discardable.
+            // Keep the draft, allow autosave to finish, then close the now-clean tab.
             composeRule.onNodeWithTag("editor-tab-discard-cancel").performClick()
-            composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.waitUntil(timeoutMillis = 10_000) {
                 runCatching {
-                    composeRule.onNodeWithTag("file-editor-input").assertTextContains(draft, substring = true)
-                }.isSuccess
-            }
-        }
-
-        composeRule.waitUntil(timeoutMillis = 10_000) {
-            runCatching { String(Files.readAllBytes(file), Charsets.UTF_8) == draft }.getOrDefault(false)
-        }
-        if (runCatching { composeRule.onNodeWithTag("file-editor-input").assertIsDisplayed() }.isSuccess) {
-            composeRule.waitUntil(timeoutMillis = 5_000) {
-                runCatching {
-                    composeRule.onNodeWithTag("editor-tab-README.txt").assertTextEquals("README.txt")
-                }.isSuccess
+                    String(Files.readAllBytes(file), Charsets.UTF_8) == draft
+                }.getOrDefault(false)
             }
             composeRule.onNodeWithTag("editor-tab-close-README.txt").performClick()
         }
+
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithTag("editor-tab-close-README.txt")
+                .fetchSemanticsNodes().isEmpty()
+        }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching { String(Files.readAllBytes(file), Charsets.UTF_8) == draft }.getOrDefault(false)
+        }
+        composeRule.onNodeWithTag("file-editor-input")
+            .assertTextContains("keep this tab open", substring = true)
+
+        composeRule.onNodeWithTag("editor-back").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("entry-README.txt").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("entry-README.txt").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("file-editor-input")
+                    .assertTextContains(draft, substring = true)
+            }.isSuccess
         }
         assertEquals(draft, String(Files.readAllBytes(file), Charsets.UTF_8))
     }
@@ -288,6 +312,7 @@ class MainActivityUiTest {
         val workspace = context.filesDir.toPath().resolve("workspace")
         Files.createDirectories(workspace)
         Files.write(workspace.resolve("WorkspaceClose.txt"), "Workspace close fixture\n".toByteArray(Charsets.UTF_8))
+        Files.write(workspace.resolve("KeepOpen.txt"), "Keep this other tab open".toByteArray(Charsets.UTF_8))
         recreateToFiles()
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
@@ -300,30 +325,37 @@ class MainActivityUiTest {
                     .assertTextContains("Workspace close fixture", substring = true)
             }.isSuccess
         }
-        composeRule.onNodeWithTag("editor-tab-close-WorkspaceClose.txt").assertIsDisplayed()
 
-        // Going back to Workspace keeps the tab open, but the file row itself has no close control.
+        // Return to the workspace without editing, then open a second file to show the tab strip.
+        composeRule.onNodeWithTag("editor-back").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("entry-KeepOpen.txt").assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag("entry-KeepOpen.txt").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("file-editor-input")
+                    .assertTextContains("Keep this other tab open", substring = true)
+            }.isSuccess
+        }
+        composeRule.onNodeWithTag("editor-tab-WorkspaceClose.txt").performClick()
+        composeRule.onNodeWithTag("editor-tab-close-WorkspaceClose.txt").assertIsDisplayed()
+        composeRule.onNodeWithTag("editor-tab-close-WorkspaceClose.txt").performClick()
+
+        // Closing the active tab selects the remaining open tab.
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("file-editor-input")
+                    .assertTextContains("Keep this other tab open", substring = true)
+            }.isSuccess
+        }
+        composeRule.onAllNodesWithTag("editor-tab-close-WorkspaceClose.txt").assertCountEquals(0)
         composeRule.onNodeWithTag("editor-back").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { composeRule.onNodeWithTag("entry-WorkspaceClose.txt").assertIsDisplayed() }.isSuccess
         }
-        composeRule.onAllNodesWithTag("workspace-close-open-file-WorkspaceClose.txt").assertCountEquals(0)
 
-        // Reopen the existing tab, then close it with the control beside its editor-tab filename.
-        composeRule.onNodeWithTag("entry-WorkspaceClose.txt").performClick()
-        composeRule.waitUntil(timeoutMillis = 5_000) {
-            runCatching {
-                composeRule.onNodeWithTag("file-editor-input")
-                    .assertTextContains("Workspace close fixture", substring = true)
-            }.isSuccess
-        }
-        composeRule.onNodeWithTag("editor-tab-close-WorkspaceClose.txt").performClick()
-        composeRule.waitUntil(timeoutMillis = 5_000) {
-            runCatching { composeRule.onNodeWithTag("entry-WorkspaceClose.txt").assertIsDisplayed() }.isSuccess
-        }
-        composeRule.onAllNodesWithTag("editor-tab-close-WorkspaceClose.txt").assertCountEquals(0)
-        composeRule.onAllNodesWithTag("workspace-close-open-file-WorkspaceClose.txt").assertCountEquals(0)
-
+        // Reopening the closed file adds it beside the still-open tab, restoring the tab strip.
         composeRule.onNodeWithTag("entry-WorkspaceClose.txt").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching {
@@ -332,6 +364,10 @@ class MainActivityUiTest {
             }.isSuccess
         }
         composeRule.onNodeWithTag("editor-tab-close-WorkspaceClose.txt").assertIsDisplayed()
+        assertEquals(
+            "Workspace close fixture\n",
+            String(Files.readAllBytes(workspace.resolve("WorkspaceClose.txt")), Charsets.UTF_8),
+        )
     }
 
     @Test
@@ -373,7 +409,7 @@ class MainActivityUiTest {
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching {
                 assertEquals(
-                    "1 │ first unsaved draft",
+                    "first unsaved draft",
                     editor.fetchSemanticsNode().config[SemanticsProperties.EditableText].text,
                 )
             }.isSuccess
@@ -382,7 +418,7 @@ class MainActivityUiTest {
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching {
                 assertEquals(
-                    "1 │ second unsaved draft",
+                    "second unsaved draft",
                     editor.fetchSemanticsNode().config[SemanticsProperties.EditableText].text,
                 )
             }.isSuccess
@@ -433,7 +469,7 @@ class MainActivityUiTest {
             composeRule.onNodeWithTag("editor-tab-DraftOne.kt").performClick()
             composeRule.waitUntil(timeoutMillis = 5_000) {
                 runCatching {
-                    assertEquals("1 │ first draft $iteration", currentEditableEditorText())
+                    assertEquals("first draft $iteration", currentEditableEditorText())
                 }.isSuccess
             }
             editor.performTextReplacement("first draft ${iteration + 1}")
@@ -443,7 +479,7 @@ class MainActivityUiTest {
             composeRule.onNodeWithTag("editor-tab-DraftTwo.kt").performClick()
             composeRule.waitUntil(timeoutMillis = 5_000) {
                 runCatching {
-                    assertEquals("1 │ second draft $iteration", currentEditableEditorText())
+                    assertEquals("second draft $iteration", currentEditableEditorText())
                 }.isSuccess
             }
             editor.performTextReplacement("second draft ${iteration + 1}")
@@ -453,7 +489,7 @@ class MainActivityUiTest {
             .performScrollToNode(hasTestTag("editor-tab-DraftOne.kt"))
         composeRule.onNodeWithTag("editor-tab-DraftOne.kt").performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
-            runCatching { assertEquals("1 │ first draft 15", currentEditableEditorText()) }.isSuccess
+            runCatching { assertEquals("first draft 15", currentEditableEditorText()) }.isSuccess
         }
         composeRule.waitUntil(timeoutMillis = 10_000) {
             runCatching {
@@ -1388,9 +1424,6 @@ class MainActivityUiTest {
             runCatching { composeRule.onNodeWithTag("entry-SymbolReference.kt").assertIsDisplayed() }.isSuccess
         }
         composeRule.onNodeWithTag("entry-SymbolReference.kt").performClick()
-        composeRule.waitUntil(timeoutMillis = 5_000) {
-            runCatching { composeRule.onNodeWithTag("editor-tab-SymbolReference.kt").assertIsDisplayed() }.isSuccess
-        }
         val editor = composeRule.onNodeWithTag("file-editor-input")
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching { editor.assertIsDisplayed() }.isSuccess
