@@ -181,6 +181,71 @@ class AiConversationStore(context: Context) : SQLiteOpenHelper(
         }
     }
 
+    /**
+     * Removes a user message and every later turn so the user can edit and
+     * resubmit it without retaining an assistant answer to the old prompt.
+     */
+    fun removeMessagesFrom(threadId: String, messageId: Long) {
+        val db = writableDatabase
+        val role = db.query(
+            "messages",
+            arrayOf("role"),
+            "thread_id = ? AND id = ?",
+            arrayOf(threadId, messageId.toString()),
+            null,
+            null,
+            null,
+            "1",
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) {
+                throw IllegalArgumentException("Conversation message was not found")
+            }
+            AiConversationRole.fromWireValue(cursor.getString(0))
+        }
+        require(role == AiConversationRole.USER) {
+            "Only a user message can be edited or used to remove later turns"
+        }
+
+        val firstUserMessageId = db.rawQuery(
+            "SELECT id FROM messages WHERE thread_id = ? AND role = ? ORDER BY id ASC LIMIT 1",
+            arrayOf(threadId, AiConversationRole.USER.wireValue),
+        ).use { cursor ->
+            if (cursor.moveToFirst()) cursor.getLong(0) else null
+        }
+        val existingTitle = getThread(threadId)?.title
+            ?: throw IllegalArgumentException("Conversation was not found")
+
+        db.beginTransaction()
+        try {
+            db.delete(
+                "messages",
+                "thread_id = ? AND id >= ?",
+                arrayOf(threadId, messageId.toString()),
+            )
+            val updatedTitle = if (firstUserMessageId == messageId) {
+                val firstUserMessage = db.rawQuery(
+                    "SELECT content FROM messages WHERE thread_id = ? AND role = ? ORDER BY id ASC LIMIT 1",
+                    arrayOf(threadId, AiConversationRole.USER.wireValue),
+                ).use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0) else null
+                }
+                firstUserMessage?.let(::normalizeTitle) ?: DEFAULT_TITLE
+            } else {
+                existingTitle
+            }
+            val values = ContentValues().apply {
+                put("title", updatedTitle)
+                put("updated_at", System.currentTimeMillis())
+            }
+            check(db.update("conversations", values, "id = ?", arrayOf(threadId)) == 1) {
+                "Conversation was not found"
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
     fun deleteThread(threadId: String) {
         check(writableDatabase.delete("conversations", "id = ?", arrayOf(threadId)) == 1) {
             "Conversation was not found"

@@ -3,6 +3,7 @@ package com.astracode.connectors
 import android.content.Context
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -83,6 +84,29 @@ class AiConversationStoreTest {
         assertTrue(history.contains("created a login proposal"))
         assertTrue(history.contains("reference only"))
         assertTrue(history.length <= 16_000)
+    }
+
+    @Test
+    fun editingUserMessageRemovesThatTurnAndAllLaterTurns() {
+        val thread = store.createThread("workspace-one")
+        store.appendMessage(thread.id, AiConversationRole.USER, "First prompt")
+        val firstAssistant = store.appendMessage(thread.id, AiConversationRole.ASSISTANT, "First answer")
+        val editedPrompt = store.appendMessage(thread.id, AiConversationRole.USER, "Outdated second prompt")
+        store.appendMessage(thread.id, AiConversationRole.ASSISTANT, "Outdated second answer")
+        store.renameThread(thread.id, "Pinned database investigation")
+
+        store.removeMessagesFrom(thread.id, editedPrompt.id)
+
+        val remaining = store.loadMessages(thread.id)
+        assertEquals(2, remaining.size)
+        assertEquals(listOf(AiConversationRole.USER, AiConversationRole.ASSISTANT), remaining.map { it.role })
+        assertEquals("First answer", remaining.last().content)
+        assertEquals(2, store.getThread(thread.id)?.messageCount)
+        assertEquals("Pinned database investigation", store.getThread(thread.id)?.title)
+
+        assertFailsWith<IllegalArgumentException> {
+            store.removeMessagesFrom(thread.id, firstAssistant.id)
+        }
     }
 
     @Test

@@ -18,18 +18,19 @@ internal data class SyntaxLanguageDefinition(
 )
 internal data class SyntaxHighlightSpan(val start: Int, val end: Int, val style: SpanStyle)
 internal object SyntaxPalette {
-    val Keyword = Color(0xFFC792EA)
-    val Type = Color(0xFFFFCB6B)
-    val String = Color(0xFFC3E88D)
-    val Comment = Color(0xFF7F8C98)
-    val Number = Color(0xFFF78C6C)
-    val Function = Color(0xFF82AAFF)
-    val Annotation = Color(0xFFFFCB6B)
-    val Tag = Color(0xFFF07178)
-    val Attribute = Color(0xFFC792EA)
-    val Property = Color(0xFF80CBC4)
-    val Constant = Color(0xFFFF9CAC)
-    val Markup = Color(0xFFE5B567)
+    // Monochrome syntax levels keep code readable without introducing a second app palette.
+    val Keyword = Color(0xFFFFFFFF)
+    val Type = Color(0xFFE6E6E6)
+    val String = Color(0xFFCFCFCF)
+    val Comment = Color(0xFF858585)
+    val Number = Color(0xFFDADADA)
+    val Function = Color(0xFFF5F5F5)
+    val Annotation = Color(0xFFD0D0D0)
+    val Tag = Color(0xFFE0E0E0)
+    val Attribute = Color(0xFFBDBDBD)
+    val Property = Color(0xFFEAEAEA)
+    val Constant = Color(0xFFFFFFFF)
+    val Markup = Color(0xFFB8B8B8)
 }
 private const val MAX_HIGHLIGHTED_CHARS = 512 * 1024
 

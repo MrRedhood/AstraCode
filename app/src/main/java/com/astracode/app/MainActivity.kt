@@ -124,6 +124,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.astracode.filesystem.FileEntry
 import com.astracode.filesystem.FileEntryType
 import com.astracode.filesystem.FileManagementSystem
@@ -204,39 +206,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.TimeUnit
 
-private val Ink = Color(0xFF101311)
-private val Panel = Color(0xFF1C211D)
-private val PanelRaised = Color(0xFF272D27)
-private val Mint = Color(0xFFC5A46D)
-private val PrimaryText = Color(0xFFE8E3D8)
-private val MutedText = Color(0xFFA7ADA4)
-private val Sage = Color(0xFF87948A)
-private val Border = Color(0xFF343B34)
-private val Danger = Color(0xFFD9857C)
-private val Warning = Color(0xFFE3B567)
-
-private val AstraColorScheme = darkColorScheme(
-    primary = Mint,
-    onPrimary = Ink,
-    primaryContainer = Color(0xFF3B3020),
-    onPrimaryContainer = PrimaryText,
-    secondary = Sage,
-    onSecondary = Ink,
-    secondaryContainer = Color(0xFF283229),
-    onSecondaryContainer = PrimaryText,
-    tertiary = Warning,
-    onTertiary = Ink,
-    background = Ink,
-    onBackground = PrimaryText,
-    surface = Ink,
-    onSurface = PrimaryText,
-    surfaceVariant = Panel,
-    onSurfaceVariant = MutedText,
-    outline = Border,
-    outlineVariant = Border,
-    error = Danger,
-    errorContainer = Color(0xFF35201D),
-)
 private const val PRIVATE_WORKSPACE_ID = "private"
 private const val SAVED_WORKSPACES_KEY = "saved_workspace_uris"
 private const val ACTIVE_WORKSPACE_KEY = "active_workspace_id"
@@ -1165,7 +1134,8 @@ private fun FileManagementScreen(
     DisposableEffect(storage) {
         onDispose { lspManager?.close() }
     }
-    var showAiAssistant by remember(storage) { mutableStateOf(false) }
+    var showAiWorkspacePlanner by remember(storage) { mutableStateOf(false) }
+    var showAiChat by remember(storage) { mutableStateOf(false) }
     var aiProvider by remember(aiPreferences) {
         mutableStateOf(AiProvider.fromId(aiPreferences.getString("provider", "openai")))
     }
@@ -3938,7 +3908,7 @@ private fun FileManagementScreen(
         treeWorkspaceContextEntry != null || showCreateWorkspaceDialog || renameWorkspaceEntry != null ||
         pendingDeleteWorkspaceEntry != null || showDiscardDialog || showEditorTabDiscardDialog ||
         showWorkspaceManager || showSavedDocuments || showWorkspaceSafety || bulkActionKind != null || bulkActionInProgress ||
-        showAiAssistant || showTerminalPanel || showBuildPanel
+        showAiWorkspacePlanner || showAiChat || showTerminalPanel || showBuildPanel
     val canNavigateBack = inspectorEntry != null || openedFile != null || selectedDocument != null ||
         activeMainScreen != Screen.Editor || screenBackStack.isNotEmpty() || currentDirectory.isNotEmpty() || selectionMode
 
@@ -4119,7 +4089,7 @@ private fun FileManagementScreen(
     }
 
     Scaffold(
-        containerColor = Ink,
+        containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets.systemBars,
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
@@ -4127,7 +4097,7 @@ private fun FileManagementScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(Ink),
+                .background(MaterialTheme.colorScheme.background),
         ) {
             AppTopBar(
                 openedFile = selectedDocument?.name ?: openedFile,
@@ -4154,7 +4124,7 @@ private fun FileManagementScreen(
                     showWorkspaceTree = true
                 },
             )
-            Divider(color = Border, thickness = 1.dp)
+            Divider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
 
             if (openedFile != null || selectedDocument != null) {
                 if (selectedDocument != null && standaloneDocumentLoading) {
@@ -4654,7 +4624,7 @@ private fun FileManagementScreen(
                                 else -> ""
                             }
                             aiMessage = null
-                            showAiAssistant = true
+                            showAiChat = true
                         }
                         DrawerAction.ConfigureLanguageServer -> {
                             lspConfigureError = null
@@ -4756,7 +4726,7 @@ private fun FileManagementScreen(
                     Text(
                         "Enter an installed executable as a JSON array of command arguments. Example: [\"/absolute/path/to/server\"]. AstraCode does not download language servers.",
                         fontSize = 12.sp,
-                        color = MutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     OutlinedTextField(
                         value = lspCommandArgsJson,
@@ -4783,9 +4753,9 @@ private fun FileManagementScreen(
                     Text(
                         "A configured language server runs with AstraCode's app permissions. Only use an executable you trust. Local process launch is unavailable for SAF document-tree workspaces.",
                         fontSize = 11.sp,
-                        color = MutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    lspConfigureError?.let { Text(it, color = Danger, fontSize = 12.sp) }
+                    lspConfigureError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
                 }
             },
             confirmButton = {
@@ -4844,7 +4814,7 @@ private fun FileManagementScreen(
                         ) {
                             Column(Modifier.fillMaxWidth()) {
                                 Text(fileName(path), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text(path, color = MutedText, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(path, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
                     }
@@ -4877,7 +4847,7 @@ private fun FileManagementScreen(
                         isError = goToLineError != null,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     )
-                    goToLineError?.let { Text(it, color = Danger, fontSize = 12.sp) }
+                    goToLineError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
                 }
             },
             confirmButton = {
@@ -4986,7 +4956,7 @@ private fun FileManagementScreen(
                             pendingDeleteWorkspaceEntry = entry
                         },
                         modifier = Modifier.fillMaxWidth().testTag("workspace-tree-workspace-delete"),
-                    ) { Text("Delete", color = Danger) }
+                    ) { Text("Delete", color = MaterialTheme.colorScheme.error) }
                 }
             },
             confirmButton = {
@@ -5223,7 +5193,7 @@ private fun FileManagementScreen(
                             pendingDeletePath = entry.path
                         },
                         modifier = Modifier.fillMaxWidth().testTag("workspace-context-delete"),
-                    ) { Text("Delete", color = Danger) }
+                    ) { Text("Delete", color = MaterialTheme.colorScheme.error) }
                     TextButton(
                         onClick = { openChangePathPicker(entry) },
                         modifier = Modifier.fillMaxWidth().testTag("workspace-context-change-path"),
@@ -5283,7 +5253,7 @@ private fun FileManagementScreen(
                                 pendingDeletePath = entry.path
                             },
                             modifier = Modifier.fillMaxWidth().testTag("workspace-tree-context-delete"),
-                        ) { Text("Delete", color = Danger) }
+                        ) { Text("Delete", color = MaterialTheme.colorScheme.error) }
                         TextButton(
                             onClick = {
                                 treeContextEntry = null
@@ -5989,7 +5959,7 @@ private fun FileManagementScreen(
                         }
                     },
                     modifier = Modifier.testTag("confirm-workspace-delete"),
-                ) { Text("Delete", color = Danger) }
+                ) { Text("Delete", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
                 TextButton(onClick = { pendingDeletePath = null }) { Text("Cancel") }
@@ -6121,7 +6091,7 @@ private fun FileManagementScreen(
                 ) {
                     Text(
                         "Runs the Gradle wrapper for the active private workspace. It requires a compatible ARM64 JDK in the app runtime folder. SAF Document Tree workspaces are not supported by this first build path.",
-                        color = MutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
                     OutlinedTextField(
@@ -6139,7 +6109,7 @@ private fun FileManagementScreen(
                             color = if (message.contains("failed", true) ||
                                 message.contains("not found", true) ||
                                 message.contains("require", true)
-                            ) Danger else MutedText,
+                            ) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
@@ -6153,7 +6123,7 @@ private fun FileManagementScreen(
                                 diagnostic.path + ":" + diagnostic.line +
                                     (diagnostic.column?.let { ":" + it } ?: "") +
                                     " · " + diagnostic.message,
-                                color = if (diagnostic.severity.name == "ERROR") Danger else MutedText,
+                                color = if (diagnostic.severity.name == "ERROR") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
@@ -6166,13 +6136,13 @@ private fun FileManagementScreen(
                                     " · " + (artifact.sizeBytes / 1024) + " KiB · " +
                                     if (artifact.valid) "archive valid" else
                                         (artifact.validationMessage ?: "invalid"),
-                                color = if (artifact.valid) Mint else Danger,
+                                color = if (artifact.valid) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
                         Text(
                             "Archive validation does not verify APK signing, device compatibility, or Play Store readiness.",
-                            color = MutedText,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.labelSmall,
                         )
                     }
@@ -6180,7 +6150,7 @@ private fun FileManagementScreen(
                         Text("Build output", style = MaterialTheme.typography.labelLarge)
                         Text(
                             buildOutput,
-                            color = MutedText,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontFamily = FontFamily.Monospace,
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.fillMaxWidth().testTag("build-output"),
@@ -6222,7 +6192,7 @@ private fun FileManagementScreen(
                 ) {
                     Text(
                         "Android system shell · " + (terminalRunner.getOrNull()?.shellDescription ?: "unavailable"),
-                        color = MutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.labelMedium,
                     )
                     Text(
@@ -6231,17 +6201,17 @@ private fun FileManagementScreen(
                         } else {
                             "This SAF workspace cannot be mounted into the app shell yet. Commands run in a separate private terminal folder."
                         },
-                        color = MutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Text(
                         "This is not a full Ubuntu/Debian Linux environment. Only Android-installed commands are available. Every command starts a new shell, and cd is remembered here. The shell has the Android app's normal permissions; the workspace is its starting folder, not an operating-system sandbox.",
-                        color = MutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Text(
                         terminalWorkingDirectory,
-                        color = Mint,
+                        color = MaterialTheme.colorScheme.primary,
                         style = MaterialTheme.typography.labelSmall,
                     )
                     OutlinedTextField(
@@ -6269,7 +6239,7 @@ private fun FileManagementScreen(
                     if (terminalOutput.isNotBlank()) {
                         Text(
                             terminalOutput,
-                            color = PrimaryText,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontFamily = FontFamily.Monospace,
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.fillMaxWidth().testTag("terminal-output"),
@@ -6286,7 +6256,33 @@ private fun FileManagementScreen(
         )
     }
 
-    if (showAiAssistant) {
+    if (showAiChat) {
+        Dialog(
+            onDismissRequest = { showAiChat = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background,
+            ) {
+                AiChatScreen(
+                    activeWorkspaceId = activeWorkspaceId,
+                    assistant = workspaceAiAssistant,
+                    conversationStore = aiConversationStore,
+                    preferences = aiPreferences,
+                    initialPrompt = aiPrompt,
+                    onOpenWorkspacePlanner = {
+                        if (!aiBusy) {
+                            showAiChat = false
+                            showAiWorkspacePlanner = true
+                        }
+                    },
+                )
+            }
+        }
+    }
+
+    if (showAiWorkspacePlanner) {
         val proposal = aiProposal
         val selectedCapabilityBase = aiModel.takeIf { it.isNotBlank() }?.let { modelId ->
             aiModelCatalog.firstOrNull { it.modelId == modelId } ?: AiModelCapabilities(
@@ -6342,7 +6338,7 @@ private fun FileManagementScreen(
             it.operation == AiChangeOperation.DELETE
         } == true
         AlertDialog(
-            onDismissRequest = { if (!aiBusy) showAiAssistant = false },
+            onDismissRequest = { if (!aiBusy) showAiWorkspacePlanner = false },
             title = { Text("AI workspace assistant") },
             text = {
                 Column(
@@ -6385,7 +6381,7 @@ private fun FileManagementScreen(
                         }
                         Text(
                             if (aiHasApiKey) "Connected" else "Not connected",
-                            color = if (aiHasApiKey) Mint else MutedText,
+                            color = if (aiHasApiKey) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.labelSmall,
                         )
                     }
@@ -6395,7 +6391,7 @@ private fun FileManagementScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Conversation", style = MaterialTheme.typography.labelSmall, color = MutedText)
+                            Text("Conversation", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
                                 aiConversationThread?.title ?: "New conversation",
                                 style = MaterialTheme.typography.bodyMedium,
@@ -6424,7 +6420,7 @@ private fun FileManagementScreen(
                                     AiConversationRole.SYSTEM -> "System"
                                 }
                                 Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                                    Text(roleLabel, style = MaterialTheme.typography.labelSmall, color = MutedText)
+                                    Text(roleLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     Text(
                                         message.content.replace("\n", " ").take(220),
                                         style = MaterialTheme.typography.bodySmall,
@@ -6440,7 +6436,7 @@ private fun FileManagementScreen(
                                     if (telemetry.isNotEmpty()) {
                                         Text(
                                             telemetry.joinToString(" · "),
-                                            color = MutedText,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             style = MaterialTheme.typography.labelSmall,
                                         )
                                     }
@@ -6450,7 +6446,7 @@ private fun FileManagementScreen(
                     }
                     Text(
                         "Each provider has its own encrypted API key. Selected source files and enabled diagnostics/terminal context are sent to the selected API. Continuing a thread also sends its recent saved history. Conversation history is stored in this app's private on-device database and is not separately encrypted. OpenRouter may forward request content to a model host. API keys are encrypted at rest with Android Keystore but can be exposed on a compromised device while in use.",
-                        color = MutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -6467,7 +6463,7 @@ private fun FileManagementScreen(
                     if (aiFallbackEnabled) {
                         Text(
                             "A fallback sends the same task and selected source context to another provider. It is disabled unless you select destinations here. To use an undocumented model as a fallback, select that provider first, verify its model capabilities, then return here.",
-                            color = MutedText,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodySmall,
                         )
                         AiProvider.entries.filterNot { it == aiProvider }.forEach { fallbackProvider ->
@@ -6493,7 +6489,7 @@ private fun FileManagementScreen(
                                 Text(
                                     fallbackProvider.displayName +
                                         if (fallbackHasKey) "" else " · API key not saved",
-                                    color = if (fallbackHasKey) PrimaryText else MutedText,
+                                    color = if (fallbackHasKey) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
                         }
@@ -6676,7 +6672,7 @@ private fun FileManagementScreen(
                             )
                             Text(
                                 "Agent profiles can use a different configured provider/model. Their tools are read-only and limited to these selected workspace files. Parallelism and context limits protect battery, memory, and API usage.",
-                                color = MutedText,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
@@ -6716,7 +6712,7 @@ private fun FileManagementScreen(
                     }
                     Text(
                         "AI tools cannot run terminal commands, access the network, or write/delete files. File changes stay in the review screen.",
-                        color = MutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.labelSmall,
                     )
                     if (aiProvider.customEndpoint) {
@@ -6751,12 +6747,12 @@ private fun FileManagementScreen(
                         Text(
                             "Selected model: " + capability.capabilitySummary() +
                                 " · source: " + capability.source.name.lowercase().replace("_", " "),
-                            color = MutedText,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodySmall,
                         )
                     } ?: Text(
                         "Model capability data is not available for this manually entered or unlisted model. Unknown does not mean unsupported.",
-                        color = MutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
                     if (aiModel.isNotBlank()) {
@@ -6790,7 +6786,7 @@ private fun FileManagementScreen(
                             )
                             Text(
                                 "I verified this model supports function/tool calling",
-                                color = MutedText,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
@@ -6806,13 +6802,13 @@ private fun FileManagementScreen(
                             )
                             Text(
                                 "I verified this model supports streaming responses",
-                                color = MutedText,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
                         Text(
                             "These confirmations are saved for this provider/model and are used when assessing explicit fallback destinations. They do not change the provider's actual API support.",
-                            color = MutedText,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.labelSmall,
                         )
                         OutlinedButton(
@@ -6834,7 +6830,7 @@ private fun FileManagementScreen(
                                     )
                                     Text(
                                         capability.capabilitySummary(),
-                                        color = MutedText,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         style = MaterialTheme.typography.bodySmall,
                                     )
                                 }
@@ -6843,7 +6839,7 @@ private fun FileManagementScreen(
                             if (aiModelCatalog.size > 12) {
                                 Text(
                                     "Showing 12 of " + aiModelCatalog.size + " models. Use the model selector to choose others.",
-                                    color = MutedText,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     style = MaterialTheme.typography.labelSmall,
                                 )
                             }
@@ -6851,7 +6847,7 @@ private fun FileManagementScreen(
                     }
                     Text(
                         "Test connection sends a short streamed request to the selected model. The provider may charge a small amount for these test tokens.",
-                        color = MutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.labelSmall,
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -7024,7 +7020,7 @@ private fun FileManagementScreen(
                     Text(
                         "The assistant reads at most 60 supported text files (up to 600 KiB total), skips common secret-file names and files containing common token/private-key patterns, and includes unsaved editor drafts. Current context: " +
                             aiContextFileCount + " file(s).",
-                        color = MutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall,
                     )
                     proposal?.let { plan ->
@@ -7038,7 +7034,7 @@ private fun FileManagementScreen(
                                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                     Text(
                                         change.operation.name + " · " + change.path,
-                                        color = if (change.operation == AiChangeOperation.DELETE) Danger else Mint,
+                                        color = if (change.operation == AiChangeOperation.DELETE) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                                         style = MaterialTheme.typography.labelLarge,
                                     )
                                     if (change.reason.isNotBlank()) {
@@ -7051,7 +7047,7 @@ private fun FileManagementScreen(
                                             "New content preview: " + change.content.take(previewLimit)
                                                 .replace("\n", " ↵ ") +
                                                 if (change.content.length > previewLimit) "…" else "",
-                                            color = MutedText,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             style = MaterialTheme.typography.bodySmall,
                                         )
                                         if (change.content.length > 320) {
@@ -7070,7 +7066,7 @@ private fun FileManagementScreen(
                                         if (expanded && change.content.length > previewLimit) {
                                             Text(
                                                 "Preview limited to 12,000 characters. The complete proposed file is retained in the plan.",
-                                                color = MutedText,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 style = MaterialTheme.typography.labelSmall,
                                             )
                                         }
@@ -7078,13 +7074,13 @@ private fun FileManagementScreen(
                                         val previous = aiBaselineFiles[change.path].orEmpty()
                                         Text(
                                             "This moves the file into workspace Trash, where it can be restored until retention cleanup removes it.",
-                                            color = Danger,
+                                            color = MaterialTheme.colorScheme.error,
                                             style = MaterialTheme.typography.bodySmall,
                                         )
                                         if (previous.isNotBlank()) {
                                             Text(
                                                 "Current file preview: " + previous.take(320).replace("\n", " ↵ "),
-                                                color = MutedText,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 style = MaterialTheme.typography.bodySmall,
                                             )
                                         }
@@ -7117,14 +7113,14 @@ private fun FileManagementScreen(
                             "Provider usage (all streamed rounds): input " + input +
                                 " · output " + output + " · total " + total +
                                 " · cached input " + cached + " · " + cost,
-                            color = MutedText,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
                     aiAgentSummary?.let { report ->
                         Text(
                             "Agent report: " + report,
-                            color = MutedText,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
@@ -7132,7 +7128,7 @@ private fun FileManagementScreen(
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text("Agent audit trail", style = MaterialTheme.typography.labelMedium)
                             aiAgentAuditTrail.takeLast(20).forEach { entry ->
-                                Text(entry, color = MutedText, style = MaterialTheme.typography.labelSmall)
+                                Text(entry, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
                             }
                         }
                     }
@@ -7140,14 +7136,14 @@ private fun FileManagementScreen(
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text("Live activity", style = MaterialTheme.typography.labelMedium)
                             aiProgressEvents.forEach { event ->
-                                Text(event, color = MutedText, style = MaterialTheme.typography.bodySmall)
+                                Text(event, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                             }
                         }
                     }
                     if (aiStreamingPreview.isNotBlank() && (aiBusy || proposal == null)) {
                         Text(
                             "Streaming output: " + aiStreamingPreview.takeLast(4_000),
-                            color = MutedText,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontFamily = FontFamily.Monospace,
                             style = MaterialTheme.typography.bodySmall,
                         )
@@ -7155,7 +7151,7 @@ private fun FileManagementScreen(
                     aiMessage?.let { message ->
                         Text(
                             message,
-                            color = if (message.startsWith("The AI") || message.contains("failed", true)) Danger else MutedText,
+                            color = if (message.startsWith("The AI") || message.contains("failed", true)) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.testTag("ai-assistant-message"),
                         )
@@ -7215,7 +7211,7 @@ private fun FileManagementScreen(
                         ) { Text("Discard plan") }
                     }
                     TextButton(
-                        onClick = { if (!aiBusy) showAiAssistant = false },
+                        onClick = { if (!aiBusy) showAiWorkspacePlanner = false },
                         enabled = !aiBusy,
                     ) { Text("Close") }
                 }
@@ -7254,7 +7250,7 @@ private fun FileManagementScreen(
                     if (!aiHistoryLoading && aiConversationHistory.isEmpty()) {
                         Text(
                             "No conversations found in this workspace.",
-                            color = MutedText,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
@@ -7272,7 +7268,7 @@ private fun FileManagementScreen(
                                         java.text.DateFormat.SHORT,
                                         java.text.DateFormat.SHORT,
                                     ).format(java.util.Date(thread.updatedAtEpochMillis)),
-                                color = MutedText,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.labelSmall,
                             )
                             Row(
@@ -7401,17 +7397,17 @@ private fun AppTopBar(
             Box(
                 modifier = Modifier
                     .size(46.dp)
-                    .background(Mint, RoundedCornerShape(14.dp)),
+                    .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(14.dp)),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Filled.Code, contentDescription = null, tint = Ink, modifier = Modifier.size(29.dp))
+                Icon(Icons.Filled.Code, contentDescription = null, tint = MaterialTheme.colorScheme.background, modifier = Modifier.size(29.dp))
             }
         }
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 if (openedFile == null) "AstraCode" else fileName(openedFile),
-                color = PrimaryText,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
@@ -7420,7 +7416,7 @@ private fun AppTopBar(
             Text(
                 if (openedFile == null) "ANDROID DEVELOPMENT WORKSPACE"
                 else if (dirty) "UNSAVED CHANGES" else "FILE EDITOR",
-                color = if (dirty) Mint else MutedText,
+                color = if (dirty) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 10.sp,
                 letterSpacing = 1.1.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -7429,7 +7425,7 @@ private fun AppTopBar(
         if (openedFile != null) {
             Button(
                 onClick = onSave,
-                colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Ink),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.background),
                 enabled = dirty && canSave,
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.testTag("save-file-button"),
@@ -7477,7 +7473,7 @@ private fun WorkspacePanel(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     "WORKSPACE",
-                    color = Mint,
+                    color = MaterialTheme.colorScheme.primary,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.6.sp,
@@ -7485,7 +7481,7 @@ private fun WorkspacePanel(
                 Spacer(Modifier.height(5.dp))
                 Text(
                     if (currentDirectory.isEmpty()) rootName else currentDirectory.substringAfterLast('/'),
-                    color = PrimaryText,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 24.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
@@ -7498,7 +7494,7 @@ private fun WorkspacePanel(
                     } else {
                         "Private app workspace"
                     },
-                    color = MutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 12.sp,
                 )
             }
@@ -7506,23 +7502,23 @@ private fun WorkspacePanel(
                 onClick = onAddWorkspace,
                 modifier = Modifier.testTag("add-workspace-button"),
             ) {
-                Icon(Icons.Filled.FolderOpen, contentDescription = "Add workspace folder", tint = Mint)
+                Icon(Icons.Filled.FolderOpen, contentDescription = "Add workspace folder", tint = MaterialTheme.colorScheme.primary)
             }
             IconButton(
                 onClick = onManageWorkspaces,
                 modifier = Modifier.testTag("manage-workspaces-button"),
             ) {
-                Icon(Icons.Filled.Folder, contentDescription = "Manage workspaces", tint = MutedText)
+                Icon(Icons.Filled.Folder, contentDescription = "Manage workspaces", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             IconButton(
                 onClick = onNewFolder,
                 modifier = Modifier.testTag("new-folder-button"),
             ) {
-                Icon(Icons.Filled.CreateNewFolder, contentDescription = "New folder", tint = Mint)
+                Icon(Icons.Filled.CreateNewFolder, contentDescription = "New folder", tint = MaterialTheme.colorScheme.primary)
             }
             Button(
                 onClick = onNewFile,
-                colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Ink),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.background),
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.testTag("new-file-button"),
             ) {
@@ -7572,11 +7568,11 @@ private fun WorkspacePanel(
                 .padding(bottom = 13.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(Icons.Filled.FolderOpen, contentDescription = null, tint = MutedText, modifier = Modifier.size(17.dp))
+            Icon(Icons.Filled.FolderOpen, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(17.dp))
             Spacer(Modifier.width(8.dp))
             Text(
                 if (currentDirectory.isEmpty()) rootName else rootName + " / " + currentDirectory,
-                color = MutedText,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -7598,7 +7594,7 @@ private fun WorkspacePanel(
         if (selectionMode) {
             Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 4.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("${selectedPaths.size} selected", color = MutedText, modifier = Modifier.weight(1f))
+                    Text("${selectedPaths.size} selected", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
                     TextButton(
                         onClick = { onBulkAction("zip") },
                         enabled = selectedPaths.isNotEmpty(),
@@ -7625,10 +7621,10 @@ private fun WorkspacePanel(
             }
         }
 
-        Divider(color = Border, thickness = 1.dp)
+        Divider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
         Text(
             entries.size.toString() + if (entries.size == 1) " ITEM" else " ITEMS",
-            color = MutedText,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 1.4.sp,
@@ -7679,7 +7675,7 @@ private fun WorkspaceManagerDialog(
             Column {
                 Text(
                     "Folders stay here until you remove them. Removing a folder only removes its access from AstraCode; it does not delete its files.",
-                    color = MutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 13.sp,
                     lineHeight = 19.sp,
                 )
@@ -7692,21 +7688,21 @@ private fun WorkspaceManagerDialog(
                         .testTag("private-workspace-bookmark"),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Filled.Folder, contentDescription = null, tint = Mint, modifier = Modifier.size(25.dp))
+                    Icon(Icons.Filled.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(25.dp))
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Private workspace", color = PrimaryText, fontWeight = FontWeight.SemiBold)
-                        Text("Stored inside AstraCode", color = MutedText, fontSize = 12.sp)
+                        Text("Private workspace", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+                        Text("Stored inside AstraCode", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                     }
                     if (activeWorkspaceId == PRIVATE_WORKSPACE_ID) {
-                        Text("Current", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("Current", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
-                Divider(color = Border)
+                Divider(color = MaterialTheme.colorScheme.outlineVariant)
                 if (savedFolders.isEmpty()) {
                     Text(
                         "No external folders saved yet. Tap Add folder to keep one here.",
-                        color = MutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 13.sp,
                         modifier = Modifier.padding(vertical = 18.dp),
                     )
@@ -7733,23 +7729,23 @@ private fun WorkspaceManagerDialog(
                                     Icon(
                                         Icons.Filled.FolderOpen,
                                         contentDescription = null,
-                                        tint = Mint,
+                                        tint = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.size(25.dp),
                                     )
                                     Spacer(Modifier.width(12.dp))
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
                                             bookmark.name,
-                                            color = PrimaryText,
+                                            color = MaterialTheme.colorScheme.onSurface,
                                             fontWeight = FontWeight.SemiBold,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
                                         )
-                                        Text("External folder", color = MutedText, fontSize = 12.sp)
+                                        Text("External folder", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                                     }
                                 }
                                 if (activeWorkspaceId == bookmark.id) {
-                                    Text("Current", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Text("Current", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 }
                                 IconButton(
                                     onClick = { onRemoveFolder(bookmark) },
@@ -7758,11 +7754,11 @@ private fun WorkspaceManagerDialog(
                                     Icon(
                                         Icons.Filled.DeleteOutline,
                                         contentDescription = "Remove " + bookmark.name,
-                                        tint = Danger,
+                                        tint = MaterialTheme.colorScheme.error,
                                     )
                                 }
                             }
-                            Divider(color = Border)
+                            Divider(color = MaterialTheme.colorScheme.outlineVariant)
                         }
                     }
                 }
@@ -7771,7 +7767,7 @@ private fun WorkspaceManagerDialog(
         confirmButton = {
             Button(
                 onClick = onAddFolder,
-                colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Ink),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.background),
                 modifier = Modifier.testTag("add-workspace-from-manager"),
             ) {
                 Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(17.dp))
@@ -7800,7 +7796,7 @@ private fun SavedDocumentsDialog(
             Column {
                 Text(
                     "Files stay here until you remove them. Removing a bookmark only removes AstraCode's access; it does not delete the original file.",
-                    color = MutedText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 13.sp,
                     lineHeight = 19.sp,
                 )
@@ -7808,7 +7804,7 @@ private fun SavedDocumentsDialog(
                 if (savedDocuments.isEmpty()) {
                     Text(
                         "No files saved yet. Choose a file to add one.",
-                        color = MutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 13.sp,
                         modifier = Modifier.padding(vertical = 18.dp),
                     )
@@ -7835,21 +7831,21 @@ private fun SavedDocumentsDialog(
                                     Icon(
                                         Icons.Filled.Description,
                                         contentDescription = null,
-                                        tint = Color(0xFFB9C6FF),
+                                        tint = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.size(25.dp),
                                     )
                                     Spacer(Modifier.width(12.dp))
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
                                             bookmark.name,
-                                            color = PrimaryText,
+                                            color = MaterialTheme.colorScheme.onSurface,
                                             fontWeight = FontWeight.SemiBold,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
                                         )
                                         Text(
                                             if (bookmark.writable) "Saved file" else "Read-only access",
-                                            color = MutedText,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             fontSize = 12.sp,
                                         )
                                     }
@@ -7861,11 +7857,11 @@ private fun SavedDocumentsDialog(
                                     Icon(
                                         Icons.Filled.DeleteOutline,
                                         contentDescription = "Remove " + bookmark.name,
-                                        tint = Danger,
+                                        tint = MaterialTheme.colorScheme.error,
                                     )
                                 }
                             }
-                            Divider(color = Border)
+                            Divider(color = MaterialTheme.colorScheme.outlineVariant)
                         }
                     }
                 }
@@ -7874,7 +7870,7 @@ private fun SavedDocumentsDialog(
         confirmButton = {
             Button(
                 onClick = onChooseFile,
-                colors = ButtonDefaults.buttonColors(containerColor = Mint, contentColor = Ink),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.background),
                 modifier = Modifier.testTag("choose-standalone-file-button"),
             ) {
                 Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(17.dp))
@@ -7899,17 +7895,17 @@ private fun EmptyWorkspace(onCreateFile: () -> Unit) {
         Box(
             modifier = Modifier
                 .size(92.dp)
-                .background(PanelRaised, RoundedCornerShape(28.dp)),
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(28.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Filled.FolderOpen, contentDescription = null, tint = Mint, modifier = Modifier.size(43.dp))
+            Icon(Icons.Filled.FolderOpen, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(43.dp))
         }
         Spacer(Modifier.height(22.dp))
-        Text("A clean workspace.", color = PrimaryText, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+        Text("A clean workspace.", color = MaterialTheme.colorScheme.onSurface, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
         Text(
             "Create a file or folder. Your project starts here.",
-            color = MutedText,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 14.sp,
             lineHeight = 21.sp,
         )
@@ -7944,8 +7940,8 @@ private fun FileEntryRow(
             .clickable(enabled = isSupported && !selectionMode, onClick = onClick)
             .testTag("entry-" + entry.name),
         shape = RoundedCornerShape(15.dp),
-        colors = CardDefaults.cardColors(containerColor = Panel),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Border.copy(alpha = 0.65f)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f)),
     ) {
         Row(
             modifier = Modifier
@@ -7971,17 +7967,17 @@ private fun FileEntryRow(
                             .size(22.dp)
                             .border(
                                 width = 1.dp,
-                                color = if (selected) Mint else Border,
+                                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
                                 shape = RoundedCornerShape(4.dp),
                             )
                             .background(
-                                color = if (selected) Mint else Color.Transparent,
+                                color = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
                                 shape = RoundedCornerShape(4.dp),
                             ),
                         contentAlignment = Alignment.Center,
                     ) {
                         if (selected) {
-                            Text("✓", color = Ink, fontWeight = FontWeight.Bold)
+                            Text("✓", color = MaterialTheme.colorScheme.background, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -7995,7 +7991,7 @@ private fun FileEntryRow(
                 Box(
                     modifier = Modifier
                         .size(44.dp)
-                        .background(if (isDirectory) PanelRaised else Ink, RoundedCornerShape(12.dp)),
+                        .background(if (isDirectory) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.background, RoundedCornerShape(12.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
@@ -8008,9 +8004,9 @@ private fun FileEntryRow(
                             entry.type == FileEntryType.FILE && entry.name.endsWith(".zip", ignoreCase = true)
                         ) "ZIP archive" else null,
                         tint = when {
-                            isDirectory -> Mint
-                            entry.type == FileEntryType.FILE && entry.name.endsWith(".zip", ignoreCase = true) -> Color(0xFFFFC857)
-                            else -> Color(0xFFB9C6FF)
+                            isDirectory -> MaterialTheme.colorScheme.primary
+                            entry.type == FileEntryType.FILE && entry.name.endsWith(".zip", ignoreCase = true) -> MaterialTheme.colorScheme.primary
+                            else -> MaterialTheme.colorScheme.primary
                         },
                         modifier = Modifier.size(22.dp).testTag("entry-icon-${entry.name}"),
                     )
@@ -8019,7 +8015,7 @@ private fun FileEntryRow(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         entry.name,
-                        color = PrimaryText,
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
@@ -8046,7 +8042,7 @@ private fun FileEntryRow(
                     }
                     Text(
                         detail,
-                        color = MutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 12.sp,
                     )
                 }
@@ -8056,7 +8052,7 @@ private fun FileEntryRow(
                     onClick = onDelete,
                     modifier = Modifier.size(40.dp),
                 ) {
-                    Icon(Icons.Filled.DeleteOutline, contentDescription = "Delete " + entry.name, tint = MutedText)
+                    Icon(Icons.Filled.DeleteOutline, contentDescription = "Delete " + entry.name, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -8072,11 +8068,11 @@ private fun StandaloneDocumentLoadingPanel(name: String) {
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            CircularProgressIndicator(color = Mint)
+            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.height(16.dp))
             Text(
                 "Opening " + name,
-                color = PrimaryText,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 14.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -8218,12 +8214,12 @@ private fun EditorPanel(
             Text(
                 path,
                 modifier = Modifier.weight(1f),
-                color = MutedText,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(if (readOnly) "READ ONLY" else "UTF-8", color = MutedText, fontSize = 10.sp)
+            Text(if (readOnly) "READ ONLY" else "UTF-8", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
         }
         Spacer(Modifier.height(4.dp))
         if (tabs.isNotEmpty()) {
@@ -8381,7 +8377,7 @@ private fun EditorPanel(
                 if (editorToolMessage.isNotEmpty()) {
                     Text(
                         editorToolMessage,
-                        color = MutedText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp,
                         modifier = Modifier.testTag("editor-find-message"),
                     )
@@ -8391,7 +8387,7 @@ private fun EditorPanel(
         if (!showFindReplace && editorToolMessage.isNotEmpty()) {
             Text(
                 editorToolMessage,
-                color = MutedText,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 11.sp,
                 modifier = Modifier.testTag("editor-find-message"),
             )
@@ -8402,7 +8398,7 @@ private fun EditorPanel(
         ) { Text(if (wordWrapEnabled) "Word wrap: On" else "Word wrap: Off") }
         Text(
             if (readOnly) "Read-only · autosave unavailable" else "Autosave on · saves after typing pauses",
-            color = MutedText,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 11.sp,
             modifier = Modifier.testTag("editor-autosave-status"),
         )
@@ -8436,13 +8432,13 @@ private fun EditorPanel(
         val editorInteractionSource = remember(path) { MutableInteractionSource() }
         val clipboardManager = LocalClipboardManager.current
         val editorColors = OutlinedTextFieldDefaults.colors(
-            focusedTextColor = PrimaryText,
-            unfocusedTextColor = PrimaryText,
-            focusedBorderColor = Mint,
-            unfocusedBorderColor = Border,
-            cursorColor = Mint,
-            focusedLabelColor = Mint,
-            unfocusedLabelColor = MutedText,
+            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+            focusedBorderColor = MaterialTheme.colorScheme.primary,
+            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+            cursorColor = MaterialTheme.colorScheme.primary,
+            focusedLabelColor = MaterialTheme.colorScheme.primary,
+            unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         val completionValueAtRender = editorFieldValue
         val completionPrefixRangeAtRender = if (
@@ -8514,11 +8510,11 @@ private fun EditorPanel(
                 fontSizeSp = fontSizeSp,
                 focusRequester = editorFocusRequester,
                 interactionSource = editorInteractionSource,
-                textColor = PrimaryText,
-                cursorColor = Mint,
-                lineNumberColor = MutedText,
-                focusColor = Mint,
-                borderColor = Border,
+                textColor = MaterialTheme.colorScheme.onSurface,
+                cursorColor = MaterialTheme.colorScheme.primary,
+                lineNumberColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                focusColor = MaterialTheme.colorScheme.primary,
+                borderColor = MaterialTheme.colorScheme.outlineVariant,
                 modifier = Modifier.fillMaxSize(),
                 label = "File contents",
                 placeholder = "Start writing…",
@@ -8552,7 +8548,7 @@ private fun EditorPanel(
                 visualTransformation = lineNumberTransformation,
                 onTextLayout = viewportTracker::onTextLayout,
                 interactionSource = editorInteractionSource,
-                cursorBrush = SolidColor(Mint),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 textStyle = MaterialTheme.typography.bodyMedium.copy(
                     fontFamily = FontFamily.Monospace,
                     fontSize = fontSizeSp.sp,
@@ -8678,7 +8674,7 @@ private fun EditorPanel(
         Spacer(Modifier.height(10.dp))
         Text(
             "UTF-8 text • save guarantees depend on the selected storage provider.",
-            color = MutedText,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 11.sp,
         )
     }

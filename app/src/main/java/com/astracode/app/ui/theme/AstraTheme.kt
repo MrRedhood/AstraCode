@@ -6,41 +6,38 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 
-/**
- * Shared drawer palette aligned with the editor theme.
- * Primary actions use the editor's warm champagne accent; the drawer no longer introduces a separate teal/navy brand.
- */
+/** Shared monochrome palette for drawers and reusable editor components. */
 object AstraColors {
-    val Primary = Color(0xFFC5A46D)
-    val Secondary = Color(0xFF87948A)
-    val Tertiary = Color(0xFFE3B567)
-    val Warning = Color(0xFFE3B567)
-    val Error = Color(0xFFD9857C)
+    val Primary = Color(0xFFFFFFFF)
+    val Secondary = Color(0xFFD4D4D4)
+    val Tertiary = Color(0xFFEAEAEA)
+    val Warning = Color(0xFFD0D0D0)
+    val Error = Color(0xFFE7E7E7)
 
-    val Dark = Color(0xFF101311)
-    val Drawer = Color(0xFF1C211D)
-    val Card = Color(0xFF272D27)
-    val Border = Color(0xFF343B34)
-    val Selected = Color(0xFF3B3020)
-    val Hover = Color(0xFF283229)
-    val Text = Color(0xFFE8E3D8)
-    val Muted = Color(0xFFA7ADA4)
+    val Dark = Color(0xFF050505)
+    val Drawer = Color(0xFF121212)
+    val Card = Color(0xFF1E1E1E)
+    val Border = Color(0xFF383838)
+    val Selected = Color(0xFF292929)
+    val Hover = Color(0xFF242424)
+    val Text = Color(0xFFF5F5F5)
+    val Muted = Color(0xFFBDBDBD)
 
-    val Inset = Color(0xFF0B0D0B)
-    val Dock = Color(0xFF181C18)
-    val BufferHeader = Color(0xFF181C18)
-    val CardGradientStart = Color(0xFF1C211D)
-    val IconBadgeStart = Color(0xFF283229)
-    val IconBadgeEnd = Color(0xFF1C211D)
-    val HighlightedWorkspace = Color(0xFF3B3020)
+    val Inset = Color(0xFF080808)
+    val Dock = Color(0xFF101010)
+    val BufferHeader = Color(0xFF101010)
+    val CardGradientStart = Color(0xFF171717)
+    val IconBadgeStart = Color(0xFF292929)
+    val IconBadgeEnd = Color(0xFF171717)
+    val HighlightedWorkspace = Color(0xFF292929)
 
-    // File-type badges remain distinct so different file types are easy to identify.
-    val RustBadgeBg = Color(0xFFE43715)
-    val RustBadgeFg = Color(0xFFFF8566)
-    val TomlBadgeBg = Color(0xFF00B4D8)
-    val TomlBadgeFg = Color(0xFF48CAE4)
+    // File badges retain a clear hierarchy without introducing unrelated hues.
+    val RustBadgeBg = Color(0xFF303030)
+    val RustBadgeFg = Color(0xFFFFFFFF)
+    val TomlBadgeBg = Color(0xFF383838)
+    val TomlBadgeFg = Color(0xFFFFFFFF)
 
-    val DrawerScrim = Color(0xCC05080C)
+    val DrawerScrim = Color(0xCC000000)
 }
 
 object AstraFonts {
@@ -51,18 +48,18 @@ object AstraFonts {
 private val AstraDarkScheme = darkColorScheme(
     primary = AstraColors.Primary,
     onPrimary = AstraColors.Dark,
-    primaryContainer = Color(0xFF3B3020),
+    primaryContainer = AstraColors.Selected,
     onPrimaryContainer = AstraColors.Text,
     secondary = AstraColors.Secondary,
     onSecondary = AstraColors.Dark,
-    secondaryContainer = Color(0xFF283229),
+    secondaryContainer = AstraColors.Hover,
     onSecondaryContainer = AstraColors.Text,
     tertiary = AstraColors.Tertiary,
     onTertiary = AstraColors.Dark,
     error = AstraColors.Error,
     onError = AstraColors.Dark,
-    errorContainer = Color(0xFF35201D),
-    onErrorContainer = Color(0xFFFFDAD4),
+    errorContainer = Color(0xFF303030),
+    onErrorContainer = AstraColors.Text,
     background = AstraColors.Dark,
     onBackground = AstraColors.Text,
     surface = AstraColors.Dark,
@@ -72,13 +69,16 @@ private val AstraDarkScheme = darkColorScheme(
     surfaceTint = AstraColors.Primary,
     outline = AstraColors.Border,
     outlineVariant = AstraColors.Border,
+    inverseSurface = AstraColors.Text,
+    inverseOnSurface = AstraColors.Dark,
+    inversePrimary = AstraColors.Dark,
     surfaceDim = AstraColors.Dark,
-    surfaceBright = Color(0xFF3B423B),
-    surfaceContainerLowest = Color(0xFF0B0D0B),
-    surfaceContainerLow = Color(0xFF181C18),
+    surfaceBright = Color(0xFF333333),
+    surfaceContainerLowest = AstraColors.Inset,
+    surfaceContainerLow = AstraColors.Dock,
     surfaceContainer = AstraColors.Drawer,
     surfaceContainerHigh = AstraColors.Card,
-    surfaceContainerHighest = Color(0xFF30372F),
+    surfaceContainerHighest = Color(0xFF303030),
 )
 
 @Composable

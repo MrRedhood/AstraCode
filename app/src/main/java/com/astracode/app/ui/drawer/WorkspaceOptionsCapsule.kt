@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
@@ -40,14 +41,7 @@ import com.astracode.app.ui.components.PulseDot
 import com.astracode.app.ui.components.borderTop
 import com.astracode.app.ui.components.panel
 import com.astracode.app.ui.components.pressScale
-import com.astracode.app.ui.theme.AstraColors
 import com.astracode.app.ui.theme.AstraIcons
-
-private val CapsuleBg = Color(0xFF131D2A)
-private val CapsuleBorder = Color(0xFF2B3E56)
-private val CapsuleDivider = Color(0xFF1E2E42)
-private val CapsuleScrim = Color(0xB3070D14) // bg-[#070D14]/70 (backdrop-blur-[3px] dropped for frame budget)
-private val CapsuleMuted = Color(0xFF9AA9BC)
 
 private data class CapsuleItem(
     val action: WorkspaceAction,
@@ -68,35 +62,46 @@ private data class CapsuleItem(
     val subtitleColor: Color,
 )
 
-private val CapsuleItems = listOf(
-    CapsuleItem(
-        action = WorkspaceAction.Rename,
-        title = "Rename", subtitle = "Change workspace name", shortcut = "F2",
-        icon = AstraIcons.Pencil,
-        iconTint = AstraColors.Secondary, iconBg = Color(0xFF142337), iconBorder = AstraColors.Secondary.copy(alpha = 0.4f),
-        shortcutFg = AstraColors.Secondary, shortcutBg = Color(0xFF122135), shortcutBorder = AstraColors.Secondary.copy(alpha = 0.3f),
-        containerBg = Color(0xFF192535), containerPressed = Color(0xFF203147), containerBorder = Color(0xFF26374D),
-        titleColor = Color(0xFFE1E9F5), subtitleColor = CapsuleMuted,
-    ),
-    CapsuleItem(
-        action = WorkspaceAction.DeleteWorkspace,
-        title = "Delete Workspace", subtitle = "Clear or remove this workspace", shortcut = "Confirm",
-        icon = AstraIcons.Trash,
-        iconTint = AstraColors.Error, iconBg = Color(0xFF2D161C), iconBorder = AstraColors.Error.copy(alpha = 0.4f),
-        shortcutFg = AstraColors.Error, shortcutBg = Color(0xFF291419), shortcutBorder = AstraColors.Error.copy(alpha = 0.4f),
-        containerBg = Color(0xFF1B1E28), containerPressed = Color(0xFF261E24), containerBorder = Color(0xFF402127),
-        titleColor = AstraColors.Error, subtitleColor = Color(0xFFA66E74),
-    ),
-    CapsuleItem(
-        action = WorkspaceAction.Cancel,
-        title = "Cancel", subtitle = "Dismiss this menu", shortcut = "Esc",
-        icon = AstraIcons.Close,
-        iconTint = CapsuleMuted, iconBg = Color(0xFF1A2534), iconBorder = Color(0xFF354860),
-        shortcutFg = CapsuleMuted, shortcutBg = Color(0xFF121A25), shortcutBorder = Color(0xFF233144),
-        containerBg = Color(0xFF151E2B), containerPressed = Color(0xFF1C283A), containerBorder = Color(0xFF212E40),
-        titleColor = Color(0xFFC5D2E2), subtitleColor = Color(0xFF6C7E95),
-    ),
-)
+
+@Composable
+private fun capsuleItems(): List<CapsuleItem> {
+    val colors = MaterialTheme.colorScheme
+    val iconBackground = colors.surfaceContainerHigh
+    val shortcutBackground = colors.surfaceContainer
+    val rowBackground = colors.surfaceContainerLow
+    return listOf(
+        CapsuleItem(
+            action = WorkspaceAction.Rename,
+            title = "Rename", subtitle = "Change workspace name", shortcut = "F2",
+            icon = AstraIcons.Pencil,
+            iconTint = colors.primary, iconBg = iconBackground, iconBorder = colors.outlineVariant,
+            shortcutFg = colors.onSurfaceVariant, shortcutBg = shortcutBackground, shortcutBorder = colors.outlineVariant,
+            containerBg = rowBackground, containerPressed = colors.surfaceContainerHigh,
+            containerBorder = colors.outlineVariant,
+            titleColor = colors.onSurface, subtitleColor = colors.onSurfaceVariant,
+        ),
+        CapsuleItem(
+            action = WorkspaceAction.DeleteWorkspace,
+            title = "Delete Workspace", subtitle = "Clear or remove this workspace", shortcut = "Confirm",
+            icon = AstraIcons.Trash,
+            iconTint = colors.error, iconBg = iconBackground, iconBorder = colors.outlineVariant,
+            shortcutFg = colors.error, shortcutBg = shortcutBackground, shortcutBorder = colors.outlineVariant,
+            containerBg = rowBackground, containerPressed = colors.surfaceContainerHigh,
+            containerBorder = colors.outlineVariant,
+            titleColor = colors.error, subtitleColor = colors.onSurfaceVariant,
+        ),
+        CapsuleItem(
+            action = WorkspaceAction.Cancel,
+            title = "Cancel", subtitle = "Dismiss this menu", shortcut = "Esc",
+            icon = AstraIcons.Close,
+            iconTint = colors.onSurfaceVariant, iconBg = iconBackground, iconBorder = colors.outlineVariant,
+            shortcutFg = colors.onSurfaceVariant, shortcutBg = shortcutBackground, shortcutBorder = colors.outlineVariant,
+            containerBg = rowBackground, containerPressed = colors.surfaceContainerHigh,
+            containerBorder = colors.outlineVariant,
+            titleColor = colors.onSurface, subtitleColor = colors.onSurfaceVariant,
+        ),
+    )
+}
 
 /**
  * Full-screen scrim + centered capsule. Host it above the drawer (see AstraCodeApp) so the scrim covers the whole window.
@@ -113,13 +118,15 @@ fun WorkspaceOptionsOverlay(
     LaunchedEffect(Unit) { progress.animateTo(1f, tween(150)) }
 
     val capsuleShape = RoundedCornerShape(24.dp)
+    val colors = MaterialTheme.colorScheme
+    val items = capsuleItems()
     val scrimSource = remember { MutableInteractionSource() }
     val consumeSource = remember { MutableInteractionSource() }
 
     Box(
         modifier
             .fillMaxSize()
-            .background(CapsuleScrim)
+            .background(colors.scrim.copy(alpha = 0.72f))
             .clickable(interactionSource = scrimSource, indication = null, onClick = onDismiss)
             .systemBarsPadding()
             .padding(horizontal = 16.dp),
@@ -136,8 +143,8 @@ fun WorkspaceOptionsOverlay(
                 }
                 .shadow(24.dp, capsuleShape, ambientColor = Color.Black.copy(alpha = 0.8f), spotColor = Color.Black.copy(alpha = 0.8f))
                 .clip(capsuleShape)
-                .background(CapsuleBg)
-                .border(1.dp, CapsuleBorder, capsuleShape)
+                .background(colors.surfaceContainerLow)
+                .border(1.dp, colors.outlineVariant, capsuleShape)
                 // swallow taps so only the scrim dismisses
                 .clickable(interactionSource = consumeSource, indication = null, onClick = {}),
         ) {
@@ -148,7 +155,7 @@ fun WorkspaceOptionsOverlay(
                     .padding(horizontal = 32.dp)
                     .fillMaxWidth()
                     .height(1.dp)
-                    .background(Brush.horizontalGradient(listOf(Color.Transparent, AstraColors.Secondary, Color.Transparent))),
+                    .background(Brush.horizontalGradient(listOf(Color.Transparent, colors.secondary, Color.Transparent))),
             )
 
             Column(Modifier.padding(16.dp)) {
@@ -159,23 +166,23 @@ fun WorkspaceOptionsOverlay(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        PulseDot(AstraColors.Secondary, 8.dp)
+                        PulseDot(colors.secondary, 8.dp)
                         AText(
-                            "WORKSPACE OPTIONS", AstraColors.Secondary, 11f,
+                            "WORKSPACE OPTIONS", colors.onSurface, 11f,
                             weight = FontWeight.Bold, letterSpacing = 0.55f,
                         )
                     }
                     AText(
-                        workspaceName, CapsuleMuted, 10f,
+                        workspaceName, colors.onSurfaceVariant, 10f,
                         Modifier
-                            .panel(CircleShape, Color(0xFF1A2636), Color(0xFF293A50))
+                            .panel(CircleShape, colors.surfaceContainerHigh, colors.outlineVariant)
                             .padding(horizontal = 8.dp, vertical = 2.dp),
                     )
                 }
-                Box(Modifier.padding(top = 12.dp, bottom = 12.dp).fillMaxWidth().height(1.dp).background(CapsuleDivider))
+                Box(Modifier.padding(top = 12.dp, bottom = 12.dp).fillMaxWidth().height(1.dp).background(colors.outlineVariant))
 
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CapsuleItems.forEach { item ->
+                    items.forEach { item ->
                         CapsuleActionRow(item) { onAction(item.action) }
                     }
                 }
@@ -185,11 +192,11 @@ fun WorkspaceOptionsOverlay(
                     Modifier
                         .padding(top = 14.dp)
                         .fillMaxWidth()
-                        .borderTop(Color(0xFF1C2A3C))
+                        .borderTop(colors.outlineVariant)
                         .padding(top = 10.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    AText("Tap anywhere outside to close", Color(0xFF627791), 10f)
+                    AText("Tap anywhere outside to close", colors.onSurfaceVariant, 10f)
                 }
             }
         }

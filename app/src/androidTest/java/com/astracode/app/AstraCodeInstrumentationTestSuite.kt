@@ -9,5 +9,6 @@ import org.junit.runners.Suite
 @Suite.SuiteClasses(
     FileManagementSystemAndroidTest::class,
     TerminalCommandRunnerAndroidTest::class,
+    AiChatScreenUiTest::class,
 )
 class AstraCodeInstrumentationTestSuite

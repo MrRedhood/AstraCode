@@ -34,6 +34,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -58,11 +59,9 @@ import com.astracode.app.ui.components.borderEnd
 import com.astracode.app.ui.components.borderTop
 import com.astracode.app.ui.components.panel
 import com.astracode.app.ui.components.pressScale
-import com.astracode.app.ui.theme.AstraColors
 import com.astracode.app.ui.theme.AstraIcons
 import kotlinx.coroutines.launch
 
-private val C = AstraColors
 
 /** LazyColumn item index of each drawer section (see item order in [AstraDrawerContent]). */
 private val DrawerSection.listIndex: Int
@@ -92,8 +91,8 @@ fun AstraDrawerContent(
     Column(
         modifier
             .fillMaxHeight()
-            .background(C.Drawer)
-            .borderEnd(C.Border),
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .borderEnd(MaterialTheme.colorScheme.outlineVariant),
     ) {
         DrawerTop(
             state = state,
@@ -138,8 +137,8 @@ private fun DrawerTop(
     Column(
         Modifier
             .fillMaxWidth()
-            .background(C.Drawer.copy(alpha = 0.95f))
-            .borderBottom(C.Border.copy(alpha = 0.8f))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.95f))
+            .borderBottom(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.8f))
             .statusBarsPadding(),
     ) {
         Row(
@@ -157,17 +156,17 @@ private fun DrawerTop(
                 BrandBadge()
                 Column(Modifier.weight(1f, fill = false)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        AText("AstraCode", C.Text, 15f, weight = FontWeight.Bold, mono = false, letterSpacing = -0.375f)
+                        AText("AstraCode", MaterialTheme.colorScheme.onSurface, 15f, weight = FontWeight.Bold, mono = false, letterSpacing = -0.375f)
                         AstraBadge(
                             text = state.versionLabel,
-                            fg = C.Primary,
-                            bg = C.Primary.copy(alpha = 0.1f),
-                            border = C.Primary.copy(alpha = 0.3f),
+                            fg = MaterialTheme.colorScheme.primary,
+                            bg = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                            border = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
                         )
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        PulseDot(C.Primary, 6.dp)
-                        AText(state.syncLabel, C.Muted, 11f, Modifier.weight(1f, fill = false))
+                        PulseDot(MaterialTheme.colorScheme.primary, 6.dp)
+                        AText(state.syncLabel, MaterialTheme.colorScheme.onSurfaceVariant, 11f, Modifier.weight(1f, fill = false))
                     }
                 }
             }
@@ -180,7 +179,7 @@ private fun DrawerTop(
                     .clickable(onClick = onClose),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(AstraIcons.CloseBold, "Close drawer", Modifier.size(20.dp), C.Muted)
+                Icon(AstraIcons.CloseBold, "Close drawer", Modifier.size(20.dp), MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
 
@@ -193,11 +192,11 @@ private fun DrawerTop(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             val selected = state.selectedSection
-            NavChip("Files", AstraIcons.Folder, C.Muted, selected == DrawerSection.Files, null) { onSection(DrawerSection.Files) }
-            NavChip("Commands", AstraIcons.Bolt, C.Warning, selected == DrawerSection.Commands, null) { onSection(DrawerSection.Commands) }
-            NavChip("LSP", AstraIcons.Pencil, C.Secondary, selected == DrawerSection.Lsp, null) { onSection(DrawerSection.Lsp) }
-            NavChip("AI", AstraIcons.Sparkle, C.Tertiary, selected == DrawerSection.Ai, C.Tertiary) { onSection(DrawerSection.Ai) }
-            NavChip("Prefs", AstraIcons.Gear, C.Muted, selected == DrawerSection.Prefs, null) { onSection(DrawerSection.Prefs) }
+            NavChip("Files", AstraIcons.Folder, MaterialTheme.colorScheme.onSurfaceVariant, selected == DrawerSection.Files, null) { onSection(DrawerSection.Files) }
+            NavChip("Commands", AstraIcons.Bolt, MaterialTheme.colorScheme.tertiary, selected == DrawerSection.Commands, null) { onSection(DrawerSection.Commands) }
+            NavChip("LSP", AstraIcons.Pencil, MaterialTheme.colorScheme.secondary, selected == DrawerSection.Lsp, null) { onSection(DrawerSection.Lsp) }
+            NavChip("AI", AstraIcons.Sparkle, MaterialTheme.colorScheme.tertiary, selected == DrawerSection.Ai, MaterialTheme.colorScheme.tertiary) { onSection(DrawerSection.Ai) }
+            NavChip("Prefs", AstraIcons.Gear, MaterialTheme.colorScheme.onSurfaceVariant, selected == DrawerSection.Prefs, null) { onSection(DrawerSection.Prefs) }
         }
     }
 }
@@ -208,13 +207,13 @@ private fun BrandBadge() {
     Box(
         Modifier
             .size(36.dp)
-            .shadow(12.dp, shape, ambientColor = C.Primary.copy(alpha = 0.15f), spotColor = C.Primary.copy(alpha = 0.15f))
+            .shadow(12.dp, shape, ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f), spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
             .clip(shape)
-            .background(Brush.linearGradient(listOf(C.IconBadgeStart, C.IconBadgeEnd)))
-            .border(1.dp, C.Primary.copy(alpha = 0.4f), shape),
+            .background(Brush.linearGradient(listOf(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.surfaceContainerLow)))
+            .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f), shape),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(AstraIcons.Cube, null, Modifier.size(20.dp), C.Primary)
+        Icon(AstraIcons.Cube, null, Modifier.size(20.dp), MaterialTheme.colorScheme.primary)
     }
 }
 
@@ -227,9 +226,9 @@ private fun NavChip(
     accent: Color?,
     onClick: () -> Unit,
 ) {
-    val bg = if (selected) C.Primary.copy(alpha = 0.15f) else C.Card
-    val border = if (selected) C.Primary.copy(alpha = 0.4f) else (accent?.copy(alpha = 0.3f) ?: C.Border)
-    val text = if (selected) C.Primary else (accent ?: C.Muted)
+    val bg = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceContainerHigh
+    val border = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f) else (accent?.copy(alpha = 0.3f) ?: MaterialTheme.colorScheme.outlineVariant)
+    val text = if (selected) MaterialTheme.colorScheme.primary else (accent ?: MaterialTheme.colorScheme.onSurfaceVariant)
     Row(
         Modifier
             .panel(RoundedCornerShape(8.dp), bg, border)
@@ -238,7 +237,7 @@ private fun NavChip(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, null, Modifier.size(14.dp), if (selected) C.Primary else iconTint)
+        Icon(icon, null, Modifier.size(14.dp), if (selected) MaterialTheme.colorScheme.primary else iconTint)
         AText(label, text, 11f, weight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
     }
 }
@@ -252,8 +251,8 @@ private fun ProjectCard(project: ProjectSummaryUi, onCreate: () -> Unit) {
         Modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(Brush.verticalGradient(listOf(C.CardGradientStart, C.Card)))
-            .border(1.dp, C.Border, shape)
+            .background(Brush.verticalGradient(listOf(MaterialTheme.colorScheme.surfaceContainerHighGradientStart, MaterialTheme.colorScheme.surfaceContainerHigh)))
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
             .padding(12.dp),
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
@@ -265,14 +264,14 @@ private fun ProjectCard(project: ProjectSummaryUi, onCreate: () -> Unit) {
                 Box(
                     Modifier
                         .size(32.dp)
-                        .panel(RoundedCornerShape(8.dp), C.Primary.copy(alpha = 0.1f), C.Primary.copy(alpha = 0.3f)),
+                        .panel(RoundedCornerShape(8.dp), MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(AstraIcons.ProjectCube, null, Modifier.size(16.dp), C.Primary)
+                    Icon(AstraIcons.ProjectCube, null, Modifier.size(16.dp), MaterialTheme.colorScheme.primary)
                 }
                 Column(Modifier.weight(1f)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        AText(project.name, C.Text, 12f, Modifier.weight(1f, fill = false), FontWeight.Bold)
+                        AText(project.name, MaterialTheme.colorScheme.onSurface, 12f, Modifier.weight(1f, fill = false), FontWeight.Bold)
                         FileBadgePill(project.badge, bold = true, hPad = 4.dp)
                     }
                     Row(
@@ -281,11 +280,11 @@ private fun ProjectCard(project: ProjectSummaryUi, onCreate: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(AstraIcons.GitCircle, null, Modifier.size(12.dp), C.Secondary)
-                            AText(project.branch, C.Secondary, 10f)
+                            Icon(AstraIcons.GitCircle, null, Modifier.size(12.dp), MaterialTheme.colorScheme.secondary)
+                            AText(project.branch, MaterialTheme.colorScheme.secondary, 10f)
                         }
-                        AText("•", C.Muted, 10f)
-                        AText(project.path, C.Primary, 10f, Modifier.weight(1f, fill = false))
+                        AText("•", MaterialTheme.colorScheme.onSurfaceVariant, 10f)
+                        AText(project.path, MaterialTheme.colorScheme.primary, 10f, Modifier.weight(1f, fill = false))
                     }
                 }
             }
@@ -293,55 +292,46 @@ private fun ProjectCard(project: ProjectSummaryUi, onCreate: () -> Unit) {
             Box(
                 Modifier
                     .size(32.dp)
-                    .panel(RoundedCornerShape(8.dp), C.Hover, C.Border.copy(alpha = 0.8f))
+                    .panel(RoundedCornerShape(8.dp), MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.8f))
                     .clickable(onClick = onCreate),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(AstraIcons.Plus, "Create Workspace", Modifier.size(16.dp), C.Primary)
+                Icon(AstraIcons.Plus, "Create Workspace", Modifier.size(16.dp), MaterialTheme.colorScheme.primary)
             }
         }
 
         Spacer(Modifier.height(10.dp))
-        Box(Modifier.fillMaxWidth().height(1.dp).background(C.Border.copy(alpha = 0.6f)))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)))
         Spacer(Modifier.height(8.dp))
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                AstraBadge("${project.modifiedCount} mod", C.Warning, C.Warning.copy(alpha = 0.15f), C.Warning.copy(alpha = 0.3f), size = 10f)
+                AstraBadge("${project.modifiedCount} mod", MaterialTheme.colorScheme.tertiary, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.15f), MaterialTheme.colorScheme.tertiary.copy(alpha = 0.3f), size = 10f)
                 if (project.autoSync) {
                     Row(
                         Modifier
-                            .panel(RoundedCornerShape(4.dp), C.Primary.copy(alpha = 0.1f), C.Primary.copy(alpha = 0.2f))
+                            .panel(RoundedCornerShape(4.dp), MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
                             .padding(horizontal = 6.dp, vertical = 2.dp),
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(AstraIcons.Sync, null, Modifier.size(10.dp), C.Primary)
-                        AText("Auto-Sync", C.Primary, 10f)
+                        Icon(AstraIcons.Sync, null, Modifier.size(10.dp), MaterialTheme.colorScheme.primary)
+                        AText("Auto-Sync", MaterialTheme.colorScheme.primary, 10f)
                     }
                 }
             }
-            AText(project.localSizeLabel, C.Muted, 9f)
+            AText(project.localSizeLabel, MaterialTheme.colorScheme.onSurfaceVariant, 9f)
         }
     }
 }
 
 @Composable
 private fun FileBadgePill(badge: FileBadge, bold: Boolean, hPad: androidx.compose.ui.unit.Dp = 6.dp) {
-    val (bg, fg) = when (badge) {
-        FileBadge.Rust -> C.RustBadgeBg to C.RustBadgeFg
-        FileBadge.Toml -> C.TomlBadgeBg to C.TomlBadgeFg
-        FileBadge.Kotlin -> Color(0xFF33274D) to Color(0xFFC6A0F6)
-        FileBadge.Java -> Color(0xFF3A2B18) to Color(0xFFF4BE68)
-        FileBadge.Xml -> Color(0xFF142942) to Color(0xFF79A8FF)
-        FileBadge.Json -> Color(0xFF173328) to Color(0xFFA5D6A7)
-        FileBadge.Text -> C.Card to C.Muted
-    }
     AstraBadge(
         text = badge.label,
-        fg = fg,
-        bg = bg.copy(alpha = 0.2f),
-        border = fg.copy(alpha = 0.3f),
+        fg = MaterialTheme.colorScheme.onSurface,
+        bg = MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = MaterialTheme.colorScheme.outlineVariant,
         weight = if (bold) FontWeight.Bold else FontWeight.SemiBold,
         hPad = hPad,
     )
@@ -384,7 +374,7 @@ private fun Accordion(
 ) {
     val shape = RoundedCornerShape(12.dp)
     val rotation = animateFloatAsState(if (expanded) 180f else 0f, label = "chevron")
-    Column(Modifier.fillMaxWidth().panel(shape, C.Card, C.Border)) {
+    Column(Modifier.fillMaxWidth().panel(shape, MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.outlineVariant)) {
         Row(
             Modifier
                 .fillMaxWidth()
@@ -396,20 +386,20 @@ private fun Accordion(
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 leading()
-                AText(title.uppercase(), C.Muted, 12f, weight = FontWeight.SemiBold, letterSpacing = 0.6f)
+                AText(title.uppercase(), MaterialTheme.colorScheme.onSurfaceVariant, 12f, weight = FontWeight.SemiBold, letterSpacing = 0.6f)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 hint?.invoke()
                 Icon(
                     AstraIcons.ChevronDown, null,
                     Modifier.size(16.dp).graphicsLayer { rotationZ = rotation.value },
-                    C.Muted,
+                    MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
         AnimatedVisibility(visible = expanded) {
             Column {
-                Box(Modifier.fillMaxWidth().height(1.dp).background(C.Border.copy(alpha = 0.4f)))
+                Box(Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)))
                 content()
             }
         }
@@ -421,9 +411,9 @@ private fun Accordion(
 @Composable
 private fun WorkspacesSection(state: DrawerUiState, onEvent: (DrawerEvent) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        SectionTitle(AstraIcons.Grid, C.Primary, "Workspaces", C.Muted, FontWeight.SemiBold) {
+        SectionTitle(AstraIcons.Grid, MaterialTheme.colorScheme.primary, "Workspaces", MaterialTheme.colorScheme.onSurfaceVariant, FontWeight.SemiBold) {
             AstraBadge(
-                "Hold for menu", C.Secondary.copy(alpha = 0.9f), C.Secondary.copy(alpha = 0.1f), null,
+                "Hold for menu", MaterialTheme.colorScheme.secondary.copy(alpha = 0.9f), MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f), null,
                 size = 10f, weight = FontWeight.Normal,
             )
         }
@@ -450,14 +440,14 @@ private fun WorkspaceRow(
     val shape = RoundedCornerShape(12.dp)
     val isActive = ws.isActive || ws.kind == WorkspaceKind.Active
     val bg = when {
-        highlighted -> C.HighlightedWorkspace
-        isActive -> C.Selected
-        else -> C.Card
+        highlighted -> MaterialTheme.colorScheme.primaryContainer
+        isActive -> MaterialTheme.colorScheme.primaryContainer
+        else -> MaterialTheme.colorScheme.surfaceContainerHigh
     }
     val borderColor = when {
-        highlighted -> C.Secondary
-        isActive -> C.Primary.copy(alpha = 0.5f)
-        else -> C.Border
+        highlighted -> MaterialTheme.colorScheme.secondary
+        isActive -> MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+        else -> MaterialTheme.colorScheme.outlineVariant
     }
     Row(
         Modifier
@@ -478,47 +468,47 @@ private fun WorkspaceRow(
             when {
                 isActive -> Box(
                     Modifier.size(10.dp)
-                        .drawBehind { drawCircle(C.Primary.copy(alpha = 0.2f), radius = size.minDimension / 2f + 4.dp.toPx()) }
-                        .background(C.Primary, CircleShape),
+                        .drawBehind { drawCircle(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f), radius = size.minDimension / 2f + 4.dp.toPx()) }
+                        .background(MaterialTheme.colorScheme.primary, CircleShape),
                 )
-                ws.kind == WorkspaceKind.Private -> Icon(AstraIcons.Lock, null, Modifier.size(16.dp), C.Muted)
-                ws.kind == WorkspaceKind.Managed -> Icon(AstraIcons.Folder, null, Modifier.size(16.dp), C.Secondary)
-                else -> Icon(AstraIcons.Link, null, Modifier.size(16.dp), C.Secondary)
+                ws.kind == WorkspaceKind.Private -> Icon(AstraIcons.Lock, null, Modifier.size(16.dp), MaterialTheme.colorScheme.onSurfaceVariant)
+                ws.kind == WorkspaceKind.Managed -> Icon(AstraIcons.Folder, null, Modifier.size(16.dp), MaterialTheme.colorScheme.secondary)
+                else -> Icon(AstraIcons.Link, null, Modifier.size(16.dp), MaterialTheme.colorScheme.secondary)
             }
             Column(Modifier.weight(1f, fill = false)) {
                 AText(
-                    ws.name, C.Text, 12f,
+                    ws.name, MaterialTheme.colorScheme.onSurface, 12f,
                     weight = if (isActive) FontWeight.SemiBold else FontWeight.Medium,
                     mono = false,
                 )
                 if (isActive) {
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        PulseDot(C.Primary, 5.dp)
-                        AText(ws.subtitle, C.Primary.copy(alpha = 0.9f), 10f)
+                        PulseDot(MaterialTheme.colorScheme.primary, 5.dp)
+                        AText(ws.subtitle, MaterialTheme.colorScheme.primary.copy(alpha = 0.9f), 10f)
                     }
                 } else {
                     when (ws.kind) {
-                        WorkspaceKind.Active -> AText(ws.subtitle, C.Primary, 10f)
-                        WorkspaceKind.Private -> AText(ws.subtitle, C.Muted, 10f)
-                        WorkspaceKind.Managed -> AText(ws.subtitle, C.Secondary.copy(alpha = 0.8f), 10f)
-                        WorkspaceKind.RemoteBookmark -> AText(ws.subtitle, C.Secondary.copy(alpha = 0.8f), 10f)
+                        WorkspaceKind.Active -> AText(ws.subtitle, MaterialTheme.colorScheme.primary, 10f)
+                        WorkspaceKind.Private -> AText(ws.subtitle, MaterialTheme.colorScheme.onSurfaceVariant, 10f)
+                        WorkspaceKind.Managed -> AText(ws.subtitle, MaterialTheme.colorScheme.secondary.copy(alpha = 0.8f), 10f)
+                        WorkspaceKind.RemoteBookmark -> AText(ws.subtitle, MaterialTheme.colorScheme.secondary.copy(alpha = 0.8f), 10f)
                     }
                 }
             }
         }
         if (isActive) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (ws.modifiedCount > 0) AstraBadge("${ws.modifiedCount}", C.Warning, C.Warning.copy(alpha = 0.2f), C.Warning.copy(alpha = 0.3f))
-                Icon(AstraIcons.Check, null, Modifier.size(16.dp), C.Primary)
+                if (ws.modifiedCount > 0) AstraBadge("${ws.modifiedCount}", MaterialTheme.colorScheme.tertiary, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f), MaterialTheme.colorScheme.tertiary.copy(alpha = 0.3f))
+                Icon(AstraIcons.Check, null, Modifier.size(16.dp), MaterialTheme.colorScheme.primary)
             }
         } else {
             when (ws.kind) {
-                WorkspaceKind.Active -> Icon(AstraIcons.Check, null, Modifier.size(16.dp), C.Primary)
-                WorkspaceKind.Private -> AText(ws.trailing, C.Muted, 10f)
+                WorkspaceKind.Active -> Icon(AstraIcons.Check, null, Modifier.size(16.dp), MaterialTheme.colorScheme.primary)
+                WorkspaceKind.Private -> AText(ws.trailing, MaterialTheme.colorScheme.onSurfaceVariant, 10f)
                 WorkspaceKind.Managed, WorkspaceKind.RemoteBookmark -> Box(
                     Modifier.size(28.dp).clip(RoundedCornerShape(4.dp)).clickable(onClick = onLongClick),
                     contentAlignment = Alignment.Center,
-                ) { Icon(AstraIcons.MoreVert, "Workspace menu", Modifier.size(16.dp), C.Muted) }
+                ) { Icon(AstraIcons.MoreVert, "Workspace menu", Modifier.size(16.dp), MaterialTheme.colorScheme.onSurfaceVariant) }
             }
         }
     }
@@ -529,28 +519,28 @@ private fun WorkspaceRow(
 @Composable
 private fun FilesSection(state: DrawerUiState, onEvent: (DrawerEvent) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        SectionTitle(AstraIcons.Folder, C.Secondary, "File Explorer", C.Secondary, FontWeight.Bold) {
+        SectionTitle(AstraIcons.Folder, MaterialTheme.colorScheme.secondary, "File Explorer", MaterialTheme.colorScheme.secondary, FontWeight.Bold) {
             AstraBadge(
-                "${state.fileCount} files", C.Secondary, C.Secondary.copy(alpha = 0.15f), C.Secondary.copy(alpha = 0.3f),
+                "${state.fileCount} files", MaterialTheme.colorScheme.secondary, MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f), MaterialTheme.colorScheme.secondary.copy(alpha = 0.3f),
                 size = 10f, weight = FontWeight.Bold, hPad = 8.dp, radius = 50.dp,
             )
         }
-        Column(Modifier.fillMaxWidth().panel(RoundedCornerShape(12.dp), C.Card, C.Border)) {
+        Column(Modifier.fillMaxWidth().panel(RoundedCornerShape(12.dp), MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.outlineVariant)) {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .background(C.BufferHeader)
-                    .borderBottom(C.Border.copy(alpha = 0.6f))
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                    .borderBottom(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                AText("ACTIVE BUFFERS (${state.buffers.size})", C.Muted, 10f)
-                AText(state.projectTypeLabel, C.Primary, 10f, weight = FontWeight.Medium)
+                AText("ACTIVE BUFFERS (${state.buffers.size})", MaterialTheme.colorScheme.onSurfaceVariant, 10f)
+                AText(state.projectTypeLabel, MaterialTheme.colorScheme.primary, 10f, weight = FontWeight.Medium)
             }
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .background(C.Inset.copy(alpha = 0.6f))
+                    .background(MaterialTheme.colorScheme.surfaceContainerLowest.copy(alpha = 0.6f))
                     .padding(6.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
@@ -562,26 +552,26 @@ private fun FilesSection(state: DrawerUiState, onEvent: (DrawerEvent) -> Unit) {
                     )
                 }
             }
-            Column(Modifier.fillMaxWidth().borderTop(C.Border.copy(alpha = 0.6f))) {
+            Column(Modifier.fillMaxWidth().borderTop(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))) {
                 NavLinkRow(AstraIcons.Folder, "Open Explorer", { onEvent(DrawerEvent.Action(DrawerAction.OpenExplorer)) }) {
-                    AText("Browse workspace", C.Muted, 10f)
+                    AText("Browse workspace", MaterialTheme.colorScheme.onSurfaceVariant, 10f)
                 }
                 NavDivider()
                 NavLinkRow(AstraIcons.Clock, "Recent Files", { onEvent(DrawerEvent.Action(DrawerAction.RecentFiles)) }) {
-                    AText("Alt+P", C.Muted, 10f)
+                    AText("Alt+P", MaterialTheme.colorScheme.onSurfaceVariant, 10f)
                 }
                 NavDivider()
                 NavLinkRow(AstraIcons.Search, "Find in Files", { onEvent(DrawerEvent.Action(DrawerAction.FindInFiles)) }) {
                     AText(
-                        ".*regex", C.Secondary, 10f,
+                        ".*regex", MaterialTheme.colorScheme.secondary, 10f,
                         Modifier
-                            .panel(RoundedCornerShape(4.dp), C.Secondary.copy(alpha = 0.1f))
+                            .panel(RoundedCornerShape(4.dp), MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f))
                             .padding(horizontal = 6.dp, vertical = 2.dp),
                     )
                 }
                 NavDivider()
                 NavLinkRow(AstraIcons.ChevronsRight, "Go to Line", { onEvent(DrawerEvent.Action(DrawerAction.GoToLine)) }) {
-                    AText(":line", C.Muted, 10f)
+                    AText(":line", MaterialTheme.colorScheme.onSurfaceVariant, 10f)
                 }
             }
         }
@@ -592,7 +582,7 @@ private fun FilesSection(state: DrawerUiState, onEvent: (DrawerEvent) -> Unit) {
 private fun BufferRow(buffer: BufferUi, onClick: () -> Unit, onClose: () -> Unit) {
     val shape = RoundedCornerShape(8.dp)
     val rowModifier = if (buffer.isActive) {
-        Modifier.panel(shape, C.Selected, C.Primary.copy(alpha = 0.4f))
+        Modifier.panel(shape, MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
     } else {
         Modifier.clip(shape)
     }
@@ -615,7 +605,7 @@ private fun BufferRow(buffer: BufferUi, onClick: () -> Unit, onClose: () -> Unit
             FileBadgePill(buffer.badge, bold = true, hPad = if (buffer.badge == FileBadge.Toml) 4.dp else 6.dp)
             AText(
                 buffer.name,
-                if (buffer.isActive) C.Primary else C.Text,
+                if (buffer.isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                 12f,
                 Modifier.weight(1f, fill = false),
                 if (buffer.isActive) FontWeight.SemiBold else FontWeight.Normal,
@@ -623,17 +613,17 @@ private fun BufferRow(buffer: BufferUi, onClick: () -> Unit, onClose: () -> Unit
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             if (buffer.isDirty) {
-                AstraBadge("M", C.Warning, C.Warning.copy(alpha = 0.2f), C.Warning.copy(alpha = 0.3f))
+                AstraBadge("M", MaterialTheme.colorScheme.tertiary, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f), MaterialTheme.colorScheme.tertiary.copy(alpha = 0.3f))
             }
             if (buffer.isActive) {
                 Box(
                     Modifier
                         .size(8.dp)
-                        .shadow(8.dp, CircleShape, ambientColor = C.Primary.copy(alpha = 0.8f), spotColor = C.Primary.copy(alpha = 0.8f))
-                        .background(C.Primary, CircleShape),
+                        .shadow(8.dp, CircleShape, ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f), spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f))
+                        .background(MaterialTheme.colorScheme.primary, CircleShape),
                 )
             } else if (buffer.trailing.isNotBlank()) {
-                AText(buffer.trailing, C.Muted, 10f)
+                AText(buffer.trailing, MaterialTheme.colorScheme.onSurfaceVariant, 10f)
             }
             Box(
                 Modifier
@@ -643,7 +633,7 @@ private fun BufferRow(buffer: BufferUi, onClick: () -> Unit, onClose: () -> Unit
                     .testTag("drawer-buffer-close-" + buffer.path.replace("/", "__")),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(AstraIcons.Close, "Close buffer", Modifier.size(14.dp), C.Muted)
+                Icon(AstraIcons.Close, "Close buffer", Modifier.size(14.dp), MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -651,7 +641,7 @@ private fun BufferRow(buffer: BufferUi, onClick: () -> Unit, onClose: () -> Unit
 
 @Composable
 private fun NavDivider() {
-    Box(Modifier.fillMaxWidth().height(1.dp).background(C.Border.copy(alpha = 0.4f)))
+    Box(Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)))
 }
 
 @Composable
@@ -666,8 +656,8 @@ private fun NavLinkRow(icon: ImageVector, label: String, onClick: () -> Unit, tr
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, Modifier.size(16.dp), C.Secondary)
-            AText(label, C.Text, 12f, weight = FontWeight.Medium, mono = false)
+            Icon(icon, null, Modifier.size(16.dp), MaterialTheme.colorScheme.secondary)
+            AText(label, MaterialTheme.colorScheme.onSurface, 12f, weight = FontWeight.Medium, mono = false)
         }
         trailing()
     }
@@ -678,9 +668,9 @@ private fun NavLinkRow(icon: ImageVector, label: String, onClick: () -> Unit, tr
 @Composable
 private fun FileOpsSection(state: DrawerUiState, onEvent: (DrawerEvent) -> Unit) {
     Accordion(
-        leading = { Icon(AstraIcons.EditSquare, null, Modifier.size(14.dp), C.Primary) },
+        leading = { Icon(AstraIcons.EditSquare, null, Modifier.size(14.dp), MaterialTheme.colorScheme.primary) },
         title = "File Operations",
-        hint = { AText("Quick Actions", C.Muted, 10f) },
+        hint = { AText("Quick Actions", MaterialTheme.colorScheme.onSurfaceVariant, 10f) },
         expanded = state.fileOpsExpanded,
         onToggle = { onEvent(DrawerEvent.ToggleFileOps) },
     ) {
@@ -691,23 +681,23 @@ private fun FileOpsSection(state: DrawerUiState, onEvent: (DrawerEvent) -> Unit)
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FileOpTile("New File", AstraIcons.PlusLines, C.Primary, Modifier.weight(1f), null) {
+                FileOpTile("New File", AstraIcons.PlusLines, MaterialTheme.colorScheme.primary, Modifier.weight(1f), null) {
                     onEvent(DrawerEvent.Action(DrawerAction.NewFile))
                 }
-                FileOpTile("New Folder", AstraIcons.FolderPlus, C.Secondary, Modifier.weight(1f), null) {
+                FileOpTile("New Folder", AstraIcons.FolderPlus, MaterialTheme.colorScheme.secondary, Modifier.weight(1f), null) {
                     onEvent(DrawerEvent.Action(DrawerAction.NewFolder))
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 FileOpTile(
-                    "Save", AstraIcons.Save, C.Text, Modifier.weight(1f),
-                    trailing = { AText("^S", C.Muted, 9f) },
+                    "Save", AstraIcons.Save, MaterialTheme.colorScheme.onSurface, Modifier.weight(1f),
+                    trailing = { AText("^S", MaterialTheme.colorScheme.onSurfaceVariant, 9f) },
                 ) { onEvent(DrawerEvent.Action(DrawerAction.Save)) }
                 FileOpTile(
-                    "Save All", AstraIcons.SaveAll, C.Primary, Modifier.weight(1f),
+                    "Save All", AstraIcons.SaveAll, MaterialTheme.colorScheme.primary, Modifier.weight(1f),
                     trailing = {
                         AstraBadge(
-                            "${state.unsavedCount} mod", C.Primary, C.Primary.copy(alpha = 0.2f), null,
+                            "${state.unsavedCount} mod", MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f), null,
                             weight = FontWeight.Bold, hPad = 4.dp,
                         )
                     },
@@ -730,7 +720,7 @@ private fun FileOpTile(
     Row(
         modifier
             .pressScale(source, 0.98f)
-            .panel(RoundedCornerShape(8.dp), C.Inset, C.Border.copy(alpha = 0.7f))
+            .panel(RoundedCornerShape(8.dp), MaterialTheme.colorScheme.surfaceContainerLowest, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f))
             .heightIn(min = 46.dp)
             .clickable(interactionSource = source, indication = null, onClick = onClick)
             .padding(10.dp),
@@ -739,7 +729,7 @@ private fun FileOpTile(
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(icon, null, Modifier.size(16.dp), iconTint)
-            AText(label, C.Text, 12f, weight = FontWeight.Medium, mono = false)
+            AText(label, MaterialTheme.colorScheme.onSurface, 12f, weight = FontWeight.Medium, mono = false)
         }
         trailing?.invoke()
     }
@@ -750,15 +740,15 @@ private fun FileOpTile(
 @Composable
 private fun AiSection(state: DrawerUiState, onEvent: (DrawerEvent) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        SectionTitle(AstraIcons.Sparkle, C.Tertiary, "AI Copilot & Assist", C.Tertiary, FontWeight.Bold) {
-            AstraBadge(state.aiModelLabel, C.Tertiary, C.Tertiary.copy(alpha = 0.2f), C.Tertiary.copy(alpha = 0.3f))
+        SectionTitle(AstraIcons.Sparkle, MaterialTheme.colorScheme.tertiary, "AI Copilot & Assist", MaterialTheme.colorScheme.tertiary, FontWeight.Bold) {
+            AstraBadge(state.aiModelLabel, MaterialTheme.colorScheme.tertiary, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f), MaterialTheme.colorScheme.tertiary.copy(alpha = 0.3f))
         }
         val shape = RoundedCornerShape(12.dp)
         Column(
             Modifier
                 .fillMaxWidth()
-                .shadow(16.dp, shape, ambientColor = C.Tertiary.copy(alpha = 0.06f), spotColor = C.Tertiary.copy(alpha = 0.06f))
-                .panel(shape, C.Card, C.Tertiary.copy(alpha = 0.4f))
+                .shadow(16.dp, shape, ambientColor = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.06f), spotColor = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.06f))
+                .panel(shape, MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.4f))
                 .padding(10.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -768,7 +758,7 @@ private fun AiSection(state: DrawerUiState, onEvent: (DrawerEvent) -> Unit) {
                 Modifier
                     .fillMaxWidth()
                     .pressScale(promptSource, 0.99f)
-                    .panel(RoundedCornerShape(8.dp), C.Tertiary.copy(alpha = 0.1f), C.Tertiary.copy(alpha = 0.3f))
+                    .panel(RoundedCornerShape(8.dp), MaterialTheme.colorScheme.tertiary.copy(alpha = 0.1f), MaterialTheme.colorScheme.tertiary.copy(alpha = 0.3f))
                     .heightIn(min = 48.dp)
                     .clickable(interactionSource = promptSource, indication = null) {
                         onEvent(DrawerEvent.Action(DrawerAction.AskAi))
@@ -778,13 +768,13 @@ private fun AiSection(state: DrawerUiState, onEvent: (DrawerEvent) -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(AstraIcons.Chat, null, Modifier.size(16.dp), C.Tertiary)
-                    AText("Ask AI Code Assistant", C.Tertiary, 12f, weight = FontWeight.SemiBold, mono = false)
+                    Icon(AstraIcons.Chat, null, Modifier.size(16.dp), MaterialTheme.colorScheme.tertiary)
+                    AText("Ask AI Code Assistant", MaterialTheme.colorScheme.tertiary, 12f, weight = FontWeight.SemiBold, mono = false)
                 }
                 AText(
-                    "⌘I", C.Tertiary, 10f,
+                    "⌘I", MaterialTheme.colorScheme.tertiary, 10f,
                     Modifier
-                        .panel(RoundedCornerShape(4.dp), C.Tertiary.copy(alpha = 0.2f))
+                        .panel(RoundedCornerShape(4.dp), MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f))
                         .padding(horizontal = 6.dp, vertical = 2.dp),
                 )
             }
@@ -795,7 +785,7 @@ private fun AiSection(state: DrawerUiState, onEvent: (DrawerEvent) -> Unit) {
                 Modifier
                     .fillMaxWidth()
                     .pressScale(fixSource, 0.99f)
-                    .panel(RoundedCornerShape(8.dp), C.Error.copy(alpha = 0.1f), C.Error.copy(alpha = 0.3f))
+                    .panel(RoundedCornerShape(8.dp), MaterialTheme.colorScheme.error.copy(alpha = 0.1f), MaterialTheme.colorScheme.error.copy(alpha = 0.3f))
                     .heightIn(min = 44.dp)
                     .clickable(interactionSource = fixSource, indication = null) {
                         onEvent(DrawerEvent.Action(DrawerAction.FixBorrowChecker))
@@ -809,10 +799,10 @@ private fun AiSection(state: DrawerUiState, onEvent: (DrawerEvent) -> Unit) {
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(AstraIcons.BoxPlus, null, Modifier.size(16.dp), C.Error)
-                    AText(state.aiFixLabel, C.Error, 12f, Modifier.weight(1f, fill = false), FontWeight.Medium, mono = false)
+                    Icon(AstraIcons.BoxPlus, null, Modifier.size(16.dp), MaterialTheme.colorScheme.error)
+                    AText(state.aiFixLabel, MaterialTheme.colorScheme.error, 12f, Modifier.weight(1f, fill = false), FontWeight.Medium, mono = false)
                 }
-                AstraBadge(state.aiFixCode, C.Error, C.Error.copy(alpha = 0.2f), null, weight = FontWeight.Bold)
+                AstraBadge(state.aiFixCode, MaterialTheme.colorScheme.error, MaterialTheme.colorScheme.error.copy(alpha = 0.2f), null, weight = FontWeight.Bold)
             }
 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -831,13 +821,13 @@ private fun AiSection(state: DrawerUiState, onEvent: (DrawerEvent) -> Unit) {
 private fun AiOpTile(title: String, subtitle: String, modifier: Modifier, onClick: () -> Unit) {
     Column(
         modifier
-            .panel(RoundedCornerShape(8.dp), C.Inset, C.Border.copy(alpha = 0.6f))
+            .panel(RoundedCornerShape(8.dp), MaterialTheme.colorScheme.surfaceContainerLowest, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
             .heightIn(min = 44.dp)
             .clickable(onClick = onClick)
             .padding(8.dp),
     ) {
-        AText(title, C.Tertiary, 12f, weight = FontWeight.SemiBold, mono = false)
-        AText(subtitle, C.Muted, 9f)
+        AText(title, MaterialTheme.colorScheme.tertiary, 12f, weight = FontWeight.SemiBold, mono = false)
+        AText(subtitle, MaterialTheme.colorScheme.onSurfaceVariant, 9f)
     }
 }
 
@@ -846,11 +836,11 @@ private fun AiOpTile(title: String, subtitle: String, modifier: Modifier, onClic
 @Composable
 private fun LspSection(state: DrawerUiState, onEvent: (DrawerEvent) -> Unit) {
     Accordion(
-        leading = { PulseDot(C.Primary, 8.dp) },
+        leading = { PulseDot(MaterialTheme.colorScheme.primary, 8.dp) },
         title = state.lspName,
         hint = {
             AstraBadge(
-                state.lspStatus, C.Primary, C.Primary.copy(alpha = 0.1f), C.Primary.copy(alpha = 0.2f),
+                state.lspStatus, MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
                 size = 10f, weight = FontWeight.Normal,
             )
         },
@@ -894,21 +884,21 @@ private fun LspSection(state: DrawerUiState, onEvent: (DrawerEvent) -> Unit) {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .panel(RoundedCornerShape(8.dp), C.Inset, C.Border.copy(alpha = 0.5f))
+                    .panel(RoundedCornerShape(8.dp), MaterialTheme.colorScheme.surfaceContainerLowest, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     .padding(8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (state.lspStatus.equals("Ready", ignoreCase = true)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        AText("Diagnostics:", C.Muted, 11f)
+                        AText("Diagnostics:", MaterialTheme.colorScheme.onSurfaceVariant, 11f)
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            AstraBadge("${state.lspErrors} err", C.Error, C.Error.copy(alpha = 0.2f), null, size = 10f, weight = FontWeight.Bold)
-                            AstraBadge("${state.lspWarnings} warn", C.Warning, C.Warning.copy(alpha = 0.2f), null, size = 10f, weight = FontWeight.Bold)
+                            AstraBadge("${state.lspErrors} err", MaterialTheme.colorScheme.error, MaterialTheme.colorScheme.error.copy(alpha = 0.2f), null, size = 10f, weight = FontWeight.Bold)
+                            AstraBadge("${state.lspWarnings} warn", MaterialTheme.colorScheme.tertiary, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f), null, size = 10f, weight = FontWeight.Bold)
                         }
                     }
                 } else {
-                    AText("Diagnostics unavailable until a language server is connected.", C.Muted, 10f, mono = false)
+                    AText("Diagnostics unavailable until a language server is connected.", MaterialTheme.colorScheme.onSurfaceVariant, 10f, mono = false)
                 }
             }
         }
@@ -919,13 +909,13 @@ private fun LspSection(state: DrawerUiState, onEvent: (DrawerEvent) -> Unit) {
 private fun LspTile(title: String, shortcut: String, modifier: Modifier, onClick: () -> Unit) {
     Column(
         modifier
-            .panel(RoundedCornerShape(8.dp), C.Inset, C.Border.copy(alpha = 0.5f))
+            .panel(RoundedCornerShape(8.dp), MaterialTheme.colorScheme.surfaceContainerLowest, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
             .heightIn(min = 44.dp)
             .clickable(onClick = onClick)
             .padding(8.dp),
     ) {
-        AText(title, C.Secondary, 12f, weight = FontWeight.Medium, mono = false)
-        AText(shortcut, C.Muted, 9f)
+        AText(title, MaterialTheme.colorScheme.secondary, 12f, weight = FontWeight.Medium, mono = false)
+        AText(shortcut, MaterialTheme.colorScheme.onSurfaceVariant, 9f)
     }
 }
 
@@ -934,7 +924,7 @@ private fun LspTile(title: String, shortcut: String, modifier: Modifier, onClick
 @Composable
 private fun PrefsSection(state: DrawerUiState, onEvent: (DrawerEvent) -> Unit) {
     Accordion(
-        leading = { Icon(AstraIcons.Gear, null, Modifier.size(14.dp), C.Muted) },
+        leading = { Icon(AstraIcons.Gear, null, Modifier.size(14.dp), MaterialTheme.colorScheme.onSurfaceVariant) },
         title = "Editor Settings",
         hint = null,
         expanded = state.prefsExpanded,
@@ -951,14 +941,14 @@ private fun PrefsSection(state: DrawerUiState, onEvent: (DrawerEvent) -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                AText("Font Size", C.Text, 12f, weight = FontWeight.Medium, mono = false)
+                AText("Font Size", MaterialTheme.colorScheme.onSurface, 12f, weight = FontWeight.Medium, mono = false)
                 Row(
-                    Modifier.panel(RoundedCornerShape(8.dp), C.Inset, C.Border).padding(2.dp),
+                    Modifier.panel(RoundedCornerShape(8.dp), MaterialTheme.colorScheme.surfaceContainerLowest, MaterialTheme.colorScheme.outlineVariant).padding(2.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     StepButton("-") { onEvent(DrawerEvent.FontSizeStep(-1)) }
-                    AText("${state.fontSize}sp", C.Primary, 12f, Modifier.padding(horizontal = 4.dp))
+                    AText("${state.fontSize}sp", MaterialTheme.colorScheme.primary, 12f, Modifier.padding(horizontal = 4.dp))
                     StepButton("+") { onEvent(DrawerEvent.FontSizeStep(+1)) }
                 }
             }
@@ -967,7 +957,7 @@ private fun PrefsSection(state: DrawerUiState, onEvent: (DrawerEvent) -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                AText("Word Wrap", C.Text, 12f, weight = FontWeight.Medium, mono = false)
+                AText("Word Wrap", MaterialTheme.colorScheme.onSurface, 12f, weight = FontWeight.Medium, mono = false)
                 AstraToggle(checked = state.wordWrap) { onEvent(DrawerEvent.WordWrapToggled) }
             }
         }
@@ -983,7 +973,7 @@ private fun StepButton(label: String, onClick: () -> Unit) {
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        AText(label, C.Muted, 12f, weight = FontWeight.Bold)
+        AText(label, MaterialTheme.colorScheme.onSurfaceVariant, 12f, weight = FontWeight.Bold)
     }
 }
 
@@ -995,8 +985,8 @@ private fun AstraToggle(checked: Boolean, onToggle: () -> Unit) {
         Modifier
             .size(width = 36.dp, height = 20.dp)
             .clip(CircleShape)
-            .background(if (checked) C.Primary.copy(alpha = 0.3f) else C.Inset)
-            .border(1.dp, if (checked) C.Primary.copy(alpha = 0.5f) else C.Border, CircleShape)
+            .background(if (checked) MaterialTheme.colorScheme.primary.copy(alpha = 0.3f) else MaterialTheme.colorScheme.surfaceContainerLowest)
+            .border(1.dp, if (checked) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant, CircleShape)
             .clickable(role = Role.Switch, onClick = onToggle)
             .padding(horizontal = 3.dp),
         contentAlignment = Alignment.CenterStart,
@@ -1005,7 +995,7 @@ private fun AstraToggle(checked: Boolean, onToggle: () -> Unit) {
             Modifier
                 .offset { androidx.compose.ui.unit.IntOffset(thumbOffset.value.roundToPx(), 0) }
                 .size(16.dp)
-                .background(if (checked) C.Primary else C.Muted, CircleShape),
+                .background(if (checked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, CircleShape),
         )
     }
 }
@@ -1017,8 +1007,8 @@ private fun ToolDock(state: DrawerUiState, onEvent: (DrawerEvent) -> Unit) {
     Column(
         Modifier
             .fillMaxWidth()
-            .background(C.Dock)
-            .borderTop(C.Border.copy(alpha = 0.9f))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .borderTop(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.9f))
             .navigationBarsPadding(),
     ) {
         Row(
@@ -1027,25 +1017,25 @@ private fun ToolDock(state: DrawerUiState, onEvent: (DrawerEvent) -> Unit) {
                 .padding(8.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            DockTile(Modifier.weight(1f), "Term", C.Text, FontWeight.SemiBold, { onEvent(DrawerEvent.Action(DrawerAction.OpenTerminal)) }) {
-                Icon(AstraIcons.Terminal, "Terminal", Modifier.size(16.dp), C.Primary)
+            DockTile(Modifier.weight(1f), "Term", MaterialTheme.colorScheme.onSurface, FontWeight.SemiBold, { onEvent(DrawerEvent.Action(DrawerAction.OpenTerminal)) }) {
+                Icon(AstraIcons.Terminal, "Terminal", Modifier.size(16.dp), MaterialTheme.colorScheme.primary)
             }
             DockTile(
                 Modifier.weight(1f),
                 if (state.gitAvailable) "+${state.gitAdded} -${state.gitRemoved}" else "Git",
-                if (state.gitAvailable) C.Secondary else C.Muted,
+                if (state.gitAvailable) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
                 FontWeight.SemiBold,
                 { onEvent(DrawerEvent.Action(DrawerAction.OpenGitChanges)) },
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(AstraIcons.GitCircle, "Git Changes", Modifier.size(14.dp), C.Secondary)
+                    Icon(AstraIcons.GitCircle, "Git Changes", Modifier.size(14.dp), MaterialTheme.colorScheme.secondary)
                 }
             }
-            DockTile(Modifier.weight(1f), "Test", C.Text, FontWeight.SemiBold, { onEvent(DrawerEvent.Action(DrawerAction.RunTests)) }) {
-                Icon(AstraIcons.Play, "Run Cargo Tests", Modifier.size(16.dp), C.Warning)
+            DockTile(Modifier.weight(1f), "Test", MaterialTheme.colorScheme.onSurface, FontWeight.SemiBold, { onEvent(DrawerEvent.Action(DrawerAction.RunTests)) }) {
+                Icon(AstraIcons.Play, "Run Cargo Tests", Modifier.size(16.dp), MaterialTheme.colorScheme.tertiary)
             }
-            DockTile(Modifier.weight(1f), "Config", C.Muted, FontWeight.Normal, { onEvent(DrawerEvent.Action(DrawerAction.OpenConfig)) }) {
-                Icon(AstraIcons.Gear, "Quick Settings", Modifier.size(16.dp), C.Muted)
+            DockTile(Modifier.weight(1f), "Config", MaterialTheme.colorScheme.onSurfaceVariant, FontWeight.Normal, { onEvent(DrawerEvent.Action(DrawerAction.OpenConfig)) }) {
+                Icon(AstraIcons.Gear, "Quick Settings", Modifier.size(16.dp), MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -1064,7 +1054,7 @@ private fun DockTile(
     Column(
         modifier
             .pressScale(source)
-            .panel(RoundedCornerShape(12.dp), C.Card, C.Border)
+            .panel(RoundedCornerShape(12.dp), MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.outlineVariant)
             .heightIn(min = 48.dp)
             .clickable(interactionSource = source, indication = null, onClick = onClick)
             .padding(vertical = 8.dp),
