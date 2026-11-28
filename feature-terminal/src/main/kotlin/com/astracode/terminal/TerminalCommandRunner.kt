@@ -396,4 +396,3 @@ class TerminalCommandRunner(
         private const val READER_SHUTDOWN_TIMEOUT_MILLIS = 500L
     }
 }
-}
