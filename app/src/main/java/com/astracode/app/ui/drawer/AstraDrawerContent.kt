@@ -251,7 +251,7 @@ private fun ProjectCard(project: ProjectSummaryUi, onCreate: () -> Unit) {
         Modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(Brush.verticalGradient(listOf(MaterialTheme.colorScheme.surfaceContainerHighGradientStart, MaterialTheme.colorScheme.surfaceContainerHigh)))
+            .background(Brush.verticalGradient(listOf(MaterialTheme.colorScheme.surfaceContainerLow, MaterialTheme.colorScheme.surfaceContainerHigh)))
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
             .padding(12.dp),
     ) {
@@ -449,6 +449,7 @@ private fun WorkspaceRow(
         isActive -> MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
         else -> MaterialTheme.colorScheme.outlineVariant
     }
+    val activeColor = MaterialTheme.colorScheme.primary
     Row(
         Modifier
             .fillMaxWidth()
@@ -468,8 +469,8 @@ private fun WorkspaceRow(
             when {
                 isActive -> Box(
                     Modifier.size(10.dp)
-                        .drawBehind { drawCircle(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f), radius = size.minDimension / 2f + 4.dp.toPx()) }
-                        .background(MaterialTheme.colorScheme.primary, CircleShape),
+                        .drawBehind { drawCircle(activeColor.copy(alpha = 0.2f), radius = size.minDimension / 2f + 4.dp.toPx()) }
+                        .background(activeColor, CircleShape),
                 )
                 ws.kind == WorkspaceKind.Private -> Icon(AstraIcons.Lock, null, Modifier.size(16.dp), MaterialTheme.colorScheme.onSurfaceVariant)
                 ws.kind == WorkspaceKind.Managed -> Icon(AstraIcons.Folder, null, Modifier.size(16.dp), MaterialTheme.colorScheme.secondary)
