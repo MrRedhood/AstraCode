@@ -4447,7 +4447,7 @@ private fun FileManagementScreen(
         }
     }
 
-    if (!showAiChat && !showAiWorkspacePlanner) {
+    if (!hasModalUi) {
         FloatingAiAssistantButton(
             preferences = aiPreferences,
             modifier = Modifier.fillMaxSize(),

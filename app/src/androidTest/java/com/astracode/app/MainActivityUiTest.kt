@@ -1696,7 +1696,11 @@ class MainActivityUiTest {
 
         composeRule.onNodeWithContentDescription("Open editor drawer").performClick()
         composeRule.onNodeWithText("AI Copilot & Assist").assertDoesNotExist()
+        composeRule.onAllNodesWithTag("ai-floating-button").assertCountEquals(0)
         composeRule.onNodeWithContentDescription("Close drawer").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("ai-floating-button").assertIsDisplayed() }.isSuccess
+        }
 
         composeRule.onNodeWithTag("ai-floating-button").performClick()
         composeRule.waitUntil(timeoutMillis = 10_000) {
