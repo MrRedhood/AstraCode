@@ -17,7 +17,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -73,8 +72,8 @@ internal fun FloatingAiAssistantButton(
                         change.consume()
                         val dx = with(density) { dragAmount.x.toDp().value }
                         val dy = with(density) { dragAmount.y.toDp().value }
-                        savedX = (x + dx).coerceIn(0f, maxX)
-                        savedY = (y + dy).coerceIn(0f, maxY)
+                        savedX = (savedX + dx).coerceIn(0f, maxX)
+                        savedY = (savedY + dy).coerceIn(0f, maxY)
                         preferences.edit()
                             .putFloat(KEY_X, savedX)
                             .putFloat(KEY_Y, savedY)

@@ -4,6 +4,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsProperties
 
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertTextEquals
@@ -1686,6 +1687,28 @@ class MainActivityUiTest {
         composeRule.onNodeWithText("Open Explorer").performScrollTo()
         composeRule.onNodeWithText("Open Explorer").performClick()
         composeRule.onNodeWithTag("workspace-tree-list").assertIsDisplayed()
+    }
+
+
+    @Test
+    fun floatingAiAssistantOpensChatAndIsHiddenInsideIt() {
+        composeRule.onNodeWithTag("ai-floating-button").assertIsDisplayed()
+
+        composeRule.onNodeWithContentDescription("Open editor drawer").performClick()
+        composeRule.onNodeWithText("AI Copilot & Assist").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Close drawer").performClick()
+
+        composeRule.onNodeWithTag("ai-floating-button").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithContentDescription("Close AI chat").assertIsDisplayed()
+            }.isSuccess
+        }
+        composeRule.onAllNodesWithTag("ai-floating-button").assertCountEquals(0)
+        composeRule.onNodeWithContentDescription("Close AI chat").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag("ai-floating-button").assertIsDisplayed() }.isSuccess
+        }
     }
 
 }
