@@ -69,9 +69,8 @@ private val DrawerSection.listIndex: Int
         DrawerSection.Files -> 2
         // The source HTML links "Commands" to #section-commands, which does not exist; File Operations is the closest block.
         DrawerSection.Commands -> 3
-        DrawerSection.Ai -> 4
-        DrawerSection.Lsp -> 5
-        DrawerSection.Prefs -> 6
+        DrawerSection.Lsp -> 4
+        DrawerSection.Prefs -> 5
     }
 
 /**
@@ -117,7 +116,6 @@ fun AstraDrawerContent(
             item(key = "workspaces") { WorkspacesSection(state, onEvent) }
             item(key = "files") { Box(Modifier.padding(top = 4.dp)) { FilesSection(state, onEvent) } }
             item(key = "fileops") { FileOpsSection(state, onEvent) }
-            item(key = "ai") { Box(Modifier.padding(top = 4.dp)) { AiSection(state, onEvent) } }
             item(key = "lsp") { Box(Modifier.padding(top = 4.dp)) { LspSection(state, onEvent) } }
             item(key = "prefs") { Box(Modifier.padding(top = 4.dp)) { PrefsSection(state, onEvent) } }
         }
@@ -195,7 +193,6 @@ private fun DrawerTop(
             NavChip("Files", AstraIcons.Folder, MaterialTheme.colorScheme.onSurfaceVariant, selected == DrawerSection.Files, null) { onSection(DrawerSection.Files) }
             NavChip("Commands", AstraIcons.Bolt, MaterialTheme.colorScheme.tertiary, selected == DrawerSection.Commands, null) { onSection(DrawerSection.Commands) }
             NavChip("LSP", AstraIcons.Pencil, MaterialTheme.colorScheme.secondary, selected == DrawerSection.Lsp, null) { onSection(DrawerSection.Lsp) }
-            NavChip("AI", AstraIcons.Sparkle, MaterialTheme.colorScheme.tertiary, selected == DrawerSection.Ai, MaterialTheme.colorScheme.tertiary) { onSection(DrawerSection.Ai) }
             NavChip("Prefs", AstraIcons.Gear, MaterialTheme.colorScheme.onSurfaceVariant, selected == DrawerSection.Prefs, null) { onSection(DrawerSection.Prefs) }
         }
     }

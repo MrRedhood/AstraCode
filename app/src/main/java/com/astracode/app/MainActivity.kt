@@ -15,6 +15,13 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.text.BasicTextField
@@ -98,6 +105,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -117,6 +125,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -1136,6 +1145,7 @@ private fun FileManagementScreen(
     }
     var showAiWorkspacePlanner by remember(storage) { mutableStateOf(false) }
     var showAiChat by remember(storage) { mutableStateOf(false) }
+    var aiChatTransformOrigin by remember { mutableStateOf(TransformOrigin(0.92f, 0.88f)) }
     var aiProvider by remember(aiPreferences) {
         mutableStateOf(AiProvider.fromId(aiPreferences.getString("provider", "openai")))
     }
@@ -4088,6 +4098,11 @@ private fun FileManagementScreen(
         }
     }
 
+    BackHandler(enabled = showAiChat) {
+        showAiChat = false
+    }
+
+    Box(Modifier.fillMaxSize()) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets.systemBars,
@@ -4443,6 +4458,57 @@ private fun FileManagementScreen(
         }
     }
 
+    if (!showAiChat && !showAiWorkspacePlanner) {
+        FloatingAiAssistantButton(
+            preferences = aiPreferences,
+            modifier = Modifier.fillMaxSize(),
+            onOpenChat = { origin ->
+                aiChatTransformOrigin = origin
+                aiPrompt = ""
+                aiMessage = null
+                showAiChat = true
+            },
+        )
+    }
+
+    AnimatedVisibility(
+        visible = showAiChat,
+        modifier = Modifier.fillMaxSize().zIndex(10f),
+        enter = fadeIn(animationSpec = tween(170)) +
+            scaleIn(
+                initialScale = 0.06f,
+                transformOrigin = aiChatTransformOrigin,
+                animationSpec = tween(340, easing = FastOutSlowInEasing),
+            ),
+        exit = fadeOut(animationSpec = tween(130)) +
+            scaleOut(
+                targetScale = 0.06f,
+                transformOrigin = aiChatTransformOrigin,
+                animationSpec = tween(260, easing = FastOutSlowInEasing),
+            ),
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
+        ) {
+            AiChatScreen(
+                activeWorkspaceId = activeWorkspaceId,
+                assistant = workspaceAiAssistant,
+                conversationStore = aiConversationStore,
+                preferences = aiPreferences,
+                initialPrompt = aiPrompt,
+                onClose = { showAiChat = false },
+                onOpenWorkspacePlanner = {
+                    if (!aiBusy) {
+                        showAiChat = false
+                        showAiWorkspacePlanner = true
+                    }
+                },
+            )
+        }
+    }
+    }
+
 
     if (showEditorDrawer) {
         AstraEditorDrawer(
@@ -4624,6 +4690,7 @@ private fun FileManagementScreen(
                                 else -> ""
                             }
                             aiMessage = null
+                            aiChatTransformOrigin = TransformOrigin(0.92f, 0.88f)
                             showAiChat = true
                         }
                         DrawerAction.ConfigureLanguageServer -> {
@@ -6254,32 +6321,6 @@ private fun FileManagementScreen(
                 ) { Text("Close") }
             },
         )
-    }
-
-    if (showAiChat) {
-        Dialog(
-            onDismissRequest = { showAiChat = false },
-            properties = DialogProperties(usePlatformDefaultWidth = false),
-        ) {
-            Surface(
-                modifier = Modifier.fillMaxSize(),
-                color = MaterialTheme.colorScheme.background,
-            ) {
-                AiChatScreen(
-                    activeWorkspaceId = activeWorkspaceId,
-                    assistant = workspaceAiAssistant,
-                    conversationStore = aiConversationStore,
-                    preferences = aiPreferences,
-                    initialPrompt = aiPrompt,
-                    onOpenWorkspacePlanner = {
-                        if (!aiBusy) {
-                            showAiChat = false
-                            showAiWorkspacePlanner = true
-                        }
-                    },
-                )
-            }
-        }
     }
 
     if (showAiWorkspacePlanner) {

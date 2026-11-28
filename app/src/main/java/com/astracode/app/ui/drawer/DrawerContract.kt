@@ -6,7 +6,7 @@ enum class FileBadge(val label: String) { Rust(".rs"), Toml(".toml"), Kotlin(".k
 
 enum class WorkspaceKind { Active, Private, Managed, RemoteBookmark }
 
-enum class DrawerSection { Files, Commands, Lsp, Ai, Prefs }
+enum class DrawerSection { Files, Commands, Lsp, Prefs }
 
 enum class WorkspaceAction { CreateFile, CreateFolder, Rename, DeleteWorkspace, Cancel }
 
