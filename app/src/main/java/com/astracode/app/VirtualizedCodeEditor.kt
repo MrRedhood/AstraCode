@@ -11,17 +11,14 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
@@ -55,7 +52,6 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.platform.ClipboardManager
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -255,12 +251,7 @@ internal fun VirtualizedCodeEditor(
     interactionSource: MutableInteractionSource,
     textColor: Color,
     cursorColor: Color,
-    lineNumberColor: Color,
-    focusColor: Color,
-    borderColor: Color,
     modifier: Modifier = Modifier,
-    label: String = "File contents",
-    placeholder: String? = null,
     testTag: String = "file-editor-input",
     fontSizeSp: Int = 14,
 ) {
@@ -299,11 +290,7 @@ internal fun VirtualizedCodeEditor(
     val editorColors = OutlinedTextFieldDefaults.colors(
         focusedTextColor = textColor,
         unfocusedTextColor = textColor,
-        focusedBorderColor = focusColor,
-        unfocusedBorderColor = borderColor,
         cursorColor = cursorColor,
-        focusedLabelColor = focusColor,
-        unfocusedLabelColor = lineNumberColor,
     )
 
     OutlinedTextFieldDefaults.DecorationBox(
@@ -311,8 +298,8 @@ internal fun VirtualizedCodeEditor(
         innerTextField = {
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize().testTag(testTag),
-                contentPadding = PaddingValues(vertical = 6.dp),
+                modifier = modifier.fillMaxSize().testTag(testTag),
+                contentPadding = PaddingValues(vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(0.dp),
             ) {
                 items(
@@ -357,17 +344,9 @@ internal fun VirtualizedCodeEditor(
                     val isCaretLine = lineNumber == activeLine
 
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
                         verticalAlignment = Alignment.Top,
                     ) {
-                        Text(
-                            (lineNumber + 1).toString() + " │",
-                            modifier = Modifier.width(52.dp).padding(end = 8.dp),
-                            color = lineNumberColor,
-                            textAlign = TextAlign.End,
-                            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace, fontSize = fontSizeSp.sp),
-                            maxLines = 1,
-                        )
                         BasicTextField(
                             value = TextFieldValue(highlightedLine, localSelection, localComposition),
                             onValueChange = { changedLineValue ->
@@ -479,18 +458,11 @@ internal fun VirtualizedCodeEditor(
         singleLine = false,
         visualTransformation = VisualTransformation.None,
         interactionSource = interactionSource,
-        label = { Text(label) },
-        placeholder = placeholder?.let { { Text(it) } },
+        label = null,
+        placeholder = null,
+        contentPadding = PaddingValues(0.dp),
         colors = editorColors,
-        container = {
-            OutlinedTextFieldDefaults.Container(
-                enabled = true,
-                isError = false,
-                interactionSource = interactionSource,
-                colors = editorColors,
-                shape = RoundedCornerShape(16.dp),
-            )
-        },
+        container = {},
     )
 }
 

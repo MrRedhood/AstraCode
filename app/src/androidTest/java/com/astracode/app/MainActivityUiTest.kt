@@ -1034,6 +1034,8 @@ class MainActivityUiTest {
             }.isSuccess
         }
 
+        composeRule.onNodeWithTag("editor-tools-open").performClick()
+        composeRule.onNodeWithTag("editor-tools-group-editor").performClick()
         val foldButton = composeRule.onNodeWithTag("editor-fold-toggle-1")
         foldButton.assertIsDisplayed()
         foldButton.performClick()
@@ -1069,6 +1071,8 @@ class MainActivityUiTest {
         composeRule.onNodeWithTag("file-editor-input").performTextInput("😀")
         composeRule.onNodeWithTag("file-editor-input").assertTextContains("hello 😀", substring = true)
 
+        composeRule.onNodeWithTag("editor-tools-open").performClick()
+        composeRule.onNodeWithTag("editor-tools-group-editor").performClick()
         composeRule.onNodeWithTag("editor-word-wrap-toggle").assertTextContains("Word wrap: On")
         composeRule.onNodeWithTag("editor-word-wrap-toggle").performClick()
         composeRule.onNodeWithTag("editor-word-wrap-toggle").assertTextContains("Word wrap: Off")
@@ -1101,6 +1105,8 @@ class MainActivityUiTest {
             }.isSuccess
         }
 
+        composeRule.onNodeWithTag("editor-tools-open").performClick()
+        composeRule.onNodeWithTag("editor-tools-group-editor").performClick()
         composeRule.onNodeWithTag("editor-find-toggle").performClick()
         composeRule.onNodeWithTag("editor-find-input").performTextReplacement("target")
         composeRule.onNodeWithTag("editor-replace-input").performTextReplacement("answer")

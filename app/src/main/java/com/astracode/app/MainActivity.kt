@@ -8162,11 +8162,15 @@ private fun EditorPanel(
             if (nextWindow != syntaxHighlightLines) syntaxHighlightLines = nextWindow
         }
     }
-    val lineNumberTransformation = remember(
+    val editorVisualTransformation = remember(
         foldableRegions, collapsedFoldStarts, path, syntaxHighlightLines,
     ) {
         codeFoldingVisualTransformation(
-            foldableRegions, collapsedFoldStarts, path, syntaxHighlightLines,
+            foldableRegions,
+            collapsedFoldStarts,
+            path,
+            syntaxHighlightLines,
+            showLineNumbers = false,
         )
     }
 
@@ -8202,27 +8206,9 @@ private fun EditorPanel(
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+        modifier = Modifier.fillMaxSize(),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                path,
-                modifier = Modifier.weight(1f),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 12.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(if (readOnly) "READ ONLY" else "UTF-8", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
-        }
-        Spacer(Modifier.height(4.dp))
-        if (tabs.isNotEmpty()) {
+        if (tabs.size > 1) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -8252,14 +8238,7 @@ private fun EditorPanel(
                 }
             }
         }
-        Spacer(Modifier.height(4.dp))
-        TextButton(
-            onClick = {
-                showFindReplace = !showFindReplace
-                editorToolMessage = ""
-            },
-            modifier = Modifier.testTag("editor-find-toggle"),
-        ) { Text(if (showFindReplace) "Hide Find / Replace" else "Find / Replace") }
+        Spacer(Modifier.height(2.dp))
         if (showFindReplace) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(
@@ -8392,54 +8371,8 @@ private fun EditorPanel(
                 modifier = Modifier.testTag("editor-find-message"),
             )
         }
-        TextButton(
-            onClick = { onWordWrapChanged(!wordWrapEnabled) },
-            modifier = Modifier.testTag("editor-word-wrap-toggle"),
-        ) { Text(if (wordWrapEnabled) "Word wrap: On" else "Word wrap: Off") }
-        Text(
-            if (readOnly) "Read-only · autosave unavailable" else "Autosave on · saves after typing pauses",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 11.sp,
-            modifier = Modifier.testTag("editor-autosave-status"),
-        )
-        if (visibleFoldableRegions.isNotEmpty()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                visibleFoldableRegions.forEach { region ->
-                    val isCollapsed = region.startLine in collapsedFoldStarts
-                    TextButton(
-                        onClick = {
-                            collapsedFoldStarts = if (isCollapsed) {
-                                collapsedFoldStarts - region.startLine
-                            } else {
-                                collapsedFoldStarts + region.startLine
-                            }
-                        },
-                        modifier = Modifier.testTag("editor-fold-toggle-${region.startLine}"),
-                    ) {
-                        Text(
-                            "${if (isCollapsed) "▸" else "▾"} L${region.startLine} ${region.label}",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-            }
-        }
         val editorInteractionSource = remember(path) { MutableInteractionSource() }
         val clipboardManager = LocalClipboardManager.current
-        val editorColors = OutlinedTextFieldDefaults.colors(
-            focusedTextColor = MaterialTheme.colorScheme.onSurface,
-            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-            focusedBorderColor = MaterialTheme.colorScheme.primary,
-            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-            cursorColor = MaterialTheme.colorScheme.primary,
-            focusedLabelColor = MaterialTheme.colorScheme.primary,
-            unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
         val completionValueAtRender = editorFieldValue
         val completionPrefixRangeAtRender = if (
             !readOnly && completionValueAtRender.selection.start == completionValueAtRender.selection.end
@@ -8512,12 +8445,7 @@ private fun EditorPanel(
                 interactionSource = editorInteractionSource,
                 textColor = MaterialTheme.colorScheme.onSurface,
                 cursorColor = MaterialTheme.colorScheme.primary,
-                lineNumberColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                focusColor = MaterialTheme.colorScheme.primary,
-                borderColor = MaterialTheme.colorScheme.outlineVariant,
                 modifier = Modifier.fillMaxSize(),
-                label = "File contents",
-                placeholder = "Start writing…",
                 testTag = "file-editor-input",
             )
         } else {
@@ -8545,11 +8473,12 @@ private fun EditorPanel(
                     }
                 },
                 readOnly = readOnly,
-                visualTransformation = lineNumberTransformation,
+                visualTransformation = editorVisualTransformation,
                 onTextLayout = viewportTracker::onTextLayout,
                 interactionSource = editorInteractionSource,
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 textStyle = MaterialTheme.typography.bodyMedium.copy(
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontFamily = FontFamily.Monospace,
                     fontSize = fontSizeSp.sp,
                 ),
@@ -8564,6 +8493,7 @@ private fun EditorPanel(
                         viewportTracker.updateViewportHeight(coordinates.size.height.toFloat())
                     }
                     .fillMaxSize()
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
                     .then(
                         if (wordWrapEnabled) Modifier
                         else Modifier.horizontalScroll(editorHorizontalScrollState),
@@ -8599,28 +8529,6 @@ private fun EditorPanel(
                         }
                     }
                     .testTag("file-editor-input"),
-                decorationBox = { innerTextField ->
-                    OutlinedTextFieldDefaults.DecorationBox(
-                        value = editorFieldValue.text,
-                        innerTextField = innerTextField,
-                        enabled = true,
-                        singleLine = false,
-                        visualTransformation = VisualTransformation.None,
-                        interactionSource = editorInteractionSource,
-                        label = { Text("File contents") },
-                        placeholder = { Text("Start writing…") },
-                        colors = editorColors,
-                        container = {
-                            OutlinedTextFieldDefaults.Container(
-                                enabled = true,
-                                isError = false,
-                                interactionSource = editorInteractionSource,
-                                colors = editorColors,
-                                shape = RoundedCornerShape(16.dp),
-                            )
-                        },
-                    )
-                },
             )
     
         }
@@ -8628,6 +8536,21 @@ private fun EditorPanel(
             FloatingEditorTools(
                 editorKey = path,
                 modifier = Modifier.fillMaxSize(),
+                wordWrapEnabled = wordWrapEnabled,
+                onToggleWordWrap = { onWordWrapChanged(!wordWrapEnabled) },
+                onFindReplace = {
+                    showFindReplace = !showFindReplace
+                    editorToolMessage = ""
+                },
+                foldableRegions = visibleFoldableRegions,
+                collapsedFoldStarts = collapsedFoldStarts,
+                onToggleFold = { startLine ->
+                    collapsedFoldStarts = if (startLine in collapsedFoldStarts) {
+                        collapsedFoldStarts - startLine
+                    } else {
+                        collapsedFoldStarts + startLine
+                    }
+                },
                 onAction = { action ->
                     val currentValue = editorFieldValue
                     val selectionOrCopyAction = action == EditorToolAction.SMART_SELECT ||
@@ -8671,12 +8594,6 @@ private fun EditorPanel(
         LanguageSymbolReferenceDialog(languageSymbolReference) {
             languageSymbolReference = null
         }
-        Spacer(Modifier.height(10.dp))
-        Text(
-            "UTF-8 text • save guarantees depend on the selected storage provider.",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 11.sp,
-        )
     }
 }
 

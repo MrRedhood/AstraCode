@@ -152,6 +152,7 @@ internal fun codeFoldingVisualTransformation(
     collapsedLineStarts: Set<Int>,
     sourcePath: String? = null,
     highlightedLines: IntRange? = null,
+    showLineNumbers: Boolean = true,
 ): VisualTransformation = VisualTransformation { input ->
     val text = input.text
     val starts = mutableListOf(0)
@@ -215,8 +216,10 @@ internal fun codeFoldingVisualTransformation(
             offsets[end] = output.length
             continue
         }
-        output.append(line.toString().padStart(digitWidth))
-        output.append(" │ ")
+        if (showLineNumbers) {
+            output.append(line.toString().padStart(digitWidth))
+            output.append(" │ ")
+        }
         appendStyledSource(start, end)
         val foldEnd = collapsedEnds[line]
         if (foldEnd != null && foldEnd > line) {

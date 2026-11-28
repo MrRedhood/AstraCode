@@ -41,6 +41,7 @@ internal enum class EditorToolGroup(val title: String) {
     BASIC("Basic"),
     ADVANCED("Advanced"),
     ASTRACODE("AstraCode"),
+    EDITOR("Editor"),
 }
 
 internal enum class EditorToolAction(
@@ -72,6 +73,12 @@ internal enum class EditorToolAction(
 internal fun FloatingEditorTools(
     editorKey: String,
     modifier: Modifier = Modifier,
+    wordWrapEnabled: Boolean = true,
+    onToggleWordWrap: () -> Unit = {},
+    onFindReplace: () -> Unit = {},
+    foldableRegions: List<CodeFoldRegion> = emptyList(),
+    collapsedFoldStarts: Set<Int> = emptySet(),
+    onToggleFold: (Int) -> Unit = {},
     onAction: (EditorToolAction) -> Unit,
 ) {
     BoxWithConstraints(modifier = modifier) {
@@ -132,7 +139,13 @@ internal fun FloatingEditorTools(
                         modifier = Modifier.weight(1f).height(48.dp).testTag("editor-tools-open"),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                     ) {
-                        Text("Tools", fontWeight = FontWeight.SemiBold)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text("✦", color = MaterialTheme.colorScheme.primary)
+                            Text("Tools", fontWeight = FontWeight.SemiBold)
+                        }
                     }
                 }
             }
@@ -150,7 +163,7 @@ internal fun FloatingEditorTools(
                         modifier = Modifier.fillMaxWidth().padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text("AstraCode Editor Tools", style = MaterialTheme.typography.titleLarge)
+                        Text("Editor tools", style = MaterialTheme.typography.titleLarge)
                         Row(
                             modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -172,21 +185,64 @@ internal fun FloatingEditorTools(
                             modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
                             verticalArrangement = Arrangement.spacedBy(2.dp),
                         ) {
-                            EditorToolAction.values().filter { it.group == selectedGroup }.forEach { action ->
-                                TextButton(
-                                    onClick = {
-                                        showTools = false
-                                        onAction(action)
-                                    },
-                                    modifier = Modifier.fillMaxWidth().testTag("editor-tool-" + action.name.lowercase()),
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            if (selectedGroup == EditorToolGroup.EDITOR) {
+                                Text("Editor controls", style = MaterialTheme.typography.titleSmall)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 ) {
-                                    Column(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                                    TextButton(
+                                        onClick = {
+                                            showTools = false
+                                            onFindReplace()
+                                        },
+                                        modifier = Modifier.weight(1f).testTag("editor-find-toggle"),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                                     ) {
-                                        Text(action.title, style = MaterialTheme.typography.titleSmall)
-                                        Text(action.description, style = MaterialTheme.typography.bodySmall)
+                                        Text("Find / Replace")
+                                    }
+                                    TextButton(
+                                        onClick = onToggleWordWrap,
+                                        modifier = Modifier.weight(1f).testTag("editor-word-wrap-toggle"),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                    ) {
+                                        Text(if (wordWrapEnabled) "Word wrap: On" else "Word wrap: Off")
+                                    }
+                                }
+                                if (foldableRegions.isNotEmpty()) {
+                                    Text("Code folding", style = MaterialTheme.typography.titleSmall)
+                                    foldableRegions.forEach { region ->
+                                        val collapsed = region.startLine in collapsedFoldStarts
+                                        TextButton(
+                                            onClick = { onToggleFold(region.startLine) },
+                                            modifier = Modifier.fillMaxWidth()
+                                                .testTag("editor-fold-toggle-${region.startLine}"),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                        ) {
+                                            Text(
+                                                "${if (collapsed) "▸" else "▾"} L${region.startLine} ${region.label}",
+                                                maxLines = 1,
+                                            )
+                                        }
+                                    }
+                                }
+                            } else {
+                                EditorToolAction.values().filter { it.group == selectedGroup }.forEach { action ->
+                                    TextButton(
+                                        onClick = {
+                                            showTools = false
+                                            onAction(action)
+                                        },
+                                        modifier = Modifier.fillMaxWidth().testTag("editor-tool-" + action.name.lowercase()),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                                        ) {
+                                            Text(action.title, style = MaterialTheme.typography.titleSmall)
+                                            Text(action.description, style = MaterialTheme.typography.bodySmall)
+                                        }
                                     }
                                 }
                             }
