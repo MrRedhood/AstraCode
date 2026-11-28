@@ -44,7 +44,8 @@ class AiChatScreenUiTest {
             composeRule.onNodeWithText("Ask anything, @ files/tools, / commands…").assertExists()
 
             composeRule.onNodeWithText("Models").performClick()
-            composeRule.onNodeWithText("Select Model & Provider").assertIsDisplayed()
+            composeRule.onNodeWithText("AI model").assertIsDisplayed()
+            composeRule.onNodeWithTag("ai-provider-openai").assertIsDisplayed()
             composeRule.onNodeWithTag("ai-manual-model-toggle").performClick()
             composeRule.onNodeWithText("Model ID").assertExists()
 
