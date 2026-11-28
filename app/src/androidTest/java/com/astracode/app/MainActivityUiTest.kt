@@ -45,6 +45,11 @@ class MainActivityUiTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         context.getSharedPreferences("astracode_workspace", android.content.Context.MODE_PRIVATE)
             .edit().clear().commit()
+        context.getSharedPreferences("astracode_ai_preferences", android.content.Context.MODE_PRIVATE)
+            .edit()
+            .remove("ai_floating_button_x_dp")
+            .remove("ai_floating_button_y_dp")
+            .commit()
         context.contentResolver.persistedUriPermissions.forEach { permission ->
             runCatching {
                 context.contentResolver.releasePersistableUriPermission(
@@ -1728,6 +1733,54 @@ class MainActivityUiTest {
         composeRule.onNodeWithTag("workspace-tree-list").assertIsDisplayed()
     }
 
+
+    @Test
+    fun floatingAiAssistantDragPersistsPositionAcrossActivityRecreation() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val preferences = context.getSharedPreferences(
+            "astracode_ai_preferences",
+            android.content.Context.MODE_PRIVATE,
+        )
+        val density = context.resources.displayMetrics.density
+        val button = composeRule.onNodeWithTag("ai-floating-button")
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { button.assertIsDisplayed() }.isSuccess
+        }
+
+        val before = button.fetchSemanticsNode().boundsInRoot
+        button.performTouchInput {
+            down(center)
+            advanceEventTime(700L)
+            moveBy(Offset(-120f, -100f))
+            up()
+        }
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                val current = button.fetchSemanticsNode().boundsInRoot
+                preferences.contains("ai_floating_button_x_dp") &&
+                    preferences.contains("ai_floating_button_y_dp") &&
+                    current.left < before.left - 20f &&
+                    current.top < before.top - 20f
+            }.getOrDefault(false)
+        }
+
+        val dragged = button.fetchSemanticsNode().boundsInRoot
+        val savedX = preferences.getFloat("ai_floating_button_x_dp", -1f)
+        val savedY = preferences.getFloat("ai_floating_button_y_dp", -1f)
+        assertTrue(savedX >= 0f)
+        assertTrue(savedY >= 0f)
+        assertEquals(savedX * density, dragged.left, 3f)
+        assertEquals(savedY * density, dragged.top, 3f)
+
+        composeRule.activityRule.scenario.recreate()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching { button.assertIsDisplayed() }.isSuccess
+        }
+        val restored = button.fetchSemanticsNode().boundsInRoot
+        assertEquals(dragged.left, restored.left, 3f)
+        assertEquals(dragged.top, restored.top, 3f)
+    }
 
     @Test
     fun floatingAiAssistantOpensChatAndIsHiddenInsideIt() {
