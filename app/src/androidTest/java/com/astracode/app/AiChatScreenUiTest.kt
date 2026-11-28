@@ -41,6 +41,9 @@ class AiChatScreenUiTest {
             }
 
             composeRule.onNodeWithText("Chat Stream").assertIsDisplayed()
+            composeRule.onNodeWithContentDescription("AI settings").assertIsDisplayed()
+            composeRule.onNodeWithContentDescription("Provider connection").assertIsDisplayed()
+            composeRule.onNodeWithContentDescription("Close AI chat").assertIsDisplayed()
             composeRule.onNodeWithText("Ask anything, @ files/tools, / commands…").assertExists()
 
             composeRule.onNodeWithText("Models").performClick()

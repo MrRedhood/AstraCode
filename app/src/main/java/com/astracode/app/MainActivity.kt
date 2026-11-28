@@ -6380,7 +6380,7 @@ private fun FileManagementScreen(
         } == true
         AlertDialog(
             onDismissRequest = { if (!aiBusy) showAiWorkspacePlanner = false },
-            title = { Text("AI workspace assistant") },
+            title = { Text("AI settings & workspace agent") },
             text = {
                 Column(
                     modifier = Modifier.fillMaxWidth().heightIn(max = 580.dp)
